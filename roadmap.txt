@@ -1,0 +1,64 @@
+Logic Gate Simulator – Full Development Roadmap
+================================================
+
+Alpha-1 – Basic Skeleton
+- Create file structure and index.html that loads CSS and main JS module.
+- Static UI shells: header with title and placeholder buttons, empty left sidebar (component palette), main canvas area (empty), bottom toolbar (status text), footer.
+- All CSS files import theme.css with design tokens (colors, spacing).
+- No interaction; only layout placeholders.
+- Ensure page renders correctly.
+
+Alpha-2 – Professional Styling
+- Complete dark theme with gradients, shadows, polished look.
+- Full grid layout: sidebar ~250px, canvas stretches, right panel (initially hidden).
+- Draggable splitter between sidebar and canvas; collapsible right panel (via PanelManager).
+- Style header (gradient title, button hover effects), toolbar, footer.
+- Canvas gets a subtle grid background pattern.
+- Sidebar gets a search bar (non-functional).
+- CSS transitions for hover/focus.
+
+Beta-1 – Core Gates & Wiring
+- Implement Component base class and ComponentFactory.
+- Gates: AND (2 inputs), OR (2 inputs), NOT (1 input).
+- Input components: toggle switches (manual on/off) and DIP switch (8-bit).
+- Output component: LED light bulb.
+- Simulation Engine with event-driven propagation (queue, step, run, stop, reset).
+- Canvas:
+  * Drag a component from sidebar onto canvas (creates visual node).
+  * Click on output connector to start wiring, click on input connector to complete wire.
+  * Wires drawn with Manhattan routing (SVG) and update when components are moved.
+  * Components are draggable, wires follow.
+- Engine computes outputs when inputs change.
+- Header buttons: Run (continuous), Stop, Step.
+- Sidebar palette lists components (draggable).
+- Communication via EventBus.
+- Functional toggle switches + LED test.
+
+Beta-2 – Advanced Components & Features
+- Add remaining basic gates: NAND, NOR, XOR, XNOR (2 inputs each, configurable later).
+- Flip-flops: SR, D, JK, T (positive edge‑triggered by default).
+- Clock generator component with adjustable frequency (slider in toolbar).
+- DIP switch (8-bit). 7‑segment display (hex decoder internally). Logic probe.
+- Wire management: delete wires, move components with attached wires intact.
+- Truth table panel: select output node, generate truth table.
+- Simple test bench: manually set waveform for inputs, run step‑by‑step, compare outputs.
+- Simulation speed control.
+- Right‑click context menu: delete component, edit properties (number of inputs for gates).
+- Undo/Redo stack for add, delete, connect operations.
+
+Beta-3 – Data & Command Line
+- JSON export: serialize entire circuit (components positions, connections, properties).
+- JSON import: load and rebuild circuit, restore simulation state.
+- Command line interface (toggled with `~` key): overlay terminal.
+  Commands: new, save, load, add <type>, delete <id>, connect <id1.pin> to <id2.pin>, run <cycles>, step, reset, list, undo, redo, export, import.
+- CLI autocomplete suggestions.
+- Save circuit state to localStorage as “project”; offer to restore on reload.
+
+Release-1 – Polish & QA
+- Performance optimizations (avoid unnecessary redraws, batch updates).
+- Consistent keyboard shortcuts (Ctrl+Z undo, Ctrl+Y redo, etc.).
+- Better error feedback in CLI.
+- Tooltips on all buttons.
+- Final UI polish, responsive adjustments for small screens (hamburger menu).
+- Generate README.md with instructions.
+- Final worklog.txt summary.
