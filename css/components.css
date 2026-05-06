@@ -1,0 +1,165 @@
+/* ===== Base Component Style ===== */
+.component {
+  position: absolute;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  cursor: grab;
+  transition: box-shadow 0.2s;
+  /* width & height set dynamically by each component */
+}
+.component:active {
+  cursor: grabbing;
+  box-shadow: var(--shadow-md);
+}
+
+/* ===== Gate / Flip‑Flop / Clock Body ===== */
+.gate-body,
+.ff-body,
+.clock-body,
+.dip8-body {
+  font-weight: bold;
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  text-align: center;
+}
+
+/* ===== Connector Dots + Labels ===== */
+.connector {
+  width: 10px;
+  height: 10px;
+  border: 1px solid #999;
+  border-radius: 50%;
+  position: absolute;
+  pointer-events: auto;               /* click/drag on the dot itself */
+  z-index: 2;
+}
+.connector.input  { left: -5px; }
+.connector.output { right: -5px; }
+
+/* Label sits next to the dot, never on top of it */
+.connector-label {
+  position: absolute;
+  font-size: 9px;
+  font-family: monospace;
+  color: var(--color-text-muted);
+  pointer-events: none;               /* clicks pass through to the dot */
+  white-space: nowrap;
+}
+/* Input labels are to the right of the dot */
+.connector.input + .connector-label,
+.connector.input ~ .connector-label {  /* adjacent sibling fix */
+  left: 10px;
+  top: 0px;
+}
+/* Output labels are to the left of the dot */
+.connector.output + .connector-label,
+.connector.output ~ .connector-label {
+  right: 10px;
+  top: 0px;
+}
+
+/* ===== Visual State for Switches & LEDs ===== */
+.dip-switch.on  { background: var(--color-accent); }
+.light-bulb.lit .bulb-icon {
+  background: radial-gradient(circle at 30% 30%, #ff0, #aa0);
+}
+
+/* ===== Palette Items ===== */
+.component-item {
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-surface-alt);
+  margin-bottom: var(--space-xs);
+  border-radius: var(--border-radius);
+  cursor: grab;
+  border: 1px solid transparent;
+  transition: border-color 0.2s;
+}
+.component-item:hover { border-color: var(--color-accent); }
+
+/* ===== Context Menu Items ===== */
+.context-menu-item {
+  padding: 6px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--color-text);
+  transition: background 0.15s;
+}
+.context-menu-item:hover {
+  background: var(--color-accent);
+  color: white;
+}
+
+/* ===== Property Dialog Input ===== */
+#property-dialog input {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  padding: 4px;
+  border-radius: 3px;
+  width: 60px;
+}
+
+/* ===== Truth Table Styling ===== */
+.tt-content table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.tt-content th, .tt-content td {
+  border: 1px solid var(--color-border);
+  padding: 4px;
+  text-align: center;
+}
+.tt-content th {
+  background: var(--color-surface-alt);
+  color: var(--color-accent);
+}
+.tt-content tr:nth-child(even) {
+  background: rgba(255,255,255,0.03);
+}
+
+/* ===== Toolbar Buttons ===== */
+.toolbar-btn {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  padding: 4px 12px;
+  border-radius: var(--border-radius-sm);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  transition: background var(--transition-speed);
+}
+.toolbar-btn:hover {
+  background: var(--color-accent);
+  color: white;
+  border-color: var(--color-accent);
+}
+
+/* ===== Responsive Overrides (old rule removed – now handled in main.css) ===== */
+
+.component-group {
+  margin-bottom: var(--space-md);
+}
+.group-header {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-accent);
+  padding: 4px var(--space-md);
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: var(--space-xs);
+}
+.no-results {
+  color: var(--color-text-muted);
+  font-style: italic;
+  padding: var(--space-md);
+}
+
+.light-bulb #led-circle {
+  transition: fill 0.2s, stroke 0.2s, filter 0.2s;
+}

@@ -1,0 +1,86 @@
+#header {
+  grid-area: header;
+  background: var(--gradient-header);
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  padding: var(--space-sm) var(--space-md);
+  gap: var(--space-md);
+  box-shadow: var(--shadow-md);
+  z-index: 20;
+}
+
+#header .app-title {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  background: linear-gradient(90deg, #4ec9b0, #007acc);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  user-select: none;
+}
+
+#header .header-controls {
+  display: flex;
+  gap: var(--space-sm);
+  margin-left: auto;
+}
+
+#header .header-btn {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  padding: var(--space-xs) var(--space-md);
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  transition: all var(--transition-speed);
+  box-shadow: var(--shadow-sm);
+}
+#header .header-btn:hover:not(:disabled) {
+  background: var(--color-accent);
+  color: white;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 8px rgba(0,122,204,0.5);
+}
+#header .header-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Hamburger button – hidden by default, shown on tablet and phone */
+.hamburger-btn {
+  background: transparent;
+  border: none;
+  color: var(--color-text);
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: var(--space-xs);
+  display: none;
+}
+
+/* Theme toggle – always visible */
+.theme-toggle-btn {
+  background: transparent;
+  border: none;
+  color: var(--color-text);
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: var(--space-xs);
+}
+
+@media (max-width: 1024px) {
+  .hamburger-btn {
+    display: inline-block;
+  }
+}
+
+@media (max-width: 767px) {
+  #header {
+    justify-content: space-between;
+  }
+  #header .header-controls {
+    margin-left: 0;
+  }
+}

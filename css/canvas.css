@@ -1,0 +1,22 @@
+#canvas-container {
+  grid-area: canvas;
+  background: var(--color-bg);
+  background-image: 
+    linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-size: 20px 20px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: inset 0 0 30px rgba(0,0,0,0.3);
+}
+
+#canvas-container .canvas-placeholder {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-lg);
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  user-select: none;
+  opacity: 0.6;
+}
