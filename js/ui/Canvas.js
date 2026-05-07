@@ -2,12 +2,12 @@ import { Wire } from '../core/Wire.js';
 import { generateId } from '../utils/IdGenerator.js';
 import { ContextMenu } from './ContextMenu.js';
 import { PropertyEditor } from './PropertyEditor.js';
-import { 
-  UndoManager, 
-  AddComponentCommand, 
-  DeleteComponentCommand, 
-  ConnectWireCommand, 
-  DisconnectWireCommand 
+import {
+  UndoManager,
+  AddComponentCommand,
+  DeleteComponentCommand,
+  ConnectWireCommand,
+  DisconnectWireCommand
 } from '../utils/UndoManager.js';
 import { NodePositionCache } from '../utils/NodePositionCache.js';
 import { GRID_SIZE } from '../config.js';
@@ -63,16 +63,22 @@ export class Canvas {
     // 1. Create the position cache early
     this.positionCache = new NodePositionCache(this.element, this.panOffset, this.scale);
 
-    // 2. Override _updateTransform so it updates the cache as well
+    // 2. Override _updateTransform to keep cache, grid, and dot size in sync
     const originalUpdateTransform = this._updateTransform.bind(this);
     this._updateTransform = () => {
       originalUpdateTransform();
       this.positionCache.setTransform(this.panOffset, this.scale);
-      this._updateGridOffset();   // for grid pattern offset
+
+      // Dynamic grid with balanced dot size
+      const scaledSize = this.gridSize * this.scale;
+      const dotRadius = Math.max(1.2, Math.min(3.5, scaledSize * 0.15));
+      this.element.style.backgroundSize = `${scaledSize}px ${scaledSize}px`;
+      this.element.style.backgroundPosition = `${this.panOffset.x}px ${this.panOffset.y}px`;
+      this.element.style.backgroundImage =
+        `radial-gradient(circle at 0px 0px, var(--grid-dot-color) ${dotRadius}px, transparent ${dotRadius}px)`;
     };
 
-    // 3. Now call _updateTransform (it will call the overridden version)
-    this._drawGrid();
+    // 3. Initial grid setup (will be applied by _updateTransform)
     this._updateTransform();
 
     // Batched wire redraw
@@ -195,14 +201,6 @@ export class Canvas {
     this.scene.style.transform = `translate(${this.panOffset.x}px, ${this.panOffset.y}px) scale(${this.scale})`;
   }
 
-  _updateGridOffset() {
-    const pattern = this.svgLayer.querySelector('#grid-pattern');
-    if (!pattern) return;
-    const size = this.gridSize * this.scale;
-    pattern.setAttribute('x', -this.panOffset.x % size);
-    pattern.setAttribute('y', -this.panOffset.y % size);
-  }
-
   _canvasCoords(eOrCoords) {
     const rect = this.element.getBoundingClientRect();
     if (eOrCoords.clientX !== undefined && eOrCoords.clientY !== undefined) {
@@ -228,7 +226,6 @@ export class Canvas {
     this.scale = newScale;
     this._updateTransform();
     this._scheduleRedraw();
-    this._updateGrid();
   }
 
   zoomToFit() {
@@ -257,22 +254,6 @@ export class Canvas {
     this.panOffset.y = canvasRect.height / 2 - centerY * this.scale;
     this._updateTransform();
     this._scheduleRedraw();
-    this._updateGrid();
-  }
-
-  _updateGrid() {
-    const pattern = this.svgLayer.querySelector('#grid-pattern');
-    if (pattern) {
-      const size = this.gridSize * this.scale;
-      pattern.setAttribute('width', size);
-      pattern.setAttribute('height', size);
-      const dot = pattern.querySelector('circle');
-      if (dot) {
-        dot.setAttribute('cx', size / 2);
-        dot.setAttribute('cy', size / 2);
-      }
-    }
-    this._updateGridOffset();
   }
 
   /* ---------- Panning ---------- */
@@ -404,38 +385,6 @@ export class Canvas {
     svg.style.height = '100%';
     svg.style.pointerEvents = 'none';
     return svg;
-  }
-
-  _drawGrid() {
-    const svg = this.svgLayer;
-    let pattern = svg.querySelector('#grid-pattern');
-    if (pattern) pattern.remove();
-
-    pattern = document.createElementNS('http://www.w3.org/2000/svg', 'pattern');
-    pattern.id = 'grid-pattern';
-    pattern.setAttribute('patternUnits', 'userSpaceOnUse');
-    const size = this.gridSize * this.scale;
-    pattern.setAttribute('width', size);
-    pattern.setAttribute('height', size);
-
-    const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    dot.setAttribute('cx', size / 2);
-    dot.setAttribute('cy', size / 2);
-    dot.setAttribute('r', 1.5);
-    dot.classList.add('grid-dot');
-    pattern.appendChild(dot);
-    svg.appendChild(pattern);
-
-    let rect = svg.querySelector('.grid-rect');
-    if (!rect) {
-      rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      rect.classList.add('grid-rect');
-      rect.setAttribute('width', '100%');
-      rect.setAttribute('height', '100%');
-      rect.setAttribute('fill', 'url(#grid-pattern)');
-      rect.style.pointerEvents = 'none';
-      svg.insertBefore(rect, svg.firstChild);
-    }
   }
 
   _snap(value) {
