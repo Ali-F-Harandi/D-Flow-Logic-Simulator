@@ -4,11 +4,11 @@ export class Engine {
     this.wires = [];
     this.queue = new Set();
     this.running = false;
-    this.speed = 200; // ms per step (default)
+    this.speed = 200;
     this.intervalId = null;
     this.onUpdate = null;
-    this.clocks = new Set();  // track clock components
-    this._processing = false; // guard against recursive _processQueue
+    this.clocks = new Set();
+    this._processing = false;
   }
 
   addComponent(component) {
@@ -16,12 +16,15 @@ export class Engine {
     if (component.type === 'Clock') {
       this.clocks.add(component);
     }
-    // Wrap computeOutput to schedule propagation after output changes
-    const origCompute = component.computeOutput.bind(component);
-    component.computeOutput = () => {
-      origCompute();
-      this.schedulePropagation(component);
-    };
+    // Wrap computeOutput only once
+    if (!component.isWrapped) {
+      const origCompute = component.computeOutput.bind(component);
+      component.computeOutput = () => {
+        origCompute();
+        this.schedulePropagation(component);
+      };
+      component.isWrapped = true;   // <-- set flag to prevent double-wrapping
+    }
   }
 
   removeComponent(compId) {
@@ -43,26 +46,22 @@ export class Engine {
     const toComp = this._findComponentByNode(toNodeId);
     if (!fromComp || !toComp) throw new Error('Node not found');
     
-    // Prevent self-connection (output to own input)
     if (fromComp.id === toComp.id) {
       document.dispatchEvent(new CustomEvent('simulation-error', { detail: 'Cannot connect a component to itself!' }));
-      return null;
+      return null;   // <-- returns null on self-connection
     }
     
     const toInput = toComp.inputs.find(inp => inp.id === toNodeId);
     if (!toInput) throw new Error('Input node not found');
     
-    // Verify fromNodeId is actually an output
     const fromOutput = fromComp.outputs.find(o => o.id === fromNodeId);
     if (!fromOutput) throw new Error('From node is not an output');
 
-    // Remove orphan wire if input is already connected
     if (toInput.connectedTo) {
       const oldWireIndex = this.wires.findIndex(w => w.to.nodeId === toNodeId);
       if (oldWireIndex !== -1) {
         const oldWire = this.wires[oldWireIndex];
         this.wires.splice(oldWireIndex, 1);
-        // Dispatch event so canvas can remove the visual wire
         document.dispatchEvent(new CustomEvent('wire-removed', { detail: { wireId: oldWire.id } }));
       }
     }
@@ -100,7 +99,6 @@ export class Engine {
     let iterations = 0;
 
     while (this.queue.size > 0 && iterations < maxIterations) {
-      // ---------- Phase 1: Evaluate ----------
       const updates = [];
       for (const comp of this.queue) {
         const nextState = comp.computeNextState();
@@ -108,11 +106,9 @@ export class Engine {
       }
       this.queue.clear();
 
-      // ---------- Phase 2: Apply & Propagate ----------
       for (const { comp, nextState } of updates) {
         comp.applyNextState(nextState);
 
-        // Push new values to downstream components via connected wires
         for (let i = 0; i < comp.outputs.length; i++) {
           const out = comp.outputs[i];
           const connectedWires = this.wires.filter(w => w.from.nodeId === out.id);
@@ -121,9 +117,6 @@ export class Engine {
             if (targetComp) {
               const inputIndex = targetComp.inputs.findIndex(inp => inp.id === w.to.nodeId);
               if (inputIndex >= 0) {
-                // Directly set input value WITHOUT triggering wrapped computeOutput
-                // to avoid double computation. The component will be scheduled
-                // for the next propagation iteration.
                 targetComp.inputs[inputIndex].value = out.value;
                 this.queue.add(targetComp);
               }
