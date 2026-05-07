@@ -8,16 +8,27 @@ export class Wire {
     this.element = null;
   }
 
-  static computePath(fromPos, toPos) {
+  /**
+   * Compute a Manhattan path.
+   * @param {Object} fromPos - { x, y }
+   * @param {Object} toPos   - { x, y }
+   * @param {Object} [opts]  - optional parameters
+   * @param {number} [opts.minClearY] - a guaranteed safe Y below all components
+   * @returns {string} SVG path data
+   */
+  static computePath(fromPos, toPos, opts = {}) {
     const startX = fromPos.x;
     const startY = fromPos.y;
     const endX = toPos.x;
     const endY = toPos.y;
+    const { minClearY } = opts;
 
     if (endX >= startX + 20) {
+      // ---- standard forward routing ----
       const midX = startX + (endX - startX) / 2;
       return `M ${startX} ${startY} L ${midX} ${startY} L ${midX} ${endY} L ${endX} ${endY}`;
     } else if (endX >= startX - 10) {
+      // ---- slightly backward – use wider arc ----
       const midX = startX + 30;
       const midX2 = endX - 30;
       if (Math.abs(endY - startY) < 20) {
@@ -26,22 +37,30 @@ export class Wire {
       }
       return `M ${startX} ${startY} L ${midX} ${startY} L ${midX} ${endY} L ${endX} ${endY}`;
     } else {
+      // ---- backward routing (wrap around) ----
       const offset = 40;
-      const clearY = Math.max(startY, endY) + offset + 30;
+      // Determine a safe Y level for the horizontal bus
+      let busLevel = Math.max(startY, endY) + offset;
+      if (minClearY !== undefined) {
+        busLevel = Math.max(busLevel, minClearY + 20);   // 20px clearance below components
+      } else {
+        busLevel += 30;  // fallback (old default)
+      }
+
       return `M ${startX} ${startY} ` +
              `L ${startX + offset} ${startY} ` +
-             `L ${startX + offset} ${clearY} ` +
-             `L ${endX - offset} ${clearY} ` +
+             `L ${startX + offset} ${busLevel} ` +
+             `L ${endX - offset} ${busLevel} ` +
              `L ${endX - offset} ${endY} ` +
              `L ${endX} ${endY}`;
     }
   }
 
-  getPath(fromPos, toPos) {
-    return Wire.computePath(fromPos, toPos);
+  getPath(fromPos, toPos, opts) {
+    return Wire.computePath(fromPos, toPos, opts);
   }
 
-  render(svgLayer, getNodePosition) {
+  render(svgLayer, getNodePosition, busBarY = null) {
     if (this.element) return;
 
     const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -70,7 +89,7 @@ export class Wire {
 
     const fromPos = getNodePosition(this.fromNode.nodeId);
     const toPos = getNodePosition(this.toNode.nodeId);
-    const d = this.getPath(fromPos, toPos);
+    const d = this.getPath(fromPos, toPos, { minClearY: busBarY });
 
     visualPath.setAttribute('d', d);
     hitPath.setAttribute('d', d);
@@ -86,11 +105,11 @@ export class Wire {
     this.element = group;
   }
 
-  updatePath(getNodePosition) {
+  updatePath(getNodePosition, busBarY = null) {
     if (!this.element) return;
     const fromPos = getNodePosition(this.fromNode.nodeId);
     const toPos = getNodePosition(this.toNode.nodeId);
-    const d = this.getPath(fromPos, toPos);
+    const d = this.getPath(fromPos, toPos, { minClearY: busBarY });
 
     this.element.querySelector('.wire-visual').setAttribute('d', d);
     this.element.querySelector('.wire-hitarea').setAttribute('d', d);

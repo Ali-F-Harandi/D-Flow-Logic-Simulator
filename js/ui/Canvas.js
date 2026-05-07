@@ -483,7 +483,8 @@ export class Canvas {
     if (this.wiring && this.wiring.tempPath) {
       const fromPos = this._getNodePosition(this.wiring.fromNodeId);
       const toPos = this._canvasCoords(e);
-      this.wiring.tempPath.setAttribute('d', Wire.computePath(fromPos, toPos));
+      const busY = this._getBusBarY();
+      this.wiring.tempPath.setAttribute('d', Wire.computePath(fromPos, toPos, { minClearY: busY }));
     }
     if (this.selectionRect) {
       this._updateSelection(e);
@@ -953,9 +954,26 @@ export class Canvas {
     const visualId = generateId('wire');
     const wire = new Wire(visualId, { nodeId: fromNodeId }, { nodeId: toNodeId });
     wire.engineId = engineId;
-    wire.render(this.svgLayer, (nodeId) => this._getNodePosition(nodeId));
+    const busY = this._getBusBarY();
+    wire.render(this.svgLayer, (nodeId) => this._getNodePosition(nodeId), busY);
     this.wires.push(wire);
     this._updateJunctions();
+  }
+
+  /**
+ * Return the lowest Y coordinate of any component plus a safe margin.
+ * This guarantees that a horizontal wire drawn at this Y will not cross
+ * any existing component.
+ */
+_getBusBarY() {
+    let maxBottom = 0;
+    for (const comp of this.components) {
+      if (comp.element) {
+        const bottom = comp.position.y + comp.element.offsetHeight;
+        if (bottom > maxBottom) maxBottom = bottom;
+      }
+    }
+    return maxBottom + 40;   // 40px extra clearance
   }
 
   _reconnectWire(engineId, fromNodeId, toNodeId) {
@@ -983,16 +1001,18 @@ export class Canvas {
 
   _updateWiresForComponent(comp) {
     const prefix = comp.id + '.';
+    const busY = this._getBusBarY();   // compute once for all affected wires
     this.wires.forEach(wire => {
       if (wire.fromNode.nodeId.startsWith(prefix) || wire.toNode.nodeId.startsWith(prefix)) {
-        wire.updatePath((nodeId) => this._getNodePosition(nodeId));
+        wire.updatePath((nodeId) => this._getNodePosition(nodeId), busY);
       }
     });
   }
 
   _performRedraw() {
+    const busY = this._getBusBarY();
     this.wires.forEach(wire => {
-      wire.updatePath((nodeId) => this._getNodePosition(nodeId));
+      wire.updatePath((nodeId) => this._getNodePosition(nodeId), busY);
       const sourceComp = this.engine._findComponentByNode(wire.fromNode.nodeId);
       if (sourceComp) {
         const outNode = sourceComp.outputs.find(o => o.id === wire.fromNode.nodeId);
