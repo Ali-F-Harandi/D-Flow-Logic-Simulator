@@ -13,7 +13,8 @@ export class Component {
     this.position = { x: 100, y: 100 };
     this.element = null;
     this.container = null;
-    this.GRID = 20; // canvas grid size
+    this.GRID = 20;
+    this.isWrapped = false;   // <-- NEW: prevents double-wrapping
   }
 
   getType() { return this.type; }
@@ -23,31 +24,20 @@ export class Component {
   setInputValue(index, value) {
     if (this.inputs[index]) {
       this.inputs[index].value = value;
-      this.computeOutput();   // triggers scheduling via Engine wrapper
+      this.computeOutput();
     }
   }
 
-  /**
-   * Default computeOutput – uses two‑phase methods for consistency.
-   * Override only computeNextState (and optionally applyNextState) in subclasses.
-   */
   computeOutput() {
     const ns = this.computeNextState();
     this.applyNextState(ns);
     return this.outputs;
   }
 
-  /**
-   * Compute the next output values WITHOUT modifying the component.
-   * Returns { outputs: [val0, val1, ...], ... extra state }
-   */
   computeNextState() {
     return { outputs: this.outputs.map(o => o.value) };
   }
 
-  /**
-   * Apply the result of computeNextState to outputs and internal state.
-   */
   applyNextState(nextState) {
     const { outputs } = nextState;
     for (let i = 0; i < this.outputs.length; i++) {
@@ -56,10 +46,6 @@ export class Component {
     this._updateConnectorStates();
   }
 
-  /**
-   * Reset the component to its initial state.
-   * Subclasses (especially flip-flops) should override this to reset internal state.
-   */
   reset() {
     this.outputs.forEach(o => o.value = false);
     this.inputs.forEach(i => i.value = false);
