@@ -16,7 +16,6 @@ export class TruthTablePanel {
   }
 
   generate(outputNodeId) {
-    // Gather all DipSwitch / DipSwitch8 components (inputs)
     const inputComponents = [];
     for (const comp of this.engine.components.values()) {
       if (comp.type === 'DipSwitch' || comp.type === 'DipSwitch8') {
@@ -28,16 +27,23 @@ export class TruthTablePanel {
       return;
     }
 
-    // --- SNAPSHOT original values ---
+    // --- SNAPSHOT: deep copy all component states ---
     const componentSnapshots = new Map();
     for (const comp of this.engine.components.values()) {
+      // Clone outputs, inputs, and internal state (prevClk, _state)
+      const internal = {};
+      if (comp._prevClk !== undefined) internal._prevClk = comp._prevClk;
+      if (comp._state !== undefined) {
+        internal._state = Array.isArray(comp._state) ? [...comp._state] : { ...comp._state };
+      }
       componentSnapshots.set(comp.id, {
         outputs: comp.outputs.map(o => o.value),
-        inputs: comp.inputs.map(i => i.value)
+        inputs: comp.inputs.map(i => i.value),
+        internal
       });
     }
 
-    // Build list of inputs with bits
+    // Build input list
     const inputs = [];
     let totalBits = 0;
     for (const comp of inputComponents) {
@@ -45,15 +51,13 @@ export class TruthTablePanel {
         inputs.push({ comp, bits: [0] });
         totalBits++;
       } else if (comp.type === 'DipSwitch8') {
-        const bits = [0,1,2,3,4,5,6,7];
-        inputs.push({ comp, bits });
-        totalBits += bits.length;
+        inputs.push({ comp, bits: [0,1,2,3,4,5,6,7] });
+        totalBits += 8;
       }
     }
     const combos = 1 << totalBits;
 
     let html = '<table class="tt-table">';
-    // Header row
     html += '<tr>';
     for (const inp of inputs) {
       if (inp.comp.type === 'DipSwitch8') {
@@ -71,18 +75,14 @@ export class TruthTablePanel {
         for (const b of inp.bits) {
           const val = (c >> bitIdx) & 1;
           inp.comp.outputs[b !== undefined ? b : 0].value = !!val;
-          // Call the correct update method
           if (typeof inp.comp._updateAppearance === 'function') inp.comp._updateAppearance();
           if (typeof inp.comp._updateConnectorStates === 'function') inp.comp._updateConnectorStates();
           bitIdx++;
         }
       }
-      // Propagate
-      this.engine.step();
-      // Read output
+      this.engine._processQueue();  // propagate without stepping twice
       const outComp = this.engine._findComponentByNode(outputNodeId);
       const outVal = outComp?.outputs.find(o => o.id === outputNodeId)?.value;
-      // Build row
       html += '<tr>';
       bitIdx = 0;
       for (const inp of inputs) {
@@ -95,7 +95,7 @@ export class TruthTablePanel {
       html += `<td>${outVal ? '1' : '0'}</td></tr>`;
     }
 
-    // --- RESTORE original state ---
+    // --- RESTORE original state (including internal) ---
     for (const [compId, snap] of componentSnapshots) {
       const comp = this.engine.components.get(compId);
       if (comp) {
@@ -105,15 +105,23 @@ export class TruthTablePanel {
         for (let i = 0; i < snap.inputs.length; i++) {
           comp.inputs[i].value = snap.inputs[i];
         }
-        // Re-render visual state using available methods
+        // Restore internal state
+        if (snap.internal._prevClk !== undefined) comp._prevClk = snap.internal._prevClk;
+        if (snap.internal._state !== undefined) {
+          if (Array.isArray(snap.internal._state)) {
+            comp._state = [...snap.internal._state];
+          } else {
+            comp._state = { ...snap.internal._state };
+          }
+        }
+        // Refresh visuals
         if (typeof comp._updateAppearance === 'function') comp._updateAppearance();
         if (typeof comp._updateDisplay === 'function') comp._updateDisplay();
         if (typeof comp._updateConnectorStates === 'function') comp._updateConnectorStates();
       }
     }
 
-    // --- FORCE engine to process the restored state ---
-    this.engine.step();
+    // Final propagation to ensure UI matches restored state
     this.engine._processQueue();
     if (this.engine.onUpdate) this.engine.onUpdate();
 
