@@ -189,3 +189,51 @@
   flex-wrap: nowrap;
   overflow-x: auto;
 }
+
+#property-dialog {
+  position: fixed;
+  top: 30%;
+  left: 50%;
+  transform: translate(-50%, -30%);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 20px;
+  z-index: var(--z-modal);
+  display: none;
+  color: var(--color-text);
+  font-size: 14px;
+  min-width: 300px;
+}
+
+#property-dialog h3 {
+  margin-top: 0;
+}
+
+#property-dialog label {
+  display: block;
+  margin: 10px 0;
+}
+
+#property-dialog input {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  padding: 4px;
+  border-radius: 3px;
+  width: 60px;
+}
+
+#property-dialog button {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  padding: 6px 12px;
+  border-radius: var(--border-radius);
+  cursor: pointer;
+}
+
+#property-dialog button:hover {
+  background: var(--color-accent);
+  color: white;
+}

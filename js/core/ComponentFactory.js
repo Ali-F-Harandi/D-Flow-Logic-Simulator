@@ -1,3 +1,4 @@
+import { Component } from './Component.js';    // ← corrected path
 import { AndGate } from './gates/AndGate.js';
 import { OrGate } from './gates/OrGate.js';
 import { NotGate } from './gates/NotGate.js';
@@ -59,7 +60,12 @@ export class ComponentFactory {
   createComponent(type, id = null) {
     const Cls = this.registry[type];
     if (!Cls) throw new Error(`Unknown component type: ${type}`);
-    return new Cls(id || generateId(type));
+    try {
+      return new Cls(id || generateId(type));
+    } catch (err) {
+      console.error(`ComponentFactory: Failed to create "${type}"`, err);
+      throw new Error(`Could not create component: ${type}`);
+    }
   }
 
   static getCategory(type) {

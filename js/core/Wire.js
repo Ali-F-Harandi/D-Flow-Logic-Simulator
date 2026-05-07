@@ -1,15 +1,13 @@
+import { WIRE_VISUAL_WIDTH, WIRE_HIT_WIDTH, JUNCTION_RADIUS } from '../config.js';
+
 export class Wire {
   constructor(id, fromNode, toNode) {
     this.id = id;
-    this.fromNode = fromNode; // { component, nodeId }
+    this.fromNode = fromNode;
     this.toNode = toNode;
-    this.element = null; // SVG <g> group
+    this.element = null;
   }
 
-  /**
-   * Shared path computation – also used by Canvas for preview wires.
-   * Improved routing with better backward/feedback loop handling.
-   */
   static computePath(fromPos, toPos) {
     const startX = fromPos.x;
     const startY = fromPos.y;
@@ -17,29 +15,19 @@ export class Wire {
     const endY = toPos.y;
 
     if (endX >= startX + 20) {
-      // Standard Forward Routing (centered midpoint with smooth corners)
       const midX = startX + (endX - startX) / 2;
       return `M ${startX} ${startY} L ${midX} ${startY} L ${midX} ${endY} L ${endX} ${endY}`;
     } else if (endX >= startX - 10) {
-      // Slightly backward – use wider arc
       const midX = startX + 30;
       const midX2 = endX - 30;
       if (Math.abs(endY - startY) < 20) {
-        // Nearly same Y – go above
         const arcY = Math.min(startY, endY) - 40;
         return `M ${startX} ${startY} L ${midX} ${startY} L ${midX} ${arcY} L ${midX2} ${arcY} L ${midX2} ${endY} L ${endX} ${endY}`;
       }
       return `M ${startX} ${startY} L ${midX} ${startY} L ${midX} ${endY} L ${endX} ${endY}`;
     } else {
-      // Backward Routing (Feedback loop wrap-around)
       const offset = 40;
-      const midY = startY + (endY - startY) / 2;
-      // Determine if routing below or above is better
-      const routeBelow = true; // default: route below components
-      const clearY = routeBelow
-        ? Math.max(startY, endY) + offset + 30
-        : Math.min(startY, endY) - offset - 30;
-
+      const clearY = Math.max(startY, endY) + offset + 30;
       return `M ${startX} ${startY} ` +
              `L ${startX + offset} ${startY} ` +
              `L ${startX + offset} ${clearY} ` +
@@ -56,33 +44,29 @@ export class Wire {
   render(svgLayer, getNodePosition) {
     if (this.element) return;
 
-    // Create a group to hold both visual and hit‑area paths
     const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     group.dataset.wireId = this.id;
-    group.style.pointerEvents = 'none'; // default, hit‑area overrides
+    group.style.pointerEvents = 'none';
 
-    // Visual path – drawn, does not catch events
     const visualPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     visualPath.setAttribute('stroke', '#888');
-    visualPath.setAttribute('stroke-width', '2');
+    visualPath.setAttribute('stroke-width', WIRE_VISUAL_WIDTH);
     visualPath.setAttribute('fill', 'none');
     visualPath.setAttribute('pointer-events', 'none');
     visualPath.classList.add('wire-visual');
 
-    // Hit‑area path – transparent, wide, catches events
     const hitPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     hitPath.setAttribute('stroke', 'transparent');
-    hitPath.setAttribute('stroke-width', '15');   // generous hit area
+    hitPath.setAttribute('stroke-width', WIRE_HIT_WIDTH);
     hitPath.setAttribute('fill', 'none');
     hitPath.setAttribute('pointer-events', 'stroke');
     hitPath.classList.add('wire-hitarea');
 
-    // Junction dot (shown when an output fans out to multiple inputs)
     const junctionDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    junctionDot.setAttribute('r', '3');
+    junctionDot.setAttribute('r', JUNCTION_RADIUS);
     junctionDot.setAttribute('fill', '#888');
     junctionDot.classList.add('wire-junction');
-    junctionDot.style.display = 'none'; // hidden by default
+    junctionDot.style.display = 'none';
 
     const fromPos = getNodePosition(this.fromNode.nodeId);
     const toPos = getNodePosition(this.toNode.nodeId);
@@ -91,7 +75,6 @@ export class Wire {
     visualPath.setAttribute('d', d);
     hitPath.setAttribute('d', d);
 
-    // Position junction at the start (output connector)
     junctionDot.setAttribute('cx', fromPos.x);
     junctionDot.setAttribute('cy', fromPos.y);
 
@@ -112,7 +95,6 @@ export class Wire {
     this.element.querySelector('.wire-visual').setAttribute('d', d);
     this.element.querySelector('.wire-hitarea').setAttribute('d', d);
 
-    // Update junction dot position
     const junctionDot = this.element.querySelector('.wire-junction');
     if (junctionDot) {
       junctionDot.setAttribute('cx', fromPos.x);

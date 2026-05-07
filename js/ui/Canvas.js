@@ -9,6 +9,7 @@ import {
   ConnectWireCommand, 
   DisconnectWireCommand 
 } from '../utils/UndoManager.js';
+import { GRID_SIZE } from '../config.js';
 
 export class Canvas {
   constructor(container, eventBus, engine, factory, undoManager) {
@@ -56,12 +57,12 @@ export class Canvas {
     this.selectionRect = null;
     this.selectionStart = null;
 
-    this.gridSize = 20;
+    this.gridSize = GRID_SIZE;
     this._drawGrid();
     this._updateTransform();
 
-    // ----- Wire redraw batching with requestAnimationFrame -----
-    this._redrawRequested = false;            // flag to avoid duplicate RAFs
+    // Batched wire redraw
+    this._redrawRequested = false;
     this._scheduleRedraw = () => {
       if (!this._redrawRequested) {
         this._redrawRequested = true;
@@ -78,7 +79,7 @@ export class Canvas {
 
     eventBus.on('component-created', (comp) => this.addComponent(comp));
     eventBus.on('component-modified', (comp) => this._onComponentModified(comp));
-    engine.onUpdate = () => this._scheduleRedraw();   // batched redraw
+    engine.onUpdate = () => this._scheduleRedraw();
 
     eventBus.on('canvas-touch-drop', ({ type, pageX, pageY }) => {
       const pos = this._canvasCoords({ pageX, pageY });
@@ -93,7 +94,7 @@ export class Canvas {
       if (wire) {
         if (wire.element) wire.element.remove();
         this.wires = this.wires.filter(w => w.engineId !== wireId);
-        this._updateJunctions();               // clean up junction dots
+        this._updateJunctions();
       }
     });
 
@@ -121,14 +122,7 @@ export class Canvas {
   _createToastContainer() {
     this.toastContainer = document.createElement('div');
     this.toastContainer.id = 'toast-container';
-    this.toastContainer.style.position = 'fixed';
-    this.toastContainer.style.bottom = '60px';
-    this.toastContainer.style.right = '20px';
-    this.toastContainer.style.zIndex = '9999';
-    this.toastContainer.style.display = 'flex';
-    this.toastContainer.style.flexDirection = 'column-reverse';
-    this.toastContainer.style.gap = '8px';
-    this.toastContainer.style.pointerEvents = 'none';
+    // Styling comes from CSS (toast.css)
     document.body.appendChild(this.toastContainer);
   }
 
@@ -136,39 +130,14 @@ export class Canvas {
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
     toast.textContent = message;
-    toast.style.padding = '8px 16px';
-    toast.style.borderRadius = '6px';
-    toast.style.fontSize = '13px';
-    toast.style.fontWeight = '500';
-    toast.style.pointerEvents = 'auto';
-    toast.style.opacity = '0';
-    toast.style.transform = 'translateX(20px)';
-    toast.style.transition = 'opacity 0.3s, transform 0.3s';
-
-    if (type === 'error') {
-      toast.style.background = '#d32f2f';
-      toast.style.color = '#fff';
-    } else if (type === 'warning') {
-      toast.style.background = '#f9a825';
-      toast.style.color = '#1e1e1e';
-    } else if (type === 'success') {
-      toast.style.background = '#2e7d32';
-      toast.style.color = '#fff';
-    } else {
-      toast.style.background = 'var(--color-surface-alt)';
-      toast.style.color = 'var(--color-text)';
-      toast.style.border = '1px solid var(--color-border)';
-    }
-
     this.toastContainer.appendChild(toast);
+
     requestAnimationFrame(() => {
-      toast.style.opacity = '1';
-      toast.style.transform = 'translateX(0)';
+      toast.classList.add('toast-show');
     });
 
     setTimeout(() => {
-      toast.style.opacity = '0';
-      toast.style.transform = 'translateX(20px)';
+      toast.classList.remove('toast-show');
       setTimeout(() => toast.remove(), 300);
     }, duration);
   }
@@ -182,7 +151,6 @@ export class Canvas {
       return comp ? { type: comp.type, dx: comp.position.x, dy: comp.position.y } : null;
     }).filter(Boolean);
     if (this._clipboard.length > 0) {
-      // Normalize positions relative to top-left
       const minX = Math.min(...this._clipboard.map(c => c.dx));
       const minY = Math.min(...this._clipboard.map(c => c.dy));
       this._clipboard.forEach(c => { c.dx -= minX; c.dy -= minY; });
@@ -236,13 +204,10 @@ export class Canvas {
     this.panOffset.y = centerY - (centerY - this.panOffset.y) * factor;
     this.scale = newScale;
     this._updateTransform();
-    this._redrawWires();
+    this._scheduleRedraw();
     this._updateGrid();
   }
 
-  /**
-   * Zoom to fit all components in view.
-   */
   zoomToFit() {
     if (this.components.length === 0) return;
     const canvasRect = this.element.getBoundingClientRect();
@@ -268,7 +233,7 @@ export class Canvas {
     this.panOffset.x = canvasRect.width / 2 - centerX * this.scale;
     this.panOffset.y = canvasRect.height / 2 - centerY * this.scale;
     this._updateTransform();
-    this._redrawWires();
+    this._scheduleRedraw();
     this._updateGrid();
   }
 
@@ -328,7 +293,6 @@ export class Canvas {
     const minY = (rect.top - canvasRect.top - this.panOffset.y) / this.scale;
     const maxX = minX + rect.width / this.scale;
     const maxY = minY + rect.height / this.scale;
-
     if (!e.shiftKey) this.clearSelection();
     this.components.forEach(comp => {
       if (!comp.element) return;
@@ -388,7 +352,6 @@ export class Canvas {
     });
     this.selectedComponents.clear();
 
-    // Also delete selected wires
     const wireIds = Array.from(this.selectedWires);
     wireIds.forEach(wireId => {
       const wire = this.wires.find(w => w.id === wireId);
@@ -446,7 +409,7 @@ export class Canvas {
     return Math.round(value / this.gridSize) * this.gridSize;
   }
 
-  /* ---------- Mouse Events (drag adjusted for zoom) ---------- */
+  /* ---------- Mouse Events ---------- */
   _bindEvents() {
     this.element.addEventListener('mousedown', (e) => this._onMouseDown(e));
     window.addEventListener('mousemove', (e) => this._onMouseMove(e));
@@ -496,7 +459,6 @@ export class Canvas {
         });
       }
     } else if (e.target.closest('g[data-wire-id]')) {
-      // Click on a wire - select it
       const wireEl = e.target.closest('g[data-wire-id]');
       const wireId = wireEl.dataset.wireId;
       this._clearWireSelection();
@@ -534,7 +496,6 @@ export class Canvas {
     if (this.wiring && this.wiring.tempPath) {
       const fromPos = this._getNodePosition(this.wiring.fromNodeId);
       const toPos = this._canvasCoords(e);
-      // Use shared path computation for consistent preview
       this.wiring.tempPath.setAttribute('d', Wire.computePath(fromPos, toPos));
     }
     if (this.selectionRect) {
@@ -558,7 +519,6 @@ export class Canvas {
         const isSourceOutput = this.wiring.fromIsOutput;
 
         if (isSourceOutput && !isTargetOutput) {
-          // output → input
           const fromComp = this.engine._findComponentByNode(this.wiring.fromNodeId);
           const toComp = this.engine._findComponentByNode(targetConn.dataset.node);
           if (fromComp && toComp && fromComp.id === toComp.id) {
@@ -567,7 +527,6 @@ export class Canvas {
             this._completeConnection(this.wiring.fromNodeId, targetConn.dataset.node);
           }
         } else if (!isSourceOutput && isTargetOutput) {
-          // input → output (reverse)
           const fromComp = this.engine._findComponentByNode(targetConn.dataset.node);
           const toComp = this.engine._findComponentByNode(this.wiring.fromNodeId);
           if (fromComp && toComp && fromComp.id === toComp.id) {
@@ -588,10 +547,24 @@ export class Canvas {
     }
   }
 
-  /* ---------- Touch Events (full drag + wiring) ---------- */
+  /* ---------- Touch Events ---------- */
   _bindTouchEvents() {
     let longPressTimer = null;
     let touchMoved = false;
+
+    const cleanup = () => {
+      clearTimeout(longPressTimer);
+      if (this.dragData) {
+        this.dragData = null;
+        this.isDragging = false;
+      }
+      if (this.wiring && this.wiring.tempPath) {
+        this._cancelWiring();
+      }
+      if (this.selectionRect) {
+        this._endSelection(null);
+      }
+    };
 
     const handleTouchStart = (e) => {
       if (e.touches.length === 1) {
@@ -653,20 +626,6 @@ export class Canvas {
       }
     };
 
-    const cleanup = () => {
-      clearTimeout(longPressTimer);
-      if (this.dragData) {
-        this.dragData = null;
-        this.isDragging = false;
-      }
-      if (this.wiring && this.wiring.tempPath) {
-        this._cancelWiring();
-      }
-      if (this.selectionRect) {
-        this._endSelection(null);
-      }
-    };
-
     const handleTouchEnd = (e) => {
       clearTimeout(longPressTimer);
       if (this.dragData) {
@@ -695,7 +654,7 @@ export class Canvas {
     this.element.addEventListener('touchstart', handleTouchStart, { passive: false });
     this.element.addEventListener('touchmove', handleTouchMove, { passive: false });
     this.element.addEventListener('touchend', handleTouchEnd);
-    this.element.addEventListener('touchcancel', cleanup);   // <-- cancel cleanup
+    this.element.addEventListener('touchcancel', cleanup);
   }
 
   _startDrag(comp, mx, my) {
@@ -796,7 +755,6 @@ export class Canvas {
           this.eventBus.emit('set-testbench-output', conn.dataset.node);
         }});
       } else {
-        // Input connector: also allow truth table / testbench from input
         items.push({ label: 'Set as TestBench Output', action: () => {
           this.eventBus.emit('set-testbench-output', conn.dataset.node);
         }});
@@ -832,7 +790,6 @@ export class Canvas {
         e.stopPropagation();
         const nodeId = dot.dataset.node;
         const isOutput = dot.classList.contains('output');
-        // Allow starting wiring from both output AND input connectors
         this._startWiring(component, nodeId, e, isOutput);
       });
     });
@@ -853,7 +810,7 @@ export class Canvas {
       });
     });
     this._updateWiresForComponent(comp);
-    this._redrawWires();
+    this._scheduleRedraw();
   }
 
   _deleteComponent(compId) {
@@ -869,7 +826,7 @@ export class Canvas {
     });
     this.components = this.components.filter(c => c.id !== compId);
     this.selectedComponents.delete(compId);
-    this._updateJunctions();   // <-- fix junction dots after removal
+    this._updateJunctions();
   }
 
   _deleteWire(visualWireId) {
@@ -905,7 +862,7 @@ export class Canvas {
 
   _completeConnection(fromNodeId, toNodeId) {
     const cmd = new ConnectWireCommand(this.engine, this, fromNodeId, toNodeId);
-    const success = this.undoManager.execute(cmd);   // returns true/false
+    const success = this.undoManager.execute(cmd);
     if (!success) {
       this.showToast('Connection failed', 'error');
     }
@@ -924,7 +881,6 @@ export class Canvas {
     wire.engineId = engineId;
     wire.render(this.svgLayer, (nodeId) => this._getNodePosition(nodeId));
     this.wires.push(wire);
-    // Update junction visibility (show dot if output fans out to multiple wires)
     this._updateJunctions();
   }
 
@@ -938,7 +894,6 @@ export class Canvas {
       const fromId = w.fromNode.nodeId;
       outputFanout[fromId] = (outputFanout[fromId] || 0) + 1;
     });
-
     this.wires.forEach(w => {
       if (outputFanout[w.fromNode.nodeId] > 1) {
         w.showJunction();
@@ -983,19 +938,13 @@ export class Canvas {
     return this.engine._findComponentByNode(nodeId);
   }
 
-  /**
-   * Clear all visual elements from the canvas (used by Serializer.importState).
-   */
   clearAll() {
-    // Remove all component elements
     this.components.forEach(comp => {
       if (comp.element) comp.element.remove();
     });
     this.components = [];
     this.selectedComponents.clear();
     this._clearWireSelection();
-
-    // Remove all wire elements
     this.wires.forEach(wire => {
       if (wire.element) wire.element.remove();
     });

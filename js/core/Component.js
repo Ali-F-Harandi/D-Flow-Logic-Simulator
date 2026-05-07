@@ -1,3 +1,5 @@
+import { GRID_SIZE } from '../config.js';
+
 export class Component {
   constructor(id, type, inputsCount = 0, outputsCount = 1) {
     this.id = id;
@@ -13,8 +15,8 @@ export class Component {
     this.position = { x: 100, y: 100 };
     this.element = null;
     this.container = null;
-    this.GRID = 20;
-    this.isWrapped = false;   // <-- NEW: prevents double-wrapping
+    this.GRID = GRID_SIZE;
+    this.isWrapped = false;
   }
 
   getType() { return this.type; }

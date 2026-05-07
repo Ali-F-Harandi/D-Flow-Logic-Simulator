@@ -1,3 +1,5 @@
+import { resetIdCounter } from './IdGenerator.js';
+
 export class Serializer {
   /**
    * Export the state of the engine and its components as a plain object.
@@ -13,7 +15,6 @@ export class Serializer {
       }));
       const outputStates = comp.outputs.map(o => ({ nodeId: o.id, value: o.value }));
       
-      // Capture internal state for flip-flops and shift registers
       let internalState = {};
       if (comp._state !== undefined) {
         internalState._state = Array.isArray(comp._state) ? [...comp._state] : { ...comp._state };
@@ -48,24 +49,20 @@ export class Serializer {
 
   /**
    * Import the state into the engine, canvas, and factory.
-   * Clears any existing circuit first (both engine AND canvas visuals).
+   * Clears any existing circuit first.
    * @param {Object} data - The exported state.
    * @param {Engine} engine
    * @param {Canvas} canvas
    * @param {ComponentFactory} factory
    */
   static importState(data, engine, canvas, factory) {
-    // Stop simulation
     engine.stop();
 
-    // Deep clone to avoid mutation
     const componentsData = JSON.parse(JSON.stringify(data.components));
     const wiresData = JSON.parse(JSON.stringify(data.wires));
 
-    // Clear canvas visual elements FIRST (before engine removes components)
     canvas.clearAll();
 
-    // Remove all existing components from engine (this will also remove wires)
     const existingIds = Array.from(engine.components.keys());
     existingIds.forEach(id => engine.removeComponent(id));
 
@@ -119,7 +116,7 @@ export class Serializer {
               comp.outputs[idx].value = outData.value;
             }
           });
-          // Update visual state for I/O components
+          // Update visual state
           if (typeof comp._updateAppearance === 'function') comp._updateAppearance();
           if (typeof comp._updateDisplay === 'function') comp._updateDisplay();
           if (typeof comp._updateConnectorStates === 'function') comp._updateConnectorStates();
@@ -130,7 +127,10 @@ export class Serializer {
     // Restore simulation speed
     if (data.speed) engine.setSpeed(data.speed);
 
-    // Re-evaluate everything
+    // Avoid future ID clashes
+    resetIdCounter();
+
+    // Re-evaluate
     engine.reset();
     engine.step();
     if (engine.onUpdate) engine.onUpdate();
