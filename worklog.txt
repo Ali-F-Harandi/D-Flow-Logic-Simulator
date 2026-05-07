@@ -225,7 +225,17 @@ Changes
     - Fixed minor import bug (AddComponentCommand not found).
     Known issues: none.
 
-    [Beta-3] – 2026-05-07 (Critical Bugfixes)
+[Beta-3] – 2026-05-07 (Critical Bugfixes)
     - Fixed Bug 1.1: All flip‑flops now set nQ output to true on construction, matching internal state.
     - Fixed Bug 1.2: Engine.connect() now removes the existing wire when overwriting a connection, preventing orphan wires.
     - Fixed Bug 1.3: Added re‑entrant guard to _processQueue() (this._processing flag) so recursive calls cannot skip the iteration counter, preventing stack overflow from unstable circuits.
+
+[Beta-3] – 2026-05-07 (Visual/UX Fixes)
+    - Fixed Bug 2.1: Canvas._getManhattanPath() now uses backward routing when target is left of source, matching Wire.getPath().
+    - Fixed Bug 2.2: Component border now highlights green when ANY output is true (was requiring all outputs true).
+
+[Beta-3] – 2026-05-07 (UX & Reset / Import Fixes)
+    - Bug 2.3: Removed aggressive document click listener in PanelManager; right panel now stays open while interacting with circuit.
+    - Bug 2.4: Added isWrapped flag to Component; Engine.addComponent() no longer double‑wraps computeOutput() on undo / re‑import.
+    - Bug 2.5: Added base Component.reset() method, overridden in flip‑flops and ShiftRegister4 to reset internal states; Engine.reset() now calls each component’s reset().
+    - Bug 2.6: Serializer.importState() now clears all canvas DOM elements and internal lists before importing, preventing ghost components.
