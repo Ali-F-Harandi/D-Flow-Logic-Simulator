@@ -2,20 +2,18 @@ import { Wire } from '../core/Wire.js';
 import { generateId } from '../utils/IdGenerator.js';
 import { ContextMenu } from './ContextMenu.js';
 import { PropertyEditor } from './PropertyEditor.js';
-import { 
-  UndoManager, 
-  AddComponentCommand, 
-  DeleteComponentCommand, 
-  ConnectWireCommand, 
-  DisconnectWireCommand 
+import {
+  UndoManager,
+  AddComponentCommand,
+  DeleteComponentCommand,
+  ConnectWireCommand,
+  DisconnectWireCommand
 } from '../utils/UndoManager.js';
 import { NodePositionCache } from '../utils/NodePositionCache.js';
 import { GRID_SIZE } from '../config.js';
 
 export class Canvas {
   constructor(container, eventBus, engine, factory, undoManager) {
-    // ... (constructor unchanged except where grid is set up; the code below uses the CSS grid approach from earlier, but the z-index fix is independent)
-    // NOTE: The following is the full constructor with the CSS grid setup for completeness.
     this.container = container;
     this.eventBus = eventBus;
     this.engine = engine;
@@ -36,12 +34,13 @@ export class Canvas {
     this.minScale = 0.2;
     this.maxScale = 4;
 
+    // Huge scene – wires are never clipped
     this.scene = document.createElement('div');
     this.scene.id = 'canvas-scene';
     this.scene.style.position = 'absolute';
     this.scene.style.transformOrigin = '0 0';
-    this.scene.style.width = '100%';
-    this.scene.style.height = '100%';
+    this.scene.style.width = '20000px';
+    this.scene.style.height = '20000px';
     this.element.appendChild(this.scene);
 
     this.svgLayer = this._createSVGLayer();
@@ -54,6 +53,12 @@ export class Canvas {
     this.isDragging = false;
     this.isPanning = false;
     this.panStart = null;
+
+    // Mobile state
+    this.touchPanning = false;
+    this.touchPanStart = null;
+    this.longPressTimer = null;
+    this.lastTouchDist = null;
 
     this.selectedComponents = new Set();
     this.selectedWires = new Set();
@@ -71,7 +76,7 @@ export class Canvas {
       originalUpdateTransform();
       this.positionCache.setTransform(this.panOffset, this.scale);
 
-      // Dynamic grid with balanced dot size
+      // Dynamic CSS grid with balanced dot size
       const scaledSize = this.gridSize * this.scale;
       const dotRadius = Math.max(1.2, Math.min(3.5, scaledSize * 0.15));
       this.element.style.backgroundSize = `${scaledSize}px ${scaledSize}px`;
@@ -80,7 +85,7 @@ export class Canvas {
         `radial-gradient(circle at 0px 0px, var(--grid-dot-color) ${dotRadius}px, transparent ${dotRadius}px)`;
     };
 
-    // 3. Initial grid setup (will be applied by _updateTransform)
+    // 3. Initial transform (sets grid)
     this._updateTransform();
 
     // Batched wire redraw
@@ -258,7 +263,19 @@ export class Canvas {
     this._scheduleRedraw();
   }
 
-  /* ---------- Panning ---------- */
+  /* ---------- Bus‑bar Y for advanced routing ---------- */
+  _getBusBarY() {
+    let maxBottom = 0;
+    for (const comp of this.components) {
+      if (comp.element) {
+        const bottom = comp.position.y + comp.element.offsetHeight;
+        if (bottom > maxBottom) maxBottom = bottom;
+      }
+    }
+    return maxBottom + 40;   // 40px clearance
+  }
+
+  /* ---------- Panning (mouse) ---------- */
   _startPan(e) {
     this.isPanning = true;
     this.panStart = { x: e.clientX - this.panOffset.x, y: e.clientY - this.panOffset.y };
@@ -320,7 +337,6 @@ export class Canvas {
     this.selectionRect = null;
     this.selectionStart = null;
   }
-
   clearSelection() {
     this.selectedComponents.forEach(id => {
       const comp = this.components.find(c => c.id === id);
@@ -329,7 +345,6 @@ export class Canvas {
     this.selectedComponents.clear();
     this._clearWireSelection();
   }
-
   _clearWireSelection() {
     this.selectedWires.forEach(wireId => {
       const wire = this.wires.find(w => w.id === wireId);
@@ -341,7 +356,6 @@ export class Canvas {
     });
     this.selectedWires.clear();
   }
-
   _selectWire(wireId) {
     this._clearWireSelection();
     this.clearSelection();
@@ -353,7 +367,6 @@ export class Canvas {
       if (visual) visual.setAttribute('stroke-width', '4');
     }
   }
-
   deleteSelectedComponents() {
     const ids = Array.from(this.selectedComponents);
     ids.forEach(id => {
@@ -376,7 +389,7 @@ export class Canvas {
     this.selectedWires.clear();
   }
 
-  /* ---------- SVG & Grid ---------- */
+  /* ---------- SVG & Grid (grid is CSS, SVG only for wires) ---------- */
   _createSVGLayer() {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('class', 'wire-layer');
@@ -441,7 +454,7 @@ export class Canvas {
         };
         selected.forEach(c => {
           this.dragData.origins[c.id] = { x: c.position.x, y: c.position.y };
-          c.element.style.zIndex = '1000';                 // <-- bring to front
+          c.element.style.zIndex = '1000';   // bring to front while dragging
         });
       }
     } else if (e.target.closest('g[data-wire-id]')) {
@@ -608,65 +621,98 @@ export class Canvas {
     }
   }
 
-  /* ---------- Touch Events ---------- */
+  /* ---------- Touch Events (mobile: pinch, pan, long‑press) ---------- */
   _bindTouchEvents() {
-    let longPressTimer = null;
+    this.touchPanning = false;
+    this.longPressTimer = null;
     let touchMoved = false;
 
-    const cleanup = () => {
-      clearTimeout(longPressTimer);
+    const cleanupTouch = () => {
+      clearTimeout(this.longPressTimer);
+      this.longPressTimer = null;
       if (this.dragData) {
-        this.dragData.components.forEach(c => c.element.style.zIndex = '');  // reset
+        this.dragData.components.forEach(c => c.element.style.zIndex = '');
         this.dragData = null;
         this.isDragging = false;
       }
-      if (this.wiring && this.wiring.tempPath) {
-        this._cancelWiring();
-      }
-      if (this.selectionRect) {
-        this._endSelection(null);
-      }
+      this.touchPanning = false;
+      this.touchPanStart = null;
+      this.lastTouchDist = null;
+      touchMoved = false;
     };
 
     const handleTouchStart = (e) => {
-      if (e.touches.length === 1) {
-        const touch = e.touches[0];
-        const target = e.target;
-        const compEl = target.closest('.component');
-        if (compEl && !target.classList.contains('connector')) {
-          e.preventDefault();
-          const compId = compEl.dataset.compId;
-          const comp = this.components.find(c => c.id === compId);
-          if (comp) {
-            touchMoved = false;
-            this._startDrag(comp, touch.clientX, touch.clientY);
-            clearTimeout(longPressTimer);
-            longPressTimer = setTimeout(() => {
-              if (!touchMoved) {
-                this.contextMenu.show(touch.clientX, touch.clientY, [
-                  { label: 'Properties', action: () => this.propertyEditor.open(comp) },
-                  { label: 'Delete', action: () => {
-                    const cmd = new DeleteComponentCommand(this.engine, this, comp);
-                    this.undoManager.execute(cmd);
-                  }}
-                ]);
-              }
-            }, 500);
-          }
-        } else if (target.classList.contains('connector')) {
-          e.preventDefault();
-          const nodeId = target.dataset.node;
-          const comp = this._findComponentByNode(nodeId);
-          if (comp) this._startWiring(comp, nodeId, e, target.classList.contains('output'));
+      cleanupTouch();
+
+      if (e.touches.length === 2) {
+        const dist = Math.hypot(
+          e.touches[0].pageX - e.touches[1].pageX,
+          e.touches[0].pageY - e.touches[1].pageY
+        );
+        this.lastTouchDist = dist;
+        return;
+      }
+
+      const touch = e.touches[0];
+      const target = e.target;
+      const compEl = target.closest('.component');
+
+      if (compEl && !target.classList.contains('connector')) {
+        e.preventDefault();
+        const compId = compEl.dataset.compId;
+        const comp = this.components.find(c => c.id === compId);
+        if (comp) {
+          touchMoved = false;
+          this.isDragging = true;
+          this._startDrag(comp, touch.clientX, touch.clientY);
+          this.longPressTimer = setTimeout(() => {
+            if (!touchMoved) {
+              this.contextMenu.show(touch.clientX, touch.clientY, [
+                { label: 'Properties', action: () => this.propertyEditor.open(comp) },
+                { label: 'Delete', action: () => {
+                  const cmd = new DeleteComponentCommand(this.engine, this, comp);
+                  this.undoManager.execute(cmd);
+                }}
+              ]);
+            }
+          }, 500);
         }
+      } else if (target.classList.contains('connector')) {
+        e.preventDefault();
+        const nodeId = target.dataset.node;
+        const comp = this._findComponentByNode(nodeId);
+        if (comp) this._startWiring(comp, nodeId, e, target.classList.contains('output'));
+      } else {
+        // panning
+        this.touchPanning = true;
+        this.touchPanStart = {
+          x: touch.clientX - this.panOffset.x,
+          y: touch.clientY - this.panOffset.y
+        };
       }
     };
 
     const handleTouchMove = (e) => {
-      if (this.dragData) {
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        const dist = Math.hypot(
+          e.touches[0].pageX - e.touches[1].pageX,
+          e.touches[0].pageY - e.touches[1].pageY
+        );
+        if (this.lastTouchDist) {
+          const delta = dist > this.lastTouchDist ? 1 : -1;
+          const midX = (e.touches[0].pageX + e.touches[1].pageX) / 2;
+          const midY = (e.touches[0].pageY + e.touches[1].pageY) / 2;
+          this._zoom(delta, midX, midY);
+        }
+        this.lastTouchDist = dist;
+        return;
+      }
+
+      if (this.isDragging) {
         e.preventDefault();
         touchMoved = true;
-        clearTimeout(longPressTimer);
+        clearTimeout(this.longPressTimer);
         const touch = e.touches[0];
         const dx = (touch.clientX - this.dragData.startX) / this.scale;
         const dy = (touch.clientY - this.dragData.startY) / this.scale;
@@ -680,22 +726,32 @@ export class Canvas {
         });
         this.dragData.components.forEach(comp => this._updateWiresForComponent(comp));
         this.positionCache.invalidate();
+      } else if (this.touchPanning) {
+        const touch = e.touches[0];
+        this.panOffset.x = touch.clientX - this.touchPanStart.x;
+        this.panOffset.y = touch.clientY - this.touchPanStart.y;
+        this._updateTransform();
+        this._scheduleRedraw();
       }
+
       if (this.wiring && this.wiring.tempPath) {
         const fromPos = this._getNodePosition(this.wiring.fromNodeId);
         const touch = e.touches[0];
         const toPos = this._canvasCoords({ clientX: touch.clientX, clientY: touch.clientY });
-        this.wiring.tempPath.setAttribute('d', Wire.computePath(fromPos, toPos));
+        const busY = this._getBusBarY();
+        this.wiring.tempPath.setAttribute('d', Wire.computePath(fromPos, toPos, { minClearY: busY }));
       }
     };
 
     const handleTouchEnd = (e) => {
-      clearTimeout(longPressTimer);
-      if (this.dragData) {
-        this.dragData.components.forEach(c => c.element.style.zIndex = '');  // reset
+      clearTimeout(this.longPressTimer);
+
+      if (this.isDragging) {
+        this.dragData.components.forEach(c => c.element.style.zIndex = '');
         this.dragData = null;
         this.isDragging = false;
       }
+
       if (this.wiring && this.wiring.tempPath) {
         const touch = e.changedTouches[0];
         const targetConn = document.elementFromPoint(touch.clientX, touch.clientY);
@@ -710,37 +766,24 @@ export class Canvas {
         }
         this._cancelWiring();
       }
+
       if (this.selectionRect) {
         this._endSelection(e);
       }
+
+      this.touchPanning = false;
+      this.touchPanStart = null;
+      this.lastTouchDist = null;
+      touchMoved = false;
     };
 
     this.element.addEventListener('touchstart', handleTouchStart, { passive: false });
     this.element.addEventListener('touchmove', handleTouchMove, { passive: false });
     this.element.addEventListener('touchend', handleTouchEnd);
-    this.element.addEventListener('touchcancel', cleanup);
+    this.element.addEventListener('touchcancel', cleanupTouch);
   }
 
-  _startDrag(comp, mx, my) {
-    if (!this.selectedComponents.has(comp.id)) {
-      this.clearSelection();
-      this.selectedComponents.add(comp.id);
-      comp.element.classList.add('selected');
-    }
-    const selected = Array.from(this.selectedComponents).map(id => this.components.find(c => c.id === id)).filter(Boolean);
-    this.dragData = {
-      components: selected,
-      startX: mx,
-      startY: my,
-      origins: {}
-    };
-    selected.forEach(c => {
-      this.dragData.origins[c.id] = { x: c.position.x, y: c.position.y };
-      c.element.style.zIndex = '1000';                 // <-- bring to front on touch drag as well
-    });
-  }
-
-  /* ---------- Zoom & Pan binding ---------- */
+  /* ---------- Zoom & Pan binding (wheel) ---------- */
   _bindZoomAndPan() {
     this.element.addEventListener('wheel', (e) => {
       e.preventDefault();
@@ -748,36 +791,10 @@ export class Canvas {
       this._zoom(e.deltaY > 0 ? -1 : 1, e.clientX - rect.left, e.clientY - rect.top);
     }, { passive: false });
 
-    let lastDist = 0;
-    this.element.addEventListener('touchstart', (e) => {
-      if (e.touches.length === 2) {
-        lastDist = Math.hypot(
-          e.touches[0].pageX - e.touches[1].pageX,
-          e.touches[0].pageY - e.touches[1].pageY
-        );
-      }
-    }, { passive: false });
-
-    this.element.addEventListener('touchmove', (e) => {
-      if (e.touches.length === 2) {
-        e.preventDefault();
-        const dist = Math.hypot(
-          e.touches[0].pageX - e.touches[1].pageX,
-          e.touches[0].pageY - e.touches[1].pageY
-        );
-        const delta = dist - lastDist;
-        if (Math.abs(delta) > 5) {
-          const rect = this.element.getBoundingClientRect();
-          const cx = (e.touches[0].pageX + e.touches[1].pageX) / 2 - rect.left;
-          const cy = (e.touches[0].pageY + e.touches[1].pageY) / 2 - rect.top;
-          this._zoom(delta, cx, cy);
-          lastDist = dist;
-        }
-      }
-    }, { passive: false });
+    // Pinch‑zoom is handled inside _bindTouchEvents above, so nothing extra here
   }
 
-  /* ---------- Context menu, drop, wiring, etc. ---------- */
+  /* ---------- Context menu, drop, wiring ---------- */
   _onContextMenu(e) {
     e.preventDefault();
     const items = [];
@@ -930,7 +947,7 @@ export class Canvas {
     path.setAttribute('pointer-events', 'none');
     path.setAttribute('stroke-dasharray', '6,4');
     const fromPos = this._getNodePosition(nodeId);
-    path.setAttribute('d', Wire.computePath(fromPos, fromPos));
+    path.setAttribute('d', Wire.computePath(fromPos, fromPos, { minClearY: this._getBusBarY() }));
     this.svgLayer.appendChild(path);
     this.wiring.tempPath = path;
   }
@@ -954,26 +971,9 @@ export class Canvas {
     const visualId = generateId('wire');
     const wire = new Wire(visualId, { nodeId: fromNodeId }, { nodeId: toNodeId });
     wire.engineId = engineId;
-    const busY = this._getBusBarY();
-    wire.render(this.svgLayer, (nodeId) => this._getNodePosition(nodeId), busY);
+    wire.render(this.svgLayer, (nodeId) => this._getNodePosition(nodeId), this._getBusBarY());
     this.wires.push(wire);
     this._updateJunctions();
-  }
-
-  /**
- * Return the lowest Y coordinate of any component plus a safe margin.
- * This guarantees that a horizontal wire drawn at this Y will not cross
- * any existing component.
- */
-_getBusBarY() {
-    let maxBottom = 0;
-    for (const comp of this.components) {
-      if (comp.element) {
-        const bottom = comp.position.y + comp.element.offsetHeight;
-        if (bottom > maxBottom) maxBottom = bottom;
-      }
-    }
-    return maxBottom + 40;   // 40px extra clearance
   }
 
   _reconnectWire(engineId, fromNodeId, toNodeId) {
@@ -1001,7 +1001,7 @@ _getBusBarY() {
 
   _updateWiresForComponent(comp) {
     const prefix = comp.id + '.';
-    const busY = this._getBusBarY();   // compute once for all affected wires
+    const busY = this._getBusBarY();
     this.wires.forEach(wire => {
       if (wire.fromNode.nodeId.startsWith(prefix) || wire.toNode.nodeId.startsWith(prefix)) {
         wire.updatePath((nodeId) => this._getNodePosition(nodeId), busY);
