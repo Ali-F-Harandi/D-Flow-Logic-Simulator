@@ -11,7 +11,6 @@
   --color-danger: #f44747;
   --color-success: #4ec9b0;
 
-  /* Gradients */
   --gradient-surface: linear-gradient(180deg, #2d2d30 0%, #252526 100%);
   --gradient-header: linear-gradient(180deg, #323233 0%, #252526 100%);
   --gradient-toolbar: linear-gradient(180deg, #2d2d30 0%, #252526 100%);
@@ -37,10 +36,8 @@
 
   --transition-speed: 0.2s;
 
-  /* Grid dot colour for dark mode */
   --grid-dot-color: rgba(255,255,255,0.15);
 
-  /* Z‑Index Scale */
   --z-canvas-wires: 1;
   --z-canvas-components: 2;
   --z-sidebar: 10;
@@ -69,11 +66,9 @@
   --shadow-md: 0 4px 6px rgba(0,0,0,0.12);
   --shadow-lg: 0 6px 12px rgba(0,0,0,0.15);
 
-  /* Grid dot colour for light mode – darker for visibility */
   --grid-dot-color: rgba(0,0,0,0.15);
 }
 
-/* Grid dot styling */
 .grid-dot {
   fill: var(--grid-dot-color);
 }

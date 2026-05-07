@@ -76,6 +76,16 @@ export class Canvas {
 
     this._setupDrop();
 
+    // Listen for wire-removed events from Engine (orphan wire cleanup)
+    document.addEventListener('wire-removed', (e) => {
+      const wireId = e.detail.wireId;
+      const wire = this.wires.find(w => w.engineId === wireId);
+      if (wire) {
+        if (wire.element) wire.element.remove();
+        this.wires = this.wires.filter(w => w.engineId !== wireId);
+      }
+    });
+
     window.addEventListener('keydown', (e) => {
       if (e.ctrlKey && e.key === 'z') {
         e.preventDefault();
@@ -320,7 +330,6 @@ export class Canvas {
       return;
     }
     if (this.dragData) {
-      // Scale the delta to match scene coordinates
       const dx = (e.clientX - this.dragData.startX) / this.scale;
       const dy = (e.clientY - this.dragData.startY) / this.scale;
       this.dragData.components.forEach(comp => {
@@ -336,7 +345,8 @@ export class Canvas {
     if (this.wiring && this.wiring.tempPath) {
       const fromPos = this._getNodePosition(this.wiring.fromNodeId);
       const toPos = this._canvasCoords(e);
-      this.wiring.tempPath.setAttribute('d', this._getManhattanPath(fromPos, toPos));
+      // Use shared path computation for consistent preview
+      this.wiring.tempPath.setAttribute('d', Wire.computePath(fromPos, toPos));
     }
     if (this.selectionRect) {
       this._updateSelection(e);
@@ -354,8 +364,19 @@ export class Canvas {
     }
     if (this.wiring && this.wiring.tempPath) {
       const targetConn = e.target.closest('.connector');
-      if (targetConn && targetConn.dataset.node && !targetConn.classList.contains('output')) {
-        this._completeConnection(this.wiring.fromNodeId, targetConn.dataset.node);
+      if (targetConn && targetConn.dataset.node) {
+        const isTargetOutput = targetConn.classList.contains('output');
+        const isSourceOutput = this.wiring.fromIsOutput;
+
+        // Allow wiring: output→input OR input→output
+        if (isSourceOutput && !isTargetOutput) {
+          // output → input (standard)
+          this._completeConnection(this.wiring.fromNodeId, targetConn.dataset.node);
+        } else if (!isSourceOutput && isTargetOutput) {
+          // input → output (reverse: swap direction)
+          this._completeConnection(targetConn.dataset.node, this.wiring.fromNodeId);
+        }
+        // output→output and input→input are invalid, do nothing
       }
       this._cancelWiring();
     }
@@ -394,11 +415,11 @@ export class Canvas {
               }
             }, 500);
           }
-        } else if (target.classList.contains('connector') && target.classList.contains('output')) {
+        } else if (target.classList.contains('connector')) {
           e.preventDefault();
           const nodeId = target.dataset.node;
           const comp = this._findComponentByNode(nodeId);
-          if (comp) this._startWiring(comp, nodeId, e);
+          if (comp) this._startWiring(comp, nodeId, e, target.classList.contains('output'));
         }
       }
     };
@@ -425,7 +446,7 @@ export class Canvas {
         const fromPos = this._getNodePosition(this.wiring.fromNodeId);
         const touch = e.touches[0];
         const toPos = this._canvasCoords({ clientX: touch.clientX, clientY: touch.clientY });
-        this.wiring.tempPath.setAttribute('d', this._getManhattanPath(fromPos, toPos));
+        this.wiring.tempPath.setAttribute('d', Wire.computePath(fromPos, toPos));
       }
     };
 
@@ -438,8 +459,14 @@ export class Canvas {
       if (this.wiring && this.wiring.tempPath) {
         const touch = e.changedTouches[0];
         const targetConn = document.elementFromPoint(touch.clientX, touch.clientY);
-        if (targetConn && targetConn.classList.contains('connector') && !targetConn.classList.contains('output')) {
-          this._completeConnection(this.wiring.fromNodeId, targetConn.dataset.node);
+        if (targetConn && targetConn.classList.contains('connector') && targetConn.dataset.node) {
+          const isTargetOutput = targetConn.classList.contains('output');
+          const isSourceOutput = this.wiring.fromIsOutput;
+          if (isSourceOutput && !isTargetOutput) {
+            this._completeConnection(this.wiring.fromNodeId, targetConn.dataset.node);
+          } else if (!isSourceOutput && isTargetOutput) {
+            this._completeConnection(targetConn.dataset.node, this.wiring.fromNodeId);
+          }
         }
         this._cancelWiring();
       }
@@ -540,15 +567,22 @@ export class Canvas {
       }
     }
     const conn = e.target.closest('.connector');
-    if (conn && conn.dataset.node && conn.classList.contains('output')) {
-      const nodeId = conn.dataset.node;
-      items.push({ label: 'Generate Truth Table', action: () => {
-        this.eventBus.emit('show-panel', 'truth');
-        this.eventBus.emit('generate-truth-table', nodeId);
-      }});
-      items.push({ label: 'Set as TestBench Output', action: () => {
-        this.eventBus.emit('set-testbench-output', nodeId);
-      }});
+    if (conn && conn.dataset.node) {
+      const isOutput = conn.classList.contains('output');
+      if (isOutput) {
+        items.push({ label: 'Generate Truth Table', action: () => {
+          this.eventBus.emit('show-panel', 'truth');
+          this.eventBus.emit('generate-truth-table', conn.dataset.node);
+        }});
+        items.push({ label: 'Set as TestBench Output', action: () => {
+          this.eventBus.emit('set-testbench-output', conn.dataset.node);
+        }});
+      } else {
+        // Input connector: also allow truth table / testbench from input
+        items.push({ label: 'Set as TestBench Output', action: () => {
+          this.eventBus.emit('set-testbench-output', conn.dataset.node);
+        }});
+      }
       this.contextMenu.show(e.clientX, e.clientY, items);
     }
   }
@@ -568,7 +602,6 @@ export class Canvas {
   _placeComponent(type, scenePos) {
     let x = this._snap(scenePos.x - 40);
     let y = this._snap(scenePos.y - 20);
-    // No clamping – allow placement anywhere on infinite canvas
     this.eventBus.emit('component-drop', { type, x, y });
   }
 
@@ -580,7 +613,9 @@ export class Canvas {
       dot.addEventListener('mousedown', (e) => {
         e.stopPropagation();
         const nodeId = dot.dataset.node;
-        if (dot.classList.contains('output')) this._startWiring(component, nodeId, e);
+        const isOutput = dot.classList.contains('output');
+        // Allow starting wiring from both output AND input connectors
+        this._startWiring(component, nodeId, e, isOutput);
       });
     });
     this.components.push(component);
@@ -595,7 +630,8 @@ export class Canvas {
     comp.element.querySelectorAll('.connector').forEach(dot => {
       dot.addEventListener('mousedown', (e) => {
         e.stopPropagation();
-        if (dot.classList.contains('output')) this._startWiring(comp, dot.dataset.node, e);
+        const isOutput = dot.classList.contains('output');
+        this._startWiring(comp, dot.dataset.node, e, isOutput);
       });
     });
     this._updateWiresForComponent(comp);
@@ -633,16 +669,16 @@ export class Canvas {
     }
   }
 
-  _startWiring(component, nodeId, e) {
+  _startWiring(component, nodeId, e, isOutput) {
     if (this.wiring) return;
-    this.wiring = { fromComp: component, fromNodeId: nodeId };
+    this.wiring = { fromComp: component, fromNodeId: nodeId, fromIsOutput: isOutput };
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     path.setAttribute('stroke', '#4ec9b0');
     path.setAttribute('stroke-width', '2');
     path.setAttribute('fill', 'none');
     path.setAttribute('pointer-events', 'none');
     const fromPos = this._getNodePosition(nodeId);
-    path.setAttribute('d', this._getManhattanPath(fromPos, fromPos));
+    path.setAttribute('d', Wire.computePath(fromPos, fromPos));
     this.svgLayer.appendChild(path);
     this.wiring.tempPath = path;
   }
@@ -665,10 +701,32 @@ export class Canvas {
     wire.engineId = engineId;
     wire.render(this.svgLayer, (nodeId) => this._getNodePosition(nodeId));
     this.wires.push(wire);
+    // Update junction visibility (show dot if output fans out to multiple wires)
+    this._updateJunctions();
   }
 
   _reconnectWire(engineId, fromNodeId, toNodeId) {
     this._addVisualWire(engineId, fromNodeId, toNodeId);
+  }
+
+  /**
+   * Show junction dots on output connectors that fan out to multiple wires.
+   */
+  _updateJunctions() {
+    // Count wires per output node
+    const outputFanout = {};
+    this.wires.forEach(w => {
+      const fromId = w.fromNode.nodeId;
+      outputFanout[fromId] = (outputFanout[fromId] || 0) + 1;
+    });
+
+    this.wires.forEach(w => {
+      if (outputFanout[w.fromNode.nodeId] > 1) {
+        w.showJunction();
+      } else {
+        w.hideJunction();
+      }
+    });
   }
 
   _getNodePosition(nodeId) {
@@ -680,11 +738,6 @@ export class Canvas {
       x: (dotRect.left + dotRect.width/2 - canvasRect.left - this.panOffset.x) / this.scale,
       y: (dotRect.top + dotRect.height/2 - canvasRect.top - this.panOffset.y) / this.scale
     };
-  }
-
-  _getManhattanPath(from, to) {
-    const midX = from.x + 20;
-    return `M ${from.x} ${from.y} L ${midX} ${from.y} L ${midX} ${to.y} L ${to.x} ${to.y}`;
   }
 
   _updateWiresForComponent(comp) {
@@ -709,5 +762,23 @@ export class Canvas {
 
   _findComponentByNode(nodeId) {
     return this.engine._findComponentByNode(nodeId);
+  }
+
+  /**
+   * Clear all visual elements from the canvas (used by Serializer.importState).
+   */
+  clearAll() {
+    // Remove all component elements
+    this.components.forEach(comp => {
+      if (comp.element) comp.element.remove();
+    });
+    this.components = [];
+    this.selectedComponents.clear();
+
+    // Remove all wire elements
+    this.wires.forEach(wire => {
+      if (wire.element) wire.element.remove();
+    });
+    this.wires = [];
   }
 }

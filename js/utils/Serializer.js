@@ -34,22 +34,26 @@ export class Serializer {
 
   /**
    * Import the state into the engine, canvas, and factory.
-   * Clears any existing circuit first.
+   * Clears any existing circuit first (both engine AND canvas visuals).
    * @param {Object} data - The exported state.
    * @param {Engine} engine
    * @param {Canvas} canvas
    * @param {ComponentFactory} factory
    */
   static importState(data, engine, canvas, factory) {
-    // Clear everything
+    // Stop simulation
     engine.stop();
+
     // Deep clone to avoid mutation
     const componentsData = JSON.parse(JSON.stringify(data.components));
     const wiresData = JSON.parse(JSON.stringify(data.wires));
 
-    // Remove all existing components (this will also remove wires)
+    // FIX: Clear canvas visual elements FIRST (before engine removes components)
+    canvas.clearAll();
+
+    // Remove all existing components from engine (this will also remove wires)
     const existingIds = Array.from(engine.components.keys());
-    existingIds.forEach(id => engine.removeComponent(id));  // canvas.delete also called via events
+    existingIds.forEach(id => engine.removeComponent(id));
 
     // Create and place components
     for (const compData of componentsData) {

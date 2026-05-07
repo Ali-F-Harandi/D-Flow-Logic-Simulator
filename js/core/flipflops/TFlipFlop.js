@@ -6,16 +6,17 @@ export class TFlipFlop extends Component {
     super(id, 'T', 2, 2);
     this._prevClk = false;
     this._state = { Q: false, nQ: true };
-    this.outputs[1].value = true;   // nQ starts HIGH
   }
+
   computeNextState() {
     const t = this.inputs[0].value;
     const clk = this.inputs[1].value;
     let nextQ = this._state.Q;
     let nextNQ = this._state.nQ;
     if (clk && !this._prevClk && t) {
-      nextQ = !this._state.Q;      // toggle Q
-      nextNQ = this._state.Q;      // nQ = complement of new Q (old Q)
+      // Toggle: nQ must be the complement of nextQ
+      nextQ = !this._state.Q;
+      nextNQ = this._state.Q;
     }
     return { outputs: [nextQ, nextNQ], prevClk: clk };
   }
@@ -25,6 +26,16 @@ export class TFlipFlop extends Component {
     this._state.nQ  = nextState.outputs[1];
     this._prevClk   = nextState.prevClk;
     super.applyNextState(nextState);
+  }
+
+  reset() {
+    super.reset();
+    this._prevClk = false;
+    this._state = { Q: false, nQ: true };
+    if (this.outputs.length > 1) {
+      this.outputs[1].value = true;
+    }
+    this._updateConnectorStates();
   }
 
   render(container) {
@@ -55,5 +66,6 @@ export class TFlipFlop extends Component {
     container.appendChild(el);
     this.element = el;
     this.container = container;
+    this._updateConnectorStates();
   }
 }

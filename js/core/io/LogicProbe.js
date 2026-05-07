@@ -6,8 +6,20 @@ export class LogicProbe extends Component {
     super(id, 'Probe', 1, 0);
   }
 
-  applyNextState(nextState) {
-    super.applyNextState(nextState);
+  computeOutput() {
+    this._updateDisplay();
+    return this.outputs;
+  }
+
+  setInputValue(index, value) {
+    if (this.inputs[index]) {
+      this.inputs[index].value = value;
+      this._updateDisplay();
+    }
+  }
+
+  reset() {
+    this.inputs.forEach(i => i.value = false);
     this._updateDisplay();
   }
 

@@ -2,12 +2,11 @@ import { Component } from '../Component.js';
 
 export class DFlipFlop extends Component {
   static label = 'D Flip-Flop';
-constructor(id) {
-  super(id, 'D', 2, 2);
-  this._prevClk = false;
-  this._state = { Q: false, nQ: true };
-  this.outputs[1].value = true;   // nQ starts HIGH
-}
+  constructor(id) {
+    super(id, 'D', 2, 2);
+    this._prevClk = false;
+    this._state = { Q: false, nQ: true };
+  }
 
   computeNextState() {
     const d = this.inputs[0].value;
@@ -15,8 +14,8 @@ constructor(id) {
     let nextQ = this._state.Q;
     let nextNQ = this._state.nQ;
     if (clk && !this._prevClk) {
-      nextQ = d;
-      nextNQ = !d;
+      nextQ = Boolean(d);
+      nextNQ = !nextQ;
     }
     return { outputs: [nextQ, nextNQ], prevClk: clk };
   }
@@ -26,6 +25,16 @@ constructor(id) {
     this._state.nQ  = nextState.outputs[1];
     this._prevClk   = nextState.prevClk;
     super.applyNextState(nextState);
+  }
+
+  reset() {
+    super.reset();
+    this._prevClk = false;
+    this._state = { Q: false, nQ: true };
+    if (this.outputs.length > 1) {
+      this.outputs[1].value = true;
+    }
+    this._updateConnectorStates();
   }
 
   getProperties() { return []; }
@@ -58,5 +67,6 @@ constructor(id) {
     container.appendChild(el);
     this.element = el;
     this.container = container;
+    this._updateConnectorStates();
   }
 }

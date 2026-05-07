@@ -1,4 +1,3 @@
-// js/core/SevenSegment.js
 import { Component } from '../Component.js';
 
 export class SevenSegment extends Component {
@@ -7,14 +6,29 @@ export class SevenSegment extends Component {
     super(id, '7Seg', 5, 0);   // I0-I3 = BCD, I4 = DP
   }
 
-  applyNextState(nextState) {
-    super.applyNextState(nextState);
+  computeOutput() {
     this._updateDisplay();
+    this._updateConnectorStates();
+    return this.outputs;
+  }
+
+  setInputValue(index, value) {
+    if (this.inputs[index]) {
+      this.inputs[index].value = value;
+      this._updateDisplay();
+      this._updateConnectorStates();
+    }
+  }
+
+  reset() {
+    this.inputs.forEach(i => i.value = false);
+    this._updateDisplay();
+    this._updateConnectorStates();
   }
 
   render(container) {
-    const H = 6 * this.GRID;
-    const W = 5 * this.GRID;
+    const H = 6 * this.GRID;             // 120px
+    const W = 5 * this.GRID;             // 100px
     const el = document.createElement('div');
     el.className = 'component sevenseg';
     el.style.width = `${W}px`;
@@ -24,7 +38,7 @@ export class SevenSegment extends Component {
     el.setAttribute('draggable', 'false');
     el.draggable = false;
 
-    // 7‑segment digit SVG
+    // 7‑segment digit SVG – use classes instead of ids to avoid duplicate ID conflicts
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', '-1 -1 13 20');
     svg.setAttribute('width', '56');
@@ -33,18 +47,18 @@ export class SevenSegment extends Component {
     svg.style.top = '10px';
     svg.style.left = '22px';
     svg.innerHTML = `
-      <polygon id="a" fill="#333" points="1,1  2,0  8,0  9,1  8,2  2,2"/>
-      <polygon id="b" fill="#333" points="9,1 10,2 10,8  9,9  8,8  8,2"/>
-      <polygon id="c" fill="#333" points="9,9 10,10 10,16  9,17  8,16  8,10"/>
-      <polygon id="d" fill="#333" points="9,17  8,18  2,18  1,17  2,16  8,16"/>
-      <polygon id="e" fill="#333" points="1,17  0,16  0,10  1, 9  2,10  2,16"/>
-      <polygon id="f" fill="#333" points="1, 9  0, 8  0, 2  1, 1  2, 2  2, 8"/>
-      <polygon id="g" fill="#333" points="1, 9  2, 8  8, 8  9, 9  8,10  2,10"/>
-      <circle id="dp" cx="11" cy="18" r="0.8" fill="#333"/>
+      <polygon class="seg-a" fill="#333" points="1,1  2,0  8,0  9,1  8,2  2,2"/>
+      <polygon class="seg-b" fill="#333" points="9,1 10,2 10,8  9,9  8,8  8,2"/>
+      <polygon class="seg-c" fill="#333" points="9,9 10,10 10,16  9,17  8,16  8,10"/>
+      <polygon class="seg-d" fill="#333" points="9,17  8,18  2,18  1,17  2,16  8,16"/>
+      <polygon class="seg-e" fill="#333" points="1,17  0,16  0,10  1, 9  2,10  2,16"/>
+      <polygon class="seg-f" fill="#333" points="1, 9  0, 8  0, 2  1, 1  2, 2  2, 8"/>
+      <polygon class="seg-g" fill="#333" points="1, 9  2, 8  8, 8  9, 9  8,10  2,10"/>
+      <circle class="seg-dp" cx="11" cy="18" r="0.8" fill="#333"/>
     `;
     el.appendChild(svg);
 
-    // Input connectors
+    // Input connectors – grid aligned
     el.appendChild(this._createConnectorBlock(this.inputs[0], true, 'I0', 1 * this.GRID));
     el.appendChild(this._createConnectorBlock(this.inputs[1], true, 'I1', 2 * this.GRID));
     el.appendChild(this._createConnectorBlock(this.inputs[2], true, 'I2', 3 * this.GRID));
@@ -70,12 +84,12 @@ export class SevenSegment extends Component {
     const bits = segMap[val] || 0;
     const segs = ['a','b','c','d','e','f','g'];
     segs.forEach((seg, idx) => {
-      const poly = this.element.querySelector(`#${seg}`);
+      const poly = this.element.querySelector(`.seg-${seg}`);
       if (poly) poly.setAttribute('fill', (bits >> (6 - idx)) & 1 ? '#ff4444' : '#333');
     });
 
     // decimal point
-    const dp = this.element.querySelector('#dp');
+    const dp = this.element.querySelector('.seg-dp');
     if (dp) {
       const dpOn = this.inputs[4]?.value === true;
       dp.setAttribute('fill', dpOn ? '#ff4444' : '#333');

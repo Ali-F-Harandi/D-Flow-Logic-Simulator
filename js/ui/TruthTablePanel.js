@@ -29,7 +29,7 @@ export class TruthTablePanel {
     }
 
     // --- SNAPSHOT original values ---
-    const componentSnapshots = new Map(); // compId -> { outputs: [...], inputs: [...] }
+    const componentSnapshots = new Map();
     for (const comp of this.engine.components.values()) {
       componentSnapshots.set(comp.id, {
         outputs: comp.outputs.map(o => o.value),
@@ -70,13 +70,10 @@ export class TruthTablePanel {
       for (const inp of inputs) {
         for (const b of inp.bits) {
           const val = (c >> bitIdx) & 1;
-          if (inp.comp.type === 'DipSwitch') {
-            inp.comp.outputs[0].value = !!val;
-            inp.comp._updateAppearance?.();
-          } else if (inp.comp.type === 'DipSwitch8') {
-            inp.comp.outputs[b].value = !!val;
-            inp.comp._updateVisual?.();
-          }
+          inp.comp.outputs[b !== undefined ? b : 0].value = !!val;
+          // Call the correct update method
+          if (typeof inp.comp._updateAppearance === 'function') inp.comp._updateAppearance();
+          if (typeof inp.comp._updateConnectorStates === 'function') inp.comp._updateConnectorStates();
           bitIdx++;
         }
       }
@@ -108,10 +105,10 @@ export class TruthTablePanel {
         for (let i = 0; i < snap.inputs.length; i++) {
           comp.inputs[i].value = snap.inputs[i];
         }
-        // Re-render visual state
-        comp._updateAppearance?.();
-        comp._updateVisual?.();
-        comp._updateDisplay?.();
+        // Re-render visual state using available methods
+        if (typeof comp._updateAppearance === 'function') comp._updateAppearance();
+        if (typeof comp._updateDisplay === 'function') comp._updateDisplay();
+        if (typeof comp._updateConnectorStates === 'function') comp._updateConnectorStates();
       }
     }
 

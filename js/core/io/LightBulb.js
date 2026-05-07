@@ -1,4 +1,3 @@
-// js/core/LightBulb.js
 import { Component } from '../Component.js';
 
 export class LightBulb extends Component {
@@ -7,16 +6,28 @@ export class LightBulb extends Component {
     super(id, 'LightBulb', 1, 0);
   }
 
-  // No computeOutput override – uses base two‑phase
-  // Override applyNextState to update appearance AFTER state is applied
-  applyNextState(nextState) {
-    super.applyNextState(nextState);
+  computeOutput() {
+    this._updateAppearance();
+    return this.outputs;
+  }
+
+  setInputValue(index, value) {
+    if (this.inputs[index]) {
+      this.inputs[index].value = value;
+      this._updateAppearance();
+      // Don't call computeOutput here since there are no outputs to compute
+      // The Engine wrapper will handle propagation scheduling
+    }
+  }
+
+  reset() {
+    this.inputs.forEach(i => i.value = false);
     this._updateAppearance();
   }
 
   render(container) {
-    const H = 3 * this.GRID;
-    const W = 3 * this.GRID;
+    const H = 3 * this.GRID;          // 60px
+    const W = 3 * this.GRID;          // 60px
     const el = document.createElement('div');
     el.className = 'component light-bulb';
     el.style.width = `${W}px`;
@@ -26,6 +37,7 @@ export class LightBulb extends Component {
     el.setAttribute('draggable', 'false');
     el.draggable = false;
 
+    // SVG circle – exactly in the center, use unique class instead of id
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('width', '40');
     svg.setAttribute('height', '40');
@@ -40,10 +52,11 @@ export class LightBulb extends Component {
     circle.setAttribute('fill', '#333');
     circle.setAttribute('stroke', '#666');
     circle.setAttribute('stroke-width', '2');
-    circle.id = 'led-circle';
+    circle.classList.add('led-circle');
     svg.appendChild(circle);
     el.appendChild(svg);
 
+    // Input connector – grid‑aligned at y = 20 (center of component)
     el.appendChild(this._createConnectorBlock(
       this.inputs[0], true, 'I0', 1 * this.GRID
     ));
@@ -56,7 +69,7 @@ export class LightBulb extends Component {
 
   _updateAppearance() {
     if (!this.element) return;
-    const circle = this.element.querySelector('#led-circle');
+    const circle = this.element.querySelector('.led-circle');
     if (!circle) return;
     const lit = this.inputs[0]?.value === true;
     circle.setAttribute('fill', lit ? '#ff4444' : '#333');

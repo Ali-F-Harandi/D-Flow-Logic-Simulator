@@ -4,17 +4,19 @@ export class Engine {
     this.wires = [];
     this.queue = new Set();
     this.running = false;
-    this._processing = false;            // new flag
-    this.speed = 200;
+    this.speed = 200; // ms per step (default)
     this.intervalId = null;
     this.onUpdate = null;
-    this.clocks = new Set();
+    this.clocks = new Set();  // track clock components
+    this._processing = false; // guard against recursive _processQueue
   }
+
   addComponent(component) {
     this.components.set(component.id, component);
     if (component.type === 'Clock') {
       this.clocks.add(component);
     }
+    // Wrap computeOutput to schedule propagation after output changes
     const origCompute = component.computeOutput.bind(component);
     component.computeOutput = () => {
       origCompute();
@@ -43,24 +45,21 @@ export class Engine {
     const toInput = toComp.inputs.find(inp => inp.id === toNodeId);
     if (!toInput) throw new Error('Input node not found');
 
-    // Remove previous connection if present, along with its wire
+    // FIX: Remove orphan wire if input is already connected
     if (toInput.connectedTo) {
-      console.warn(`Input ${toNodeId} already connected. Overwriting.`);
-      const oldWireIndex = this.wires.findIndex(w =>
-        w.to.componentId === toComp.id && w.to.nodeId === toNodeId
-      );
+      const oldWireIndex = this.wires.findIndex(w => w.to.nodeId === toNodeId);
       if (oldWireIndex !== -1) {
+        const oldWire = this.wires[oldWireIndex];
         this.wires.splice(oldWireIndex, 1);
+        // Dispatch event so canvas can remove the visual wire
+        document.dispatchEvent(new CustomEvent('wire-removed', { detail: { wireId: oldWire.id } }));
       }
     }
 
     toInput.connectedTo = { componentId: fromComp.id, nodeId: fromNodeId };
     const wireId = forceWireId || `wire_${Date.now()}_${Math.random()}`;
-    const wire = {
-      id: wireId,
-      from: { componentId: fromComp.id, nodeId: fromNodeId },
-      to:   { componentId: toComp.id, nodeId: toNodeId }
-    };
+    const wire = { id: wireId, from: { componentId: fromComp.id, nodeId: fromNodeId },
+                  to: { componentId: toComp.id, nodeId: toNodeId } };
     this.wires.push(wire);
     this._propagateFrom(fromComp);
     return wireId;
@@ -85,51 +84,54 @@ export class Engine {
   }
 
   _processQueue() {
-    if (this._processing) return;       // prevent re‑entry
     this._processing = true;
-    try {
-      const maxIterations = 10000;
-      let iterations = 0;
+    const maxIterations = 10000;
+    let iterations = 0;
 
-      while (this.queue.size > 0 && iterations < maxIterations) {
-        // --- Phase 1: Evaluate ---
-        const updates = [];
-        for (const comp of this.queue) {
-          const nextState = comp.computeNextState();
-          updates.push({ comp, nextState });
-        }
-        this.queue.clear();
+    while (this.queue.size > 0 && iterations < maxIterations) {
+      // ---------- Phase 1: Evaluate ----------
+      const updates = [];
+      for (const comp of this.queue) {
+        const nextState = comp.computeNextState();
+        updates.push({ comp, nextState });
+      }
+      this.queue.clear();
 
-        // --- Phase 2: Apply & Propagate ---
-        for (const { comp, nextState } of updates) {
-          comp.applyNextState(nextState);
-          for (let i = 0; i < comp.outputs.length; i++) {
-            const out = comp.outputs[i];
-            const connectedWires = this.wires.filter(w => w.from.nodeId === out.id);
-            for (const w of connectedWires) {
-              const targetComp = this.components.get(w.to.componentId);
-              if (targetComp) {
-                const inputIndex = targetComp.inputs.findIndex(inp => inp.id === w.to.nodeId);
-                if (inputIndex >= 0) {
-                  targetComp.setInputValue(inputIndex, out.value);
-                }
+      // ---------- Phase 2: Apply & Propagate ----------
+      for (const { comp, nextState } of updates) {
+        comp.applyNextState(nextState);
+
+        // Push new values to downstream components via connected wires
+        for (let i = 0; i < comp.outputs.length; i++) {
+          const out = comp.outputs[i];
+          const connectedWires = this.wires.filter(w => w.from.nodeId === out.id);
+          for (const w of connectedWires) {
+            const targetComp = this.components.get(w.to.componentId);
+            if (targetComp) {
+              const inputIndex = targetComp.inputs.findIndex(inp => inp.id === w.to.nodeId);
+              if (inputIndex >= 0) {
+                // Directly set input value WITHOUT triggering wrapped computeOutput
+                // to avoid double computation. The component will be scheduled
+                // for the next propagation iteration.
+                targetComp.inputs[inputIndex].value = out.value;
+                this.queue.add(targetComp);
               }
             }
           }
         }
-        iterations++;
       }
-
-      if (iterations >= maxIterations) {
-        console.warn('Propagation loop detected – circuit may be unstable.');
-        this.queue.clear();
-        document.dispatchEvent(new CustomEvent('simulation-error', { detail: 'Infinite Loop Detected! Circuit Unstable.' }));
-      }
-
-      if (this.onUpdate) this.onUpdate();
-    } finally {
-      this._processing = false;
+      iterations++;
     }
+
+    this._processing = false;
+
+    if (iterations >= maxIterations) {
+      console.warn('Propagation loop detected – circuit may be unstable.');
+      this.queue.clear();
+      document.dispatchEvent(new CustomEvent('simulation-error', { detail: 'Infinite Loop Detected! Circuit Unstable.' }));
+    }
+
+    if (this.onUpdate) this.onUpdate();
   }
 
   step() {
@@ -159,8 +161,7 @@ export class Engine {
     this.stop();
     this.queue.clear();
     for (const comp of this.components.values()) {
-      comp.outputs.forEach(o => o.value = false);
-      comp.inputs.forEach(i => i.value = false);
+      comp.reset();
     }
     if (this.onUpdate) this.onUpdate();
   }
@@ -183,6 +184,6 @@ export class Engine {
 
   _propagateFrom(comp) {
     this.queue.add(comp);
-    this._processQueue();
+    if (!this._processing) this._processQueue();
   }
 }

@@ -13,22 +13,31 @@ export class ShiftRegister4 extends Component {
   computeNextState() {
     const data = this.inputs[0].value;
     const clk = this.inputs[1].value;
-    let newState = this._state;   // default to current state
+    // Compute next state WITHOUT mutating this._state
+    let nextState;
     if (clk && !this._prevClk) {
-      // Shift right: new bit from data, others shift
-      newState = [data, this._state[0], this._state[1], this._state[2]];
+      nextState = [Boolean(data), this._state[0], this._state[1], this._state[2]];
+    } else {
+      nextState = [...this._state];
     }
     return {
-      outputs: [...newState],   // output values are the new state
+      outputs: nextState,
       prevClk: clk,
-      newState: newState        // internal state to apply later
+      internalState: nextState
     };
   }
 
   applyNextState(nextState) {
-    this._state = nextState.newState;
+    this._state = [...nextState.internalState];
     this._prevClk = nextState.prevClk;
     super.applyNextState(nextState);
+  }
+
+  reset() {
+    super.reset();
+    this._prevClk = false;
+    this._state = [false, false, false, false];
+    this._updateConnectorStates();
   }
 
   getProperties() { return []; }

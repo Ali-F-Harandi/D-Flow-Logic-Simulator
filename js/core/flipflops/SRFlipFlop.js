@@ -6,7 +6,6 @@ export class SRFlipFlop extends Component {
     super(id, 'SR', 3, 2);
     this._prevClk = false;
     this._state = { Q: false, nQ: true };
-    this.outputs[1].value = true;   // nQ starts HIGH
   }
 
   computeNextState() {
@@ -18,21 +17,34 @@ export class SRFlipFlop extends Component {
     if (clk && !this._prevClk) {
       if (s && !r) { nextQ = true; nextNQ = false; }
       else if (!s && r) { nextQ = false; nextNQ = true; }
+      // s && r: invalid, hold state
+      // !s && !r: hold state
     }
     return { outputs: [nextQ, nextNQ], prevClk: clk };
   }
 
   applyNextState(nextState) {
-    this._state.Q = nextState.outputs[0];
-    this._state.nQ = nextState.outputs[1];
-    this._prevClk = nextState.prevClk;
+    this._state.Q   = nextState.outputs[0];
+    this._state.nQ  = nextState.outputs[1];
+    this._prevClk   = nextState.prevClk;
     super.applyNextState(nextState);
+  }
+
+  reset() {
+    super.reset();
+    this._prevClk = false;
+    this._state = { Q: false, nQ: true };
+    // Ensure nQ output is true after reset
+    if (this.outputs.length > 1) {
+      this.outputs[1].value = true;
+    }
+    this._updateConnectorStates();
   }
 
   getProperties() { return []; }
 
   render(container) {
-    const H = 4 * this.GRID;  // 80
+    const H = 4 * this.GRID;
     const el = document.createElement('div');
     el.className = 'component flipflop sr-ff';
     el.style.width = `${4 * this.GRID}px`;
@@ -60,5 +72,6 @@ export class SRFlipFlop extends Component {
     container.appendChild(el);
     this.element = el;
     this.container = container;
+    this._updateConnectorStates();
   }
 }

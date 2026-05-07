@@ -57,10 +57,12 @@ export class NorGate extends Component {
     for (let i = 0; i < n; i++) {
       el.appendChild(this._createConnectorBlock(this.inputs[i], true, `I${i}`, (i + 1) * this.GRID));
     }
-    el.appendChild(this._createConnectorBlock(this.outputs[0], false, 'O0', this.GRID));
+    const outY = Math.floor(H / (2 * this.GRID)) * this.GRID;
+    el.appendChild(this._createConnectorBlock(this.outputs[0], false, 'O0', outY));
 
     container.appendChild(el);
     this.element = el;
     this.container = container;
+    this._updateConnectorStates();
   }
 }

@@ -12,8 +12,8 @@ export class FullAdder extends Component {
     const a = this.inputs[0].value;
     const b = this.inputs[1].value;
     const cin = this.inputs[2].value;
-    const sum = (a !== b) !== cin;  
-    const cout = (a && b) || (cin && (a !== b)); 
+    const sum = Boolean(a ^ b ^ cin);
+    const cout = Boolean((a && b) || (cin && (a ^ b)));
     return { outputs: [sum, cout] };
   }
 

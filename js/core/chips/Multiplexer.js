@@ -10,7 +10,7 @@ export class Multiplexer extends Component {
 
   computeNextState() {
     const sel = this.inputs[2].value;
-    const out = sel ? this.inputs[1].value : this.inputs[0].value;
+    const out = Boolean(sel ? this.inputs[1].value : this.inputs[0].value);
     return { outputs: [out] };
   }
 

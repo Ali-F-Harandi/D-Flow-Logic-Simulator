@@ -1,4 +1,3 @@
-// js/core/DipSwitch8.js
 import { Component } from '../Component.js';
 
 export class DipSwitch8 extends Component {
@@ -16,8 +15,32 @@ export class DipSwitch8 extends Component {
 
   computeOutput() { return this.outputs; }
 
+  reset() {
+    this.outputs.forEach(o => o.value = false);
+    this._updateVisual();
+    this._updateConnectorStates();
+  }
+
+  /**
+   * Alias for _updateAppearance so TruthTablePanel can call either method.
+   */
+  _updateVisual() {
+    this._updateAppearance();
+  }
+
+  _updateAppearance() {
+    if (this.element) {
+      this.element.querySelectorAll('.dip-bit').forEach(sq => {
+        const bit = parseInt(sq.dataset.bit);
+        sq.style.background = this.outputs[bit].value
+          ? 'var(--color-accent)'
+          : 'var(--color-surface)';
+      });
+    }
+  }
+
   render(container) {
-    const H = 9 * this.GRID;               // 160px
+    const H = 9 * this.GRID;               // 180px
     const W = 5 * this.GRID;               // 100px (wider)
     const el = document.createElement('div');
     el.className = 'component dipswitch8';
@@ -40,7 +63,7 @@ export class DipSwitch8 extends Component {
     // Connectors & toggle squares (bit7 top)
     for (let idx = 0; idx < 8; idx++) {
       const bit = 7 - idx;
-      const yCenter = (idx + 1) * this.GRID;   // 20,40,...,160
+      const yCenter = (idx + 1) * this.GRID;
 
       // Output connector on the RIGHT side inside the box
       el.appendChild(
@@ -72,17 +95,11 @@ export class DipSwitch8 extends Component {
     this.element = el;
     this.container = container;
     this._updateConnectorStates();
+    this._updateAppearance();
   }
 
   _updateConnectorStates() {
     super._updateConnectorStates();
-    if (this.element) {
-      this.element.querySelectorAll('.dip-bit').forEach(sq => {
-        const bit = parseInt(sq.dataset.bit);
-        sq.style.background = this.outputs[bit].value
-          ? 'var(--color-accent)'
-          : 'var(--color-surface)';
-      });
-    }
+    this._updateAppearance();
   }
 }

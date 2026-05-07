@@ -15,7 +15,7 @@ export class Clock extends Component {
     const ms = 1000 / (this.frequency * 2);
     this.intervalId = setInterval(() => {
       this.outputs[0].value = !this.outputs[0].value;
-      this.computeOutput();   // triggers two‑phase via engine wrapper
+      this.computeOutput();
     }, ms);
   }
 
@@ -30,9 +30,15 @@ export class Clock extends Component {
     if (this.running) { this.stop(); this.start(); }
   }
 
-  // Override two‑phase: return current output state (no inputs to compute from)
-  computeNextState() {
-    return { outputs: [this.outputs[0].value] };
+  computeOutput() {
+    this._updateConnectorStates();
+    return this.outputs;
+  }
+
+  reset() {
+    super.reset();
+    this.stop();
+    this._updateConnectorStates();
   }
 
   getProperties() {
@@ -72,5 +78,6 @@ export class Clock extends Component {
     container.appendChild(el);
     this.element = el;
     this.container = container;
+    this._updateConnectorStates();
   }
 }

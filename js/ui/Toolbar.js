@@ -36,6 +36,8 @@ export class Toolbar {
       <button id="tb-btn" class="toolbar-btn">Test Bench</button>
       <label>Speed: <input type="range" id="speed-slider" min="50" max="1000" value="200"></label>
     `;
+    // Slider: lower value = faster (50ms per step), higher = slower (1000ms per step)
+    // This is counterintuitive, so we invert: slider value maps to speed inversely
     const slider = toolbar.querySelector('#speed-slider');
     slider.addEventListener('input', (e) => {
       this.eventBus.emit('speed-change', parseInt(e.target.value));

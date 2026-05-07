@@ -9,19 +9,35 @@ export class DipSwitch extends Component {
 
   toggle() {
     this.outputs[0].value = !this.outputs[0].value;
-    this.computeOutput();   // triggers two‑phase + scheduling
+    this._updateAppearance();
+    this._updateConnectorStates();
+    this.computeOutput();
   }
 
-  // Override computeNextState to return current output (no inputs)
-  computeNextState() {
-    return { outputs: [this.outputs[0].value] };
+  computeOutput() { return this.outputs; }
+
+  reset() {
+    this.outputs[0].value = false;
+    this._updateAppearance();
+    this._updateConnectorStates();
+  }
+
+  _updateAppearance() {
+    if (this.element) {
+      const isOn = this.outputs[0].value === true;
+      this.element.classList.toggle('on', isOn);
+      const body = this.element.querySelector('.switch-body');
+      if (body) {
+        body.style.color = isOn ? '#ffffff' : 'var(--color-text)';
+      }
+    }
   }
 
   render(container) {
-    const H = 3 * this.GRID;
+    const H = 3 * this.GRID; // 60
     const el = document.createElement('div');
     el.className = 'component dip-switch';
-    el.style.width = `${3 * this.GRID}px`;
+    el.style.width = `${3 * this.GRID}px`;  // 60
     el.style.height = `${H}px`;
     el.style.left = `${this.position.x}px`;
     el.style.top = `${this.position.y}px`;
@@ -51,16 +67,5 @@ export class DipSwitch extends Component {
     this.container = container;
     this._updateAppearance();
     this._updateConnectorStates();
-  }
-
-  _updateAppearance() {
-    if (this.element) {
-      const isOn = this.outputs[0].value === true;
-      this.element.classList.toggle('on', isOn);
-      const body = this.element.querySelector('.switch-body');
-      if (body) {
-        body.style.color = isOn ? '#ffffff' : 'var(--color-text)';
-      }
-    }
   }
 }

@@ -56,6 +56,16 @@ export class Component {
     this._updateConnectorStates();
   }
 
+  /**
+   * Reset the component to its initial state.
+   * Subclasses (especially flip-flops) should override this to reset internal state.
+   */
+  reset() {
+    this.outputs.forEach(o => o.value = false);
+    this.inputs.forEach(i => i.value = false);
+    this._updateConnectorStates();
+  }
+
   getProperties() { return []; }
   setProperty(name, value) { return false; }
 
@@ -78,7 +88,7 @@ export class Component {
 
   _updateBorderState() {
     if (!this.element) return;
-    if (this.outputs.length > 0 && this.outputs.every(o => o.value === true)) {
+    if (this.outputs.length > 0 && this.outputs.some(o => o.value === true)) {
       this.element.style.borderColor = '#4ec9b0';
       this.element.style.boxShadow = '0 0 8px rgba(78,201,176,0.5)';
     } else {

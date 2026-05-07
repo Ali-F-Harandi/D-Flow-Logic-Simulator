@@ -38,5 +38,6 @@ export class NotGate extends Component {
     container.appendChild(el);
     this.element = el;
     this.container = container;
+    this._updateConnectorStates();
   }
 }

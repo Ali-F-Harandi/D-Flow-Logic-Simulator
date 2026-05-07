@@ -38,7 +38,7 @@ export class PanelManager {
         this.rightPanelOpen &&
         !this.rightPanel.contains(e.target) &&
         !e.target.closest('#toolbar button') &&
-        !e.target.closest('.connector') // avoid closing when wiring
+        !e.target.closest('.connector')
       ) {
         this.toggleRightPanel('0px');
       }
@@ -97,7 +97,6 @@ export class PanelManager {
       this.container.style.setProperty('--right-panel-width', width);
       this.rightPanelOpen = width !== '0px';
     }
-    // Also toggle the CSS class for overlay behavior
     if (this.rightPanel) {
       this.rightPanel.classList.toggle('open', this.rightPanelOpen);
     }

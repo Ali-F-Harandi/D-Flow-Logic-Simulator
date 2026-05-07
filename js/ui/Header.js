@@ -5,7 +5,7 @@ export class Header {
     this.container = container;
     this.eventBus = eventBus;
     this.engine = engine;
-    this.canvas = canvas;   // needed for selected components deletion
+    this.canvas = canvas;
     this.element = this.build();
     container.appendChild(this.element);
     this._bindButtons();
@@ -23,6 +23,7 @@ export class Header {
         <button class="header-btn run-btn">▶ Run</button>
         <button class="header-btn stop-btn">⏹ Stop</button>
         <button class="header-btn step-btn">⏭ Step</button>
+        <button class="header-btn reset-btn">↺ Reset</button>
         <button class="header-btn save-btn" title="Save to localStorage">💾</button>
         <button class="header-btn load-btn" title="Restore last saved">📂</button>
         <button class="header-btn export-btn">📤 Export</button>
@@ -37,6 +38,7 @@ export class Header {
     this.runBtn = this.element.querySelector('.run-btn');
     this.stopBtn = this.element.querySelector('.stop-btn');
     this.stepBtn = this.element.querySelector('.step-btn');
+    this.resetBtn = this.element.querySelector('.reset-btn');
     this.hamburgerBtn = this.element.querySelector('.hamburger-btn');
     this.themeToggleBtn = this.element.querySelector('.theme-toggle-btn');
     this.saveBtn = this.element.querySelector('.save-btn');
@@ -54,6 +56,10 @@ export class Header {
     });
     this.stepBtn.addEventListener('click', () => {
       this.engine.step();
+    });
+    this.resetBtn.addEventListener('click', () => {
+      this.engine.reset();
+      this.eventBus.emit('simulation-status', 'stopped');
     });
 
     this.eventBus.on('simulation-status', (status) => this._updateButtons(status));
@@ -74,8 +80,6 @@ export class Header {
     this.saveBtn.addEventListener('click', () => {
       const state = Serializer.exportState(this.engine);
       localStorage.setItem('logic-sim-project', JSON.stringify(state));
-      // brief user feedback (use status event)
-      this.eventBus.emit('simulation-status', 'stopped'); // keep consistent
       alert('Project saved to localStorage.');
     });
 
@@ -89,14 +93,13 @@ export class Header {
       if (confirm('Load saved project? This will replace the current circuit.')) {
         try {
           const data = JSON.parse(saved);
-          Serializer.importState(data, this.engine, this.canvas, this.factory); // factory needs to be accessible; we'll store a reference
+          Serializer.importState(data, this.engine, this.canvas, this.factory);
         } catch (e) {
           console.error(e);
           alert('Failed to load project.');
         }
       }
     });
-    // Note: import button uses dynamic import. We'll set this.factory after creation in main.js.
 
     // Export JSON
     this.exportBtn.addEventListener('click', () => {
@@ -155,7 +158,6 @@ export class Header {
   }
 
   _bindGlobalShortcuts() {
-    // Delete key: delete selected components
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Delete' && document.activeElement === document.body) {
         e.preventDefault();

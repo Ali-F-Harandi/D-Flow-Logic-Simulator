@@ -61,7 +61,6 @@ html, body {
 
 /* ---------- Responsive Layouts ---------- */
 
-/* Tablet: overlay sidebar & right panel */
 @media (max-width: 1024px) {
   #app {
     grid-template-columns: 0px 0px 1fr 0px;
@@ -102,7 +101,6 @@ html, body {
   }
 }
 
-/* Phone: same as tablet but adjust toolbar */
 @media (max-width: 767px) {
   #toolbar {
     grid-area: toolbar;
@@ -114,7 +112,6 @@ html, body {
   #footer {
     display: none;
   }
-  /* Canvas scrollable on small screens */
   #canvas-container {
     overflow: auto;
   }

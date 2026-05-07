@@ -149,10 +149,9 @@ export class Sidebar {
         touch.clientY >= rect.top &&
         touch.clientY <= rect.bottom
       ) {
-        // Emit the correct event for the canvas to convert coordinates
         this.eventBus.emit('canvas-touch-drop', {
           type: this._dragData.type,
-          pageX: touch.pageX,   // page coordinates
+          pageX: touch.pageX,
           pageY: touch.pageY
         });
       }

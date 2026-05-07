@@ -11,8 +11,8 @@ export class HalfAdder extends Component {
   computeNextState() {
     const a = this.inputs[0].value;
     const b = this.inputs[1].value;
-    const sum = a !== b;
-    const carry = a && b;
+    const sum = Boolean(a ^ b);
+    const carry = Boolean(a && b);
     return { outputs: [sum, carry] };
   }
 
