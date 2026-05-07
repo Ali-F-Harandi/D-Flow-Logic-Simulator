@@ -237,3 +237,8 @@
   background: var(--color-accent);
   color: white;
 }
+
+.component-focused {
+  outline: 3px solid var(--color-accent, #007acc);
+  z-index: 10;
+}

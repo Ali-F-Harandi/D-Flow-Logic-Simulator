@@ -2,13 +2,14 @@ import { Wire } from '../core/Wire.js';
 import { generateId } from '../utils/IdGenerator.js';
 import { ContextMenu } from './ContextMenu.js';
 import { PropertyEditor } from './PropertyEditor.js';
-import { 
-  UndoManager, 
-  AddComponentCommand, 
-  DeleteComponentCommand, 
-  ConnectWireCommand, 
-  DisconnectWireCommand 
+import {
+  UndoManager,
+  AddComponentCommand,
+  DeleteComponentCommand,
+  ConnectWireCommand,
+  DisconnectWireCommand
 } from '../utils/UndoManager.js';
+import { NodePositionCache } from '../utils/NodePositionCache.js';
 import { GRID_SIZE } from '../config.js';
 
 export class Canvas {
@@ -61,7 +62,7 @@ export class Canvas {
     this._drawGrid();
     this._updateTransform();
 
-    // Batched wire redraw
+    // Performance: batch wire redraws
     this._redrawRequested = false;
     this._scheduleRedraw = () => {
       if (!this._redrawRequested) {
@@ -72,6 +73,22 @@ export class Canvas {
         });
       }
     };
+
+    // Cached connector positions (invalidates on zoom/pan/move)
+    this.positionCache = new NodePositionCache(this.element, this.panOffset, this.scale);
+
+    // Override _updateTransform to also update cache
+    const originalUpdateTransform = this._updateTransform;
+    this._updateTransform = () => {
+      originalUpdateTransform.call(this);
+      this.positionCache.setTransform(this.panOffset, this.scale);
+    };
+
+    // Accessibility
+    this.element.setAttribute('role', 'region');
+    this.element.setAttribute('aria-label', 'Circuit canvas');
+    this.element.setAttribute('tabindex', '0');  // focusable
+    this._focusedComponentIndex = -1;
 
     this._bindEvents();
     this._bindTouchEvents();
@@ -122,7 +139,6 @@ export class Canvas {
   _createToastContainer() {
     this.toastContainer = document.createElement('div');
     this.toastContainer.id = 'toast-container';
-    // Styling comes from CSS (toast.css)
     document.body.appendChild(this.toastContainer);
   }
 
@@ -131,11 +147,7 @@ export class Canvas {
     toast.className = `toast toast-${type}`;
     toast.textContent = message;
     this.toastContainer.appendChild(toast);
-
-    requestAnimationFrame(() => {
-      toast.classList.add('toast-show');
-    });
-
+    requestAnimationFrame(() => toast.classList.add('toast-show'));
     setTimeout(() => {
       toast.classList.remove('toast-show');
       setTimeout(() => toast.remove(), 300);
@@ -415,6 +427,7 @@ export class Canvas {
     window.addEventListener('mousemove', (e) => this._onMouseMove(e));
     window.addEventListener('mouseup', (e) => this._onMouseUp(e));
     this.element.addEventListener('contextmenu', (e) => this._onContextMenu(e));
+    this.element.addEventListener('keydown', (e) => this._onKeyDown(e)); // keyboard
   }
 
   _onMouseDown(e) {
@@ -492,6 +505,7 @@ export class Canvas {
         comp.updatePosition(nx, ny);
       });
       this.dragData.components.forEach(comp => this._updateWiresForComponent(comp));
+      this.positionCache.invalidate();  // positions changed
     }
     if (this.wiring && this.wiring.tempPath) {
       const fromPos = this._getNodePosition(this.wiring.fromNodeId);
@@ -517,7 +531,6 @@ export class Canvas {
       if (targetConn && targetConn.dataset.node) {
         const isTargetOutput = targetConn.classList.contains('output');
         const isSourceOutput = this.wiring.fromIsOutput;
-
         if (isSourceOutput && !isTargetOutput) {
           const fromComp = this.engine._findComponentByNode(this.wiring.fromNodeId);
           const toComp = this.engine._findComponentByNode(targetConn.dataset.node);
@@ -544,6 +557,81 @@ export class Canvas {
     }
     if (this.selectionRect) {
       this._endSelection(e);
+    }
+  }
+
+  /* ---------- Keyboard Events ---------- */
+  _onKeyDown(e) {
+    if (this.wiring) return;
+    const step = this.gridSize;
+    switch (e.key) {
+      case 'ArrowUp':
+        e.preventDefault();
+        this._moveSelectedComponents(0, -step);
+        break;
+      case 'ArrowDown':
+        e.preventDefault();
+        this._moveSelectedComponents(0, step);
+        break;
+      case 'ArrowLeft':
+        e.preventDefault();
+        this._moveSelectedComponents(-step, 0);
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        this._moveSelectedComponents(step, 0);
+        break;
+      case 'Tab':
+        e.preventDefault();
+        this._cycleComponentFocus(e.shiftKey ? -1 : 1);
+        break;
+      case 'Delete':
+      case 'Backspace':
+        if (this.selectedComponents.size > 0 || this.selectedWires.size > 0) {
+          e.preventDefault();
+          this.deleteSelectedComponents();
+        }
+        break;
+    }
+  }
+
+  _moveSelectedComponents(dx, dy) {
+    if (this.selectedComponents.size === 0) return;
+    this.selectedComponents.forEach(id => {
+      const comp = this.components.find(c => c.id === id);
+      if (comp) {
+        const nx = this._snap(comp.position.x + dx);
+        const ny = this._snap(comp.position.y + dy);
+        comp.updatePosition(nx, ny);
+      }
+    });
+    // Update wires for all selected
+    this.selectedComponents.forEach(id => {
+      const comp = this.components.find(c => c.id === id);
+      if (comp) this._updateWiresForComponent(comp);
+    });
+    this.positionCache.invalidate();
+    this._scheduleRedraw();
+  }
+
+  _cycleComponentFocus(direction) {
+    if (this.components.length === 0) return;
+    // Remove old focus
+    if (this._focusedComponentIndex >= 0) {
+      const prev = this.components[this._focusedComponentIndex];
+      if (prev && prev.element) prev.element.classList.remove('component-focused');
+    }
+    this._focusedComponentIndex += direction;
+    if (this._focusedComponentIndex >= this.components.length) this._focusedComponentIndex = 0;
+    if (this._focusedComponentIndex < 0) this._focusedComponentIndex = this.components.length - 1;
+
+    const comp = this.components[this._focusedComponentIndex];
+    if (comp && comp.element) {
+      comp.element.classList.add('component-focused');
+      this.clearSelection();
+      this.selectedComponents.add(comp.id);
+      comp.element.classList.add('selected');
+      comp.element.focus();
     }
   }
 
@@ -617,6 +705,7 @@ export class Canvas {
           comp.updatePosition(nx, ny);
         });
         this.dragData.components.forEach(comp => this._updateWiresForComponent(comp));
+        this.positionCache.invalidate();
       }
       if (this.wiring && this.wiring.tempPath) {
         const fromPos = this._getNodePosition(this.wiring.fromNodeId);
@@ -785,6 +874,9 @@ export class Canvas {
     component.render(this.scene);
     component.element.addEventListener('dragstart', (e) => { e.preventDefault(); e.stopPropagation(); });
     component.element.dataset.compId = component.id;
+    component.element.setAttribute('tabindex', '-1');
+    component.element.setAttribute('role', 'group');
+    component.element.setAttribute('aria-label', `${component.type} component`);
     component.element.querySelectorAll('.connector').forEach(dot => {
       dot.addEventListener('mousedown', (e) => {
         e.stopPropagation();
@@ -794,6 +886,7 @@ export class Canvas {
       });
     });
     this.components.push(component);
+    this.positionCache.invalidate();
   }
 
   _onComponentModified(comp) {
@@ -802,6 +895,9 @@ export class Canvas {
     comp.element.draggable = false;
     comp.element.addEventListener('dragstart', (e) => { e.preventDefault(); e.stopPropagation(); });
     comp.element.dataset.compId = comp.id;
+    comp.element.setAttribute('tabindex', '-1');
+    comp.element.setAttribute('role', 'group');
+    comp.element.setAttribute('aria-label', `${comp.type} component`);
     comp.element.querySelectorAll('.connector').forEach(dot => {
       dot.addEventListener('mousedown', (e) => {
         e.stopPropagation();
@@ -827,6 +923,7 @@ export class Canvas {
     this.components = this.components.filter(c => c.id !== compId);
     this.selectedComponents.delete(compId);
     this._updateJunctions();
+    this.positionCache.invalidate();
   }
 
   _deleteWire(visualWireId) {
@@ -835,6 +932,7 @@ export class Canvas {
     this.engine.disconnect(wire.engineId);
     if (wire.element) wire.element.remove();
     this.wires = this.wires.filter(w => w.id !== visualWireId);
+    this._updateJunctions();
   }
 
   _removeVisualWireByEngineId(engineId) {
@@ -842,6 +940,7 @@ export class Canvas {
     if (wire) {
       if (wire.element) wire.element.remove();
       this.wires = this.wires.filter(w => w.engineId !== engineId);
+      this._updateJunctions();
     }
   }
 
@@ -904,14 +1003,7 @@ export class Canvas {
   }
 
   _getNodePosition(nodeId) {
-    const dot = this.element.querySelector(`[data-node="${nodeId}"]`);
-    if (!dot) return { x: 0, y: 0 };
-    const canvasRect = this.element.getBoundingClientRect();
-    const dotRect = dot.getBoundingClientRect();
-    return {
-      x: (dotRect.left + dotRect.width/2 - canvasRect.left - this.panOffset.x) / this.scale,
-      y: (dotRect.top + dotRect.height/2 - canvasRect.top - this.panOffset.y) / this.scale
-    };
+    return this.positionCache.getPosition(nodeId);
   }
 
   _updateWiresForComponent(comp) {
@@ -949,5 +1041,6 @@ export class Canvas {
       if (wire.element) wire.element.remove();
     });
     this.wires = [];
+    this.positionCache.invalidate();
   }
 }

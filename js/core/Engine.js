@@ -1,7 +1,8 @@
+import { Circuit } from './Circuit.js';
+
 export class Engine {
   constructor() {
-    this.components = new Map();
-    this.wires = [];
+    this.circuit = new Circuit();   // components + wires
     this.queue = new Set();
     this.running = false;
     this.speed = 200;
@@ -11,8 +12,17 @@ export class Engine {
     this._processing = false;
   }
 
+  /** Access components (map) */
+  get components() {
+    return this.circuit.components;
+  }
+  /** Access wires (array) */
+  get wires() {
+    return this.circuit.wires;
+  }
+
   addComponent(component) {
-    this.components.set(component.id, component);
+    this.circuit.addComponent(component);
     if (component.type === 'Clock') {
       this.clocks.add(component);
     }
@@ -23,7 +33,7 @@ export class Engine {
         origCompute();
         this.schedulePropagation(component);
       };
-      component.isWrapped = true;   // <-- set flag to prevent double-wrapping
+      component.isWrapped = true;
     }
   }
 
@@ -34,11 +44,12 @@ export class Engine {
       comp.stop();
       this.clocks.delete(comp);
     }
+    // Remove associated wires from circuit
     const wiresToRemove = this.wires.filter(w =>
       w.from.componentId === compId || w.to.componentId === compId
     );
     wiresToRemove.forEach(w => this.disconnect(w.id));
-    this.components.delete(compId);
+    this.circuit.removeComponent(compId);
   }
 
   connect(fromNodeId, toNodeId, forceWireId = null) {
@@ -48,29 +59,32 @@ export class Engine {
     
     if (fromComp.id === toComp.id) {
       document.dispatchEvent(new CustomEvent('simulation-error', { detail: 'Cannot connect a component to itself!' }));
-      return null;   // <-- returns null on self-connection
+      return null;
     }
     
     const toInput = toComp.inputs.find(inp => inp.id === toNodeId);
     if (!toInput) throw new Error('Input node not found');
-    
     const fromOutput = fromComp.outputs.find(o => o.id === fromNodeId);
     if (!fromOutput) throw new Error('From node is not an output');
 
+    // Remove existing wire if input already connected
     if (toInput.connectedTo) {
       const oldWireIndex = this.wires.findIndex(w => w.to.nodeId === toNodeId);
       if (oldWireIndex !== -1) {
         const oldWire = this.wires[oldWireIndex];
-        this.wires.splice(oldWireIndex, 1);
+        this.circuit.removeWire(oldWire.id);
         document.dispatchEvent(new CustomEvent('wire-removed', { detail: { wireId: oldWire.id } }));
       }
     }
 
     toInput.connectedTo = { componentId: fromComp.id, nodeId: fromNodeId };
     const wireId = forceWireId || `wire_${Date.now()}_${Math.random()}`;
-    const wire = { id: wireId, from: { componentId: fromComp.id, nodeId: fromNodeId },
-                  to: { componentId: toComp.id, nodeId: toNodeId } };
-    this.wires.push(wire);
+    const wire = {
+      id: wireId,
+      from: { componentId: fromComp.id, nodeId: fromNodeId },
+      to: { componentId: toComp.id, nodeId: toNodeId }
+    };
+    this.circuit.addWire(wire);
     this._propagateFrom(fromComp);
     return wireId;
   }
@@ -84,7 +98,7 @@ export class Engine {
       const input = toComp.inputs.find(inp => inp.id === wire.to.nodeId);
       if (input) input.connectedTo = null;
     }
-    this.wires.splice(index, 1);
+    this.circuit.removeWire(wireId);
     return true;
   }
 
@@ -108,7 +122,7 @@ export class Engine {
 
       for (const { comp, nextState } of updates) {
         comp.applyNextState(nextState);
-
+        // Propagate to downstream
         for (let i = 0; i < comp.outputs.length; i++) {
           const out = comp.outputs[i];
           const connectedWires = this.wires.filter(w => w.from.nodeId === out.id);
@@ -145,9 +159,7 @@ export class Engine {
   run() {
     if (this.running) return;
     this.running = true;
-    for (const clk of this.clocks) {
-      clk.start();
-    }
+    for (const clk of this.clocks) clk.start();
     this.intervalId = setInterval(() => this.step(), this.speed);
   }
 
@@ -156,9 +168,7 @@ export class Engine {
     this.running = false;
     clearInterval(this.intervalId);
     this.intervalId = null;
-    for (const clk of this.clocks) {
-      clk.stop();
-    }
+    for (const clk of this.clocks) clk.stop();
   }
 
   reset() {
@@ -189,5 +199,27 @@ export class Engine {
   _propagateFrom(comp) {
     this.queue.add(comp);
     if (!this._processing) this._processQueue();
+  }
+
+  /** Replace internal circuit with a loaded one (used by Serializer) */
+  loadCircuit(circuit) {
+    this.stop();
+    this.circuit = circuit;
+    this.clocks.clear();
+    for (const comp of this.components.values()) {
+      if (comp.type === 'Clock') this.clocks.add(comp);
+      // Ensure computeOutput is wrapped for each loaded component
+      if (!comp.isWrapped) {
+        const origCompute = comp.computeOutput.bind(comp);
+        comp.computeOutput = () => {
+          origCompute();
+          this.schedulePropagation(comp);
+        };
+        comp.isWrapped = true;
+      }
+    }
+    this.reset();
+    this.step();
+    if (this.onUpdate) this.onUpdate();
   }
 }

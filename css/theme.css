@@ -44,6 +44,42 @@
   --z-header: 20;
   --z-context-menu: 1000;
   --z-modal: 2000;
+
+  /* new design tokens for components */
+  --connector-border: #999;
+  --connector-size: 10px;
+  --wire-high-color: #00cc66;
+  --wire-neutral-color: #888;
+  --gate-bg: var(--color-surface);
+  --gate-body-color: var(--color-text);
+  --gate-border: 1px solid var(--color-border);
+  --gate-shadow: var(--shadow-sm);
+  --gate-highlight-border: #4ec9b0;
+  --gate-highlight-shadow: 0 0 8px rgba(78,201,176,0.5);
+  --component-selected-outline: 2px solid var(--color-accent);
+  --component-selected-shadow: 0 0 8px var(--color-accent);
+  --led-off-fill: #333;
+  --led-off-stroke: #666;
+  --led-on-fill: #ff4444;
+  --led-on-stroke: #ff8888;
+  --led-glow: drop-shadow(0 0 6px rgba(255,0,0,0.8));
+  --switch-on-bg: var(--color-accent);
+  --probe-high: #4ec9b0;
+  --probe-low: #f44747;
+  --probe-z: #888;
+  --truth-table-header-bg: var(--color-surface-alt);
+  --truth-table-header-color: var(--color-accent);
+  --truth-table-row-alt: rgba(255,255,255,0.03);
+  --toast-info-bg: var(--color-surface-alt);
+  --toast-info-color: var(--color-text);
+  --toast-info-border: 1px solid var(--color-border);
+  --toast-success-bg: var(--color-success);
+  --toast-success-color: #fff;
+  --toast-error-bg: var(--color-danger);
+  --toast-error-color: #fff;
+  --toast-warning-bg: #f9a825;
+  --toast-warning-color: #1e1e1e;
+  --toast-shadow: 0 2px 8px rgba(0,0,0,0.3);
 }
 
 [data-theme="light"] {
@@ -67,6 +103,91 @@
   --shadow-lg: 0 6px 12px rgba(0,0,0,0.15);
 
   --grid-dot-color: rgba(0,0,0,0.15);
+
+  --gate-bg: var(--color-surface);
+  --gate-body-color: var(--color-text);
+  --gate-border: 1px solid var(--color-border);
+  --gate-shadow: var(--shadow-sm);
+  --gate-highlight-border: #4ec9b0;
+  --gate-highlight-shadow: 0 0 8px rgba(78,201,176,0.5);
+  --component-selected-outline: 2px solid var(--color-accent);
+  --component-selected-shadow: 0 0 8px var(--color-accent);
+  --led-off-fill: #333;
+  --led-off-stroke: #666;
+  --led-on-fill: #ff4444;
+  --led-on-stroke: #ff8888;
+  --led-glow: drop-shadow(0 0 6px rgba(255,0,0,0.8));
+  --switch-on-bg: var(--color-accent);
+  --probe-high: #4ec9b0;
+  --probe-low: #f44747;
+  --probe-z: #888;
+  --truth-table-header-bg: var(--color-surface-alt);
+  --truth-table-header-color: var(--color-accent);
+  --truth-table-row-alt: rgba(0,0,0,0.03);
+  --toast-info-bg: var(--color-surface-alt);
+  --toast-info-color: var(--color-text);
+  --toast-info-border: 1px solid var(--color-border);
+  --toast-success-bg: var(--color-success);
+  --toast-success-color: #fff;
+  --toast-error-bg: var(--color-danger);
+  --toast-error-color: #fff;
+  --toast-warning-bg: #f9a825;
+  --toast-warning-color: #1e1e1e;
+  --toast-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+/* High Contrast Theme */
+[data-theme="high-contrast"] {
+  --color-bg: #000;
+  --color-surface: #111;
+  --color-surface-alt: #222;
+  --color-border: #fff;
+  --color-text: #fff;
+  --color-text-muted: #ccc;
+  --color-accent: #ff0;
+  --color-accent-hover: #ff0;
+  --color-danger: #f00;
+  --color-success: #0f0;
+  --gradient-surface: none;
+  --gradient-header: none;
+  --gradient-toolbar: none;
+  --shadow-sm: 0 0 0 1px #fff;
+  --shadow-md: 0 0 0 2px #fff;
+  --shadow-lg: 0 0 0 3px #fff;
+  --grid-dot-color: #fff;
+  --connector-border: #fff;
+  --wire-neutral-color: #fff;
+  --wire-high-color: #0f0;
+  --gate-bg: #000;
+  --gate-body-color: #fff;
+  --gate-border: 2px solid #fff;
+  --gate-shadow: 0 0 0 1px #fff;
+  --gate-highlight-border: #0f0;
+  --gate-highlight-shadow: 0 0 0 2px #0f0;
+  --component-selected-outline: 2px solid #ff0;
+  --component-selected-shadow: 0 0 0 2px #ff0;
+  --led-off-fill: #000;
+  --led-off-stroke: #fff;
+  --led-on-fill: #ff0;
+  --led-on-stroke: #fff;
+  --led-glow: drop-shadow(0 0 6px #ff0);
+  --switch-on-bg: #ff0;
+  --probe-high: #0f0;
+  --probe-low: #f00;
+  --probe-z: #fff;
+  --truth-table-header-bg: #222;
+  --truth-table-header-color: #ff0;
+  --truth-table-row-alt: #333;
+  --toast-info-bg: #000;
+  --toast-info-color: #fff;
+  --toast-info-border: 2px solid #fff;
+  --toast-success-bg: #000;
+  --toast-success-color: #0f0;
+  --toast-error-bg: #000;
+  --toast-error-color: #f00;
+  --toast-warning-bg: #000;
+  --toast-warning-color: #ff0;
+  --toast-shadow: 0 0 0 2px #fff;
 }
 
 .grid-dot {
