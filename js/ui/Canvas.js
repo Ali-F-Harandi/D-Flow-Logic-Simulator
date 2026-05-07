@@ -32,7 +32,6 @@ export class Canvas {
     this.minScale = 0.2;
     this.maxScale = 4;
 
-    // Inner transformable container – must fill the canvas-container
     this.scene = document.createElement('div');
     this.scene.id = 'canvas-scene';
     this.scene.style.position = 'absolute';
@@ -53,7 +52,7 @@ export class Canvas {
     this.panStart = null;
 
     this.selectedComponents = new Set();
-    this.selectedWires = new Set();  // Track selected wires
+    this.selectedWires = new Set();
     this.selectionRect = null;
     this.selectionStart = null;
 
@@ -61,15 +60,26 @@ export class Canvas {
     this._drawGrid();
     this._updateTransform();
 
+    // ----- Wire redraw batching with requestAnimationFrame -----
+    this._redrawRequested = false;            // flag to avoid duplicate RAFs
+    this._scheduleRedraw = () => {
+      if (!this._redrawRequested) {
+        this._redrawRequested = true;
+        requestAnimationFrame(() => {
+          this._performRedraw();
+          this._redrawRequested = false;
+        });
+      }
+    };
+
     this._bindEvents();
     this._bindTouchEvents();
     this._bindZoomAndPan();
 
     eventBus.on('component-created', (comp) => this.addComponent(comp));
     eventBus.on('component-modified', (comp) => this._onComponentModified(comp));
-    engine.onUpdate = () => this._redrawWires();
-    
-    // Touch‑initiated drops from the sidebar
+    engine.onUpdate = () => this._scheduleRedraw();   // batched redraw
+
     eventBus.on('canvas-touch-drop', ({ type, pageX, pageY }) => {
       const pos = this._canvasCoords({ pageX, pageY });
       this._placeComponent(type, pos);
@@ -77,13 +87,13 @@ export class Canvas {
 
     this._setupDrop();
 
-    // Listen for wire-removed events from Engine (orphan wire cleanup)
     document.addEventListener('wire-removed', (e) => {
       const wireId = e.detail.wireId;
       const wire = this.wires.find(w => w.engineId === wireId);
       if (wire) {
         if (wire.element) wire.element.remove();
         this.wires = this.wires.filter(w => w.engineId !== wireId);
+        this._updateJunctions();               // clean up junction dots
       }
     });
 
@@ -95,20 +105,15 @@ export class Canvas {
         e.preventDefault();
         this.undoManager.redo();
       } else if (e.ctrlKey && e.key === 'c') {
-        // Copy selected components
         this._copySelected();
       } else if (e.ctrlKey && e.key === 'v') {
-        // Paste copied components
         this._pasteCopied();
       } else if (e.key === 'Escape') {
         this.clearSelection();
       }
     });
 
-    // Create toast container
     this._createToastContainer();
-
-    // Clipboard for copy/paste
     this._clipboard = null;
   }
 
@@ -552,9 +557,8 @@ export class Canvas {
         const isTargetOutput = targetConn.classList.contains('output');
         const isSourceOutput = this.wiring.fromIsOutput;
 
-        // Allow wiring: output→input OR input→output
         if (isSourceOutput && !isTargetOutput) {
-          // output → input (standard)
+          // output → input
           const fromComp = this.engine._findComponentByNode(this.wiring.fromNodeId);
           const toComp = this.engine._findComponentByNode(targetConn.dataset.node);
           if (fromComp && toComp && fromComp.id === toComp.id) {
@@ -563,7 +567,7 @@ export class Canvas {
             this._completeConnection(this.wiring.fromNodeId, targetConn.dataset.node);
           }
         } else if (!isSourceOutput && isTargetOutput) {
-          // input → output (reverse: swap direction)
+          // input → output (reverse)
           const fromComp = this.engine._findComponentByNode(targetConn.dataset.node);
           const toComp = this.engine._findComponentByNode(this.wiring.fromNodeId);
           if (fromComp && toComp && fromComp.id === toComp.id) {
@@ -649,6 +653,20 @@ export class Canvas {
       }
     };
 
+    const cleanup = () => {
+      clearTimeout(longPressTimer);
+      if (this.dragData) {
+        this.dragData = null;
+        this.isDragging = false;
+      }
+      if (this.wiring && this.wiring.tempPath) {
+        this._cancelWiring();
+      }
+      if (this.selectionRect) {
+        this._endSelection(null);
+      }
+    };
+
     const handleTouchEnd = (e) => {
       clearTimeout(longPressTimer);
       if (this.dragData) {
@@ -677,6 +695,7 @@ export class Canvas {
     this.element.addEventListener('touchstart', handleTouchStart, { passive: false });
     this.element.addEventListener('touchmove', handleTouchMove, { passive: false });
     this.element.addEventListener('touchend', handleTouchEnd);
+    this.element.addEventListener('touchcancel', cleanup);   // <-- cancel cleanup
   }
 
   _startDrag(comp, mx, my) {
@@ -850,6 +869,7 @@ export class Canvas {
     });
     this.components = this.components.filter(c => c.id !== compId);
     this.selectedComponents.delete(compId);
+    this._updateJunctions();   // <-- fix junction dots after removal
   }
 
   _deleteWire(visualWireId) {
@@ -885,9 +905,8 @@ export class Canvas {
 
   _completeConnection(fromNodeId, toNodeId) {
     const cmd = new ConnectWireCommand(this.engine, this, fromNodeId, toNodeId);
-    this.undoManager.execute(cmd);
-    // Check if the connection was rejected (returns null)
-    if (!this.undoManager.undoStack[this.undoManager.undoStack.length - 1]) {
+    const success = this.undoManager.execute(cmd);   // returns true/false
+    if (!success) {
       this.showToast('Connection failed', 'error');
     }
   }
@@ -913,11 +932,7 @@ export class Canvas {
     this._addVisualWire(engineId, fromNodeId, toNodeId);
   }
 
-  /**
-   * Show junction dots on output connectors that fan out to multiple wires.
-   */
   _updateJunctions() {
-    // Count wires per output node
     const outputFanout = {};
     this.wires.forEach(w => {
       const fromId = w.fromNode.nodeId;
@@ -953,7 +968,7 @@ export class Canvas {
     });
   }
 
-  _redrawWires() {
+  _performRedraw() {
     this.wires.forEach(wire => {
       wire.updatePath((nodeId) => this._getNodePosition(nodeId));
       const sourceComp = this.engine._findComponentByNode(wire.fromNode.nodeId);
