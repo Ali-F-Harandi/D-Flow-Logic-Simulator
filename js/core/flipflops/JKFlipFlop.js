@@ -8,26 +8,31 @@ export class JKFlipFlop extends Component {
     this._state = { Q: false, nQ: true };
   }
 
-  computeOutput() {
+  computeNextState() {
     const j = this.inputs[0].value;
     const k = this.inputs[1].value;
     const clk = this.inputs[2].value;
+    let nextQ = this._state.Q;
+    let nextNQ = this._state.nQ;
     if (clk && !this._prevClk) {
-      if (j && !k) { this._state.Q = true; this._state.nQ = false; }
-      else if (!j && k) { this._state.Q = false; this._state.nQ = true; }
-      else if (j && k) { this._state.Q = !this._state.Q; this._state.nQ = !this._state.Q; }
+      if (j && !k) { nextQ = true; nextNQ = false; }
+      else if (!j && k) { nextQ = false; nextNQ = true; }
+      else if (j && k) { nextQ = !this._state.Q; nextNQ = !this._state.Q; }
     }
-    this._prevClk = clk;
-    this.outputs[0].value = this._state.Q;
-    this.outputs[1].value = this._state.nQ;
-    this._updateConnectorStates();
-    return this.outputs;
+    return { outputs: [nextQ, nextNQ], prevClk: clk };
+  }
+
+  applyNextState(nextState) {
+    this._state.Q   = nextState.outputs[0];
+    this._state.nQ  = nextState.outputs[1];
+    this._prevClk   = nextState.prevClk;
+    super.applyNextState(nextState);
   }
 
   getProperties() { return []; }
 
   render(container) {
-    const H = 5 * this.GRID;  // 100
+    const H = 5 * this.GRID;
     const el = document.createElement('div');
     el.className = 'component flipflop jk-ff';
     el.style.width = `${4 * this.GRID}px`;

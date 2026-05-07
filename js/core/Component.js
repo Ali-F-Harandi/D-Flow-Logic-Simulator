@@ -23,11 +23,38 @@ export class Component {
   setInputValue(index, value) {
     if (this.inputs[index]) {
       this.inputs[index].value = value;
-      this.computeOutput();
+      this.computeOutput();   // triggers scheduling via Engine wrapper
     }
   }
 
-  computeOutput() { /* override */ }
+  /**
+   * Default computeOutput – uses two‑phase methods for consistency.
+   * Override only computeNextState (and optionally applyNextState) in subclasses.
+   */
+  computeOutput() {
+    const ns = this.computeNextState();
+    this.applyNextState(ns);
+    return this.outputs;
+  }
+
+  /**
+   * Compute the next output values WITHOUT modifying the component.
+   * Returns { outputs: [val0, val1, ...], ... extra state }
+   */
+  computeNextState() {
+    return { outputs: this.outputs.map(o => o.value) };
+  }
+
+  /**
+   * Apply the result of computeNextState to outputs and internal state.
+   */
+  applyNextState(nextState) {
+    const { outputs } = nextState;
+    for (let i = 0; i < this.outputs.length; i++) {
+      this.outputs[i].value = outputs[i];
+    }
+    this._updateConnectorStates();
+  }
 
   getProperties() { return []; }
   setProperty(name, value) { return false; }
@@ -52,7 +79,7 @@ export class Component {
   _updateBorderState() {
     if (!this.element) return;
     if (this.outputs.length > 0 && this.outputs.every(o => o.value === true)) {
-      this.element.style.borderColor = '#4ec9b0';   // green when all outputs high
+      this.element.style.borderColor = '#4ec9b0';
       this.element.style.boxShadow = '0 0 8px rgba(78,201,176,0.5)';
     } else {
       this.element.style.borderColor = 'var(--color-border)';

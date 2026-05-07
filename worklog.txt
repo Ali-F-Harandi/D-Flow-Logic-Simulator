@@ -202,3 +202,25 @@ Changes
     - Infinite Loop Feedback: Engine now dispatches a custom 'simulation-error' event
       when propagation exceeds max iterations. Toolbar listens and displays the error
       for 3 seconds before restoring normal status.
+
+[Beta-2] – 2026-05-07 (Project Structure & Z‑Index Centralisation)
+    - Moved components into sub‑folders: gates/, io/, chips/ (empty).
+    - ComponentFactory.js now auto‑registers components via an array; getCategory still works.
+
+[Beta-2] – 2026-05-07 (Project Structure & Z‑Index Centralisation)
+    - Moved components into sub‑folders: gates/, io/, chips/ (empty).
+    - Added static type, label, category to every component class.
+    - Centralised z‑index values in theme.css (--z-context-menu, --z-modal, etc.).
+    - ContextMenu and PropertyEditor now use the CSS variables instead of hardcoded numbers.
+
+[Beta-3] – 2026-05-07
+    - Implemented JSON export/import (Serializer.js) for full circuit state.
+    - Added Save/Load buttons to header (localStorage), plus Export/Import file buttons.
+    - Sidebar drag‑and‑drop now works on both mouse and touch (touch‑drag creates a ghost element and emits canvas-touch-drop event).
+    - Canvas infinite size with zoom in/out (mouse wheel, pinch) and panning (middle‑mouse or Ctrl+drag).
+    - Multi‑selection: Shift+click toggles, Shift+drag rectangle selects multiple components.
+    - Delete key removes selected components.
+    - Grid remains visible and scales with zoom.
+    - Dropped components clamped to visible viewport to prevent off‑screen placement.
+    - Fixed minor import bug (AddComponentCommand not found).
+    Known issues: none.

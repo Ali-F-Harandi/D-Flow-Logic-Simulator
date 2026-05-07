@@ -8,24 +8,29 @@ export class DFlipFlop extends Component {
     this._state = { Q: false, nQ: true };
   }
 
-  computeOutput() {
+  computeNextState() {
     const d = this.inputs[0].value;
     const clk = this.inputs[1].value;
+    let nextQ = this._state.Q;
+    let nextNQ = this._state.nQ;
     if (clk && !this._prevClk) {
-      this._state.Q = d;
-      this._state.nQ = !d;
+      nextQ = d;
+      nextNQ = !d;
     }
-    this._prevClk = clk;
-    this.outputs[0].value = this._state.Q;
-    this.outputs[1].value = this._state.nQ;
-    this._updateConnectorStates();
-    return this.outputs;
+    return { outputs: [nextQ, nextNQ], prevClk: clk };
+  }
+
+  applyNextState(nextState) {
+    this._state.Q   = nextState.outputs[0];
+    this._state.nQ  = nextState.outputs[1];
+    this._prevClk   = nextState.prevClk;
+    super.applyNextState(nextState);
   }
 
   getProperties() { return []; }
 
   render(container) {
-    const H = 4 * this.GRID;  // 80
+    const H = 4 * this.GRID;
     const el = document.createElement('div');
     el.className = 'component flipflop d-ff';
     el.style.width = `${4 * this.GRID}px`;

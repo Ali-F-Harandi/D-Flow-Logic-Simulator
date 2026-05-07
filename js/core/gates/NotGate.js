@@ -6,16 +6,14 @@ export class NotGate extends Component {
     super(id, 'NOT', 1, 1);
   }
 
-  computeOutput() {
-    this.outputs[0].value = !this.inputs[0].value;
-    this._updateConnectorStates();
-    return this.outputs;
+  computeNextState() {
+    return { outputs: [!this.inputs[0].value] };
   }
 
   getProperties() { return []; }
 
   render(container) {
-    const H = 3 * this.GRID;  // 60px
+    const H = 3 * this.GRID;
     const el = document.createElement('div');
     el.className = 'component gate not-gate';
     el.style.width = `${4 * this.GRID}px`;

@@ -50,25 +50,22 @@ export class DeleteComponentCommand {
     this.engine = engine;
     this.canvas = canvas;
     this.component = component;
-    this.savedWires = []; // each: { wireId, fromNodeId, toNodeId }
+    this.savedWires = [];
   }
   execute() {
-    // Save wires to restore later
     const relatedWires = this.engine.wires.filter(w =>
       w.from.componentId === this.component.id || w.to.componentId === this.component.id
     );
     this.savedWires = relatedWires.map(w => ({
-      wireId: w.id,              // store original ID
+      wireId: w.id,
       fromNodeId: w.from.nodeId,
       toNodeId: w.to.nodeId
     }));
     this.canvas._deleteComponent(this.component.id);
   }
   undo() {
-    // Re-add component
     this.engine.addComponent(this.component);
     this.canvas.addComponent(this.component);
-    // Re-connect wires with original IDs
     this.savedWires.forEach(w => {
       const engineId = this.engine.connect(w.fromNodeId, w.toNodeId, w.wireId);
       this.canvas._reconnectWire(engineId, w.fromNodeId, w.toNodeId);
@@ -90,7 +87,6 @@ export class ConnectWireCommand {
     this.canvas._addVisualWire(this.engineWireId, this.fromNodeId, this.toNodeId);
   }
   undo() {
-    // Disconnect and remove visual
     this.engine.disconnect(this.engineWireId);
     this.canvas._removeVisualWireByEngineId(this.engineWireId);
   }
@@ -101,8 +97,8 @@ export class DisconnectWireCommand {
   constructor(engine, canvas, wireId) {
     this.engine = engine;
     this.canvas = canvas;
-    this.wireId = wireId; // engine wire ID
-    this.wireData = null; // stored for undo
+    this.wireId = wireId;
+    this.wireData = null;
   }
   execute() {
     const wire = this.engine.wires.find(w => w.id === this.wireId);
@@ -117,7 +113,6 @@ export class DisconnectWireCommand {
   }
   undo() {
     if (this.wireData) {
-      // Reconnect with original ID (it was saved as engine wire ID)
       const engineId = this.engine.connect(this.wireData.fromNodeId, this.wireData.toNodeId, this.wireId);
       this.canvas._reconnectWire(engineId, this.wireData.fromNodeId, this.wireData.toNodeId);
     }

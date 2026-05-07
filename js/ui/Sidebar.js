@@ -10,11 +10,11 @@ export class Sidebar {
     this._populateAllTypes();
     this._renderComponentList();
     this._bindSearch();
+    this._dragData = null;
+    this._dragGhost = null;
 
-    // Toggle on event
     this.eventBus.on('toggle-sidebar', () => this.toggle());
 
-    // Close sidebar when clicking outside (mobile overlay)
     window.addEventListener('click', (e) => {
       if (
         this.element.classList.contains('open') &&
@@ -48,13 +48,9 @@ export class Sidebar {
     const input = this.element.querySelector('#sidebar-search');
     input.addEventListener('input', (e) => {
       const q = e.target.value.toLowerCase();
-      if (q === '') {
-        this.filteredTypes = [...this.allTypes];
-      } else {
-        this.filteredTypes = this.allTypes.filter(t =>
-          t.label.toLowerCase().includes(q) || t.category.toLowerCase().includes(q)
-        );
-      }
+      this.filteredTypes = q === ''
+        ? [...this.allTypes]
+        : this.allTypes.filter(t => t.label.toLowerCase().includes(q) || t.category.toLowerCase().includes(q));
       this._renderComponentList();
     });
   }
@@ -65,7 +61,7 @@ export class Sidebar {
 
     const categories = ['Gates', 'Flip-Flops', 'Inputs', 'Outputs', 'Other'];
     const grouped = {};
-    categories.forEach(cat => grouped[cat] = []);
+    categories.forEach(cat => (grouped[cat] = []));
 
     this.filteredTypes.forEach(t => {
       const cat = t.category || 'Other';
@@ -73,11 +69,8 @@ export class Sidebar {
       grouped[cat].push(t);
     });
 
-    for (const cat in grouped) {
-      if (grouped[cat].length === 0) delete grouped[cat];
-    }
-
     Object.entries(grouped).forEach(([category, items]) => {
+      if (items.length === 0) return;
       const groupDiv = document.createElement('div');
       groupDiv.className = 'component-group';
 
@@ -95,10 +88,16 @@ export class Sidebar {
         item.textContent = label;
         item.draggable = true;
         item.dataset.type = type;
+
         item.addEventListener('dragstart', (e) => {
           e.dataTransfer.setData('text/plain', type);
           e.dataTransfer.effectAllowed = 'move';
         });
+
+        item.addEventListener('touchstart', (e) => this._onTouchStart(e, type, label));
+        item.addEventListener('touchmove', (e) => this._onTouchMove(e));
+        item.addEventListener('touchend', (e) => this._onTouchEnd(e));
+
         itemsDiv.appendChild(item);
       });
 
@@ -109,6 +108,61 @@ export class Sidebar {
     if (list.children.length === 0) {
       list.innerHTML = '<div class="no-results">No components found</div>';
     }
+  }
+
+  /* ========== Touch Drag Handlers ========== */
+  _onTouchStart(e, type, label) {
+    if (e.touches.length > 1) return;
+    const touch = e.touches[0];
+    this._dragData = { type };
+    this._dragGhost = document.createElement('div');
+    this._dragGhost.className = 'component-item sidebar-drag-ghost';
+    this._dragGhost.textContent = label;
+    this._dragGhost.style.position = 'fixed';
+    this._dragGhost.style.left = (touch.clientX - 50) + 'px';
+    this._dragGhost.style.top = (touch.clientY - 15) + 'px';
+    this._dragGhost.style.zIndex = '9999';
+    this._dragGhost.style.pointerEvents = 'none';
+    this._dragGhost.style.boxShadow = '0 4px 10px rgba(0,0,0,0.5)';
+    document.body.appendChild(this._dragGhost);
+  }
+
+  _onTouchMove(e) {
+    if (!this._dragData) return;
+    e.preventDefault();
+    const touch = e.touches[0];
+    if (this._dragGhost) {
+      this._dragGhost.style.left = (touch.clientX - 50) + 'px';
+      this._dragGhost.style.top = (touch.clientY - 15) + 'px';
+    }
+  }
+
+  _onTouchEnd(e) {
+    if (!this._dragData) return;
+    const touch = e.changedTouches[0];
+    const canvas = document.getElementById('canvas-container');
+    if (canvas) {
+      const rect = canvas.getBoundingClientRect();
+      if (
+        touch.clientX >= rect.left &&
+        touch.clientX <= rect.right &&
+        touch.clientY >= rect.top &&
+        touch.clientY <= rect.bottom
+      ) {
+        // Emit the correct event for the canvas to convert coordinates
+        this.eventBus.emit('canvas-touch-drop', {
+          type: this._dragData.type,
+          pageX: touch.pageX,   // page coordinates
+          pageY: touch.pageY
+        });
+      }
+    }
+
+    if (this._dragGhost) {
+      this._dragGhost.remove();
+      this._dragGhost = null;
+    }
+    this._dragData = null;
   }
 
   toggle() {

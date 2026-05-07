@@ -14,7 +14,7 @@ export class ContextMenu {
     this.menu.style.border = '1px solid var(--color-border)';
     this.menu.style.borderRadius = '4px';
     this.menu.style.boxShadow = 'var(--shadow-md)';
-    this.menu.style.zIndex = '1000';
+    this.menu.style.zIndex = 'var(--z-context-menu)';   // <-- changed
     this.menu.style.display = 'none';
     document.body.appendChild(this.menu);
   }

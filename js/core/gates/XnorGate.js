@@ -6,11 +6,9 @@ export class XnorGate extends Component {
     super(id, 'XNOR', inputsCount, 1);
   }
 
-  computeOutput() {
+  computeNextState() {
     const parity = this.inputs.reduce((acc, inp) => acc ^ (inp.value ? 1 : 0), 0);
-    this.outputs[0].value = parity === 0;
-    this._updateConnectorStates();
-    return this.outputs;
+    return { outputs: [parity === 0] };
   }
 
   getProperties() {

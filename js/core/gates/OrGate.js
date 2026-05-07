@@ -6,11 +6,9 @@ export class OrGate extends Component {
     super(id, 'OR', inputsCount, 1);
   }
 
-  computeOutput() {
+  computeNextState() {
     const out = this.inputs.some(inp => inp.value);
-    this.outputs[0].value = out;
-    this._updateConnectorStates();
-    return this.outputs;
+    return { outputs: [out] };
   }
 
   getProperties() {

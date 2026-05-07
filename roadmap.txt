@@ -46,12 +46,11 @@ Beta-2 – Advanced Components & Features
 - Right‑click context menu: delete component, edit properties (number of inputs for gates).
 - Undo/Redo stack for add, delete, connect operations.
 
-Beta-3 – Data & Command Line
+Beta-3 – Data & ui
 - JSON export: serialize entire circuit (components positions, connections, properties).
 - JSON import: load and rebuild circuit, restore simulation state.
-- Command line interface (toggled with `~` key): overlay terminal.
-  Commands: new, save, load, add <type>, delete <id>, connect <id1.pin> to <id2.pin>, run <cycles>, step, reset, list, undo, redo, export, import.
-- CLI autocomplete suggestions.
+- Canvas infinate size, zoom in/out, paning canvas , touch input most works too
+- top toolbar, muti select components,shurtcut (delets/ new / ...)
 - Save circuit state to localStorage as “project”; offer to restore on reload.
 
 Release-1 – Polish & QA

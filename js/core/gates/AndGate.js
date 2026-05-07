@@ -6,11 +6,9 @@ export class AndGate extends Component {
     super(id, 'AND', inputsCount, 1);
   }
 
-  computeOutput() {
+  computeNextState() {
     const out = this.inputs.every(inp => inp.value);
-    this.outputs[0].value = out;
-    this._updateConnectorStates();
-    return this.outputs;
+    return { outputs: [out] };
   }
 
   getProperties() {
@@ -38,10 +36,10 @@ export class AndGate extends Component {
 
   render(container) {
     const n = this.inputs.length;
-    const H = Math.max(3, n + 1) * this.GRID; // height in grid units
+    const H = Math.max(3, n + 1) * this.GRID;
     const el = document.createElement('div');
     el.className = 'component gate and-gate';
-    el.style.width = `${4 * this.GRID}px`;   // 80
+    el.style.width = `${4 * this.GRID}px`;
     el.style.height = `${H}px`;
     el.style.left = `${this.position.x}px`;
     el.style.top = `${this.position.y}px`;
@@ -57,19 +55,10 @@ export class AndGate extends Component {
     body.style.transform = 'translate(-50%, -50%)';
     el.appendChild(body);
 
-    // Input connectors – centres at y = 20, 40, 60, …
     for (let i = 0; i < n; i++) {
-      el.appendChild(this._createConnectorBlock(
-        this.inputs[i], true, `I${i}`,
-        (i + 1) * this.GRID
-      ));
+      el.appendChild(this._createConnectorBlock(this.inputs[i], true, `I${i}`, (i + 1) * this.GRID));
     }
-
-    // Output connector – centre at same Y as first input (20)
-    el.appendChild(this._createConnectorBlock(
-      this.outputs[0], false, 'O0',
-      this.GRID
-    ));
+    el.appendChild(this._createConnectorBlock(this.outputs[0], false, 'O0', this.GRID));
 
     container.appendChild(el);
     this.element = el;

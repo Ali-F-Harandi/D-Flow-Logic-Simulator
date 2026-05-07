@@ -18,7 +18,7 @@ export class PropertyEditor {
     this.dialog.style.border = '1px solid var(--color-border)';
     this.dialog.style.borderRadius = '8px';
     this.dialog.style.padding = '20px';
-    this.dialog.style.zIndex = '2000';
+    this.dialog.style.zIndex = 'var(--z-modal)';        // <-- changed
     this.dialog.style.display = 'none';
     this.dialog.style.color = 'var(--color-text)';
     this.dialog.style.fontSize = '14px';

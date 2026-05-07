@@ -8,18 +8,23 @@ export class TFlipFlop extends Component {
     this._state = { Q: false, nQ: true };
   }
 
-  computeOutput() {
+  computeNextState() {
     const t = this.inputs[0].value;
     const clk = this.inputs[1].value;
+    let nextQ = this._state.Q;
+    let nextNQ = this._state.nQ;
     if (clk && !this._prevClk && t) {
-      this._state.Q = !this._state.Q;
-      this._state.nQ = !this._state.Q;
+      nextQ = !this._state.Q;
+      nextNQ = !this._state.Q;   // note: nQ is complement of Q
     }
-    this._prevClk = clk;
-    this.outputs[0].value = this._state.Q;
-    this.outputs[1].value = this._state.nQ;
-    this._updateConnectorStates();
-    return this.outputs;
+    return { outputs: [nextQ, nextNQ], prevClk: clk };
+  }
+
+  applyNextState(nextState) {
+    this._state.Q   = nextState.outputs[0];
+    this._state.nQ  = nextState.outputs[1];
+    this._prevClk   = nextState.prevClk;
+    super.applyNextState(nextState);
   }
 
   render(container) {

@@ -6,10 +6,8 @@ export class NandGate extends Component {
     super(id, 'NAND', inputsCount, 1);
   }
 
-  computeOutput() {
-    this.outputs[0].value = !this.inputs.every(inp => inp.value);
-    this._updateConnectorStates();
-    return this.outputs;
+  computeNextState() {
+    return { outputs: [!this.inputs.every(inp => inp.value)] };
   }
 
   getProperties() {

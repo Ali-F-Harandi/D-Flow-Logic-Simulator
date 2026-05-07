@@ -6,10 +6,8 @@ export class NorGate extends Component {
     super(id, 'NOR', inputsCount, 1);
   }
 
-  computeOutput() {
-    this.outputs[0].value = !this.inputs.some(inp => inp.value);
-    this._updateConnectorStates();
-    return this.outputs;
+  computeNextState() {
+    return { outputs: [!this.inputs.some(inp => inp.value)] };
   }
 
   getProperties() {

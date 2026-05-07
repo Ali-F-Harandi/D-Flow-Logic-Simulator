@@ -75,31 +75,44 @@ export class Engine {
   _processQueue() {
     const maxIterations = 10000;
     let iterations = 0;
+
     while (this.queue.size > 0 && iterations < maxIterations) {
-      const comp = this.queue.values().next().value;
-      this.queue.delete(comp);
-      for (const out of comp.outputs) {
-        const connectedWires = this.wires.filter(w => w.from.nodeId === out.id);
-        for (const w of connectedWires) {
-          const targetComp = this.components.get(w.to.componentId);
-          if (targetComp) {
-            const inputIndex = targetComp.inputs.findIndex(inp => inp.id === w.to.nodeId);
-            if (inputIndex >= 0) {
-              targetComp.setInputValue(inputIndex, out.value);
+      // ---------- Phase 1: Evaluate ----------
+      const updates = [];
+      for (const comp of this.queue) {
+        const nextState = comp.computeNextState();
+        updates.push({ comp, nextState });
+      }
+      this.queue.clear();
+
+      // ---------- Phase 2: Apply & Propagate ----------
+      for (const { comp, nextState } of updates) {
+        comp.applyNextState(nextState);
+
+        // Push new values to downstream components via connected wires
+        for (let i = 0; i < comp.outputs.length; i++) {
+          const out = comp.outputs[i];
+          const connectedWires = this.wires.filter(w => w.from.nodeId === out.id);
+          for (const w of connectedWires) {
+            const targetComp = this.components.get(w.to.componentId);
+            if (targetComp) {
+              const inputIndex = targetComp.inputs.findIndex(inp => inp.id === w.to.nodeId);
+              if (inputIndex >= 0) {
+                targetComp.setInputValue(inputIndex, out.value);
+              }
             }
           }
         }
       }
       iterations++;
     }
+
     if (iterations >= maxIterations) {
       console.warn('Propagation loop detected – circuit may be unstable.');
       this.queue.clear();
-      // Dispatch a custom event on the document for UI feedback
-      document.dispatchEvent(new CustomEvent('simulation-error', {
-        detail: 'Infinite Loop Detected! Circuit Unstable.'
-      }));
+      document.dispatchEvent(new CustomEvent('simulation-error', { detail: 'Infinite Loop Detected! Circuit Unstable.' }));
     }
+
     if (this.onUpdate) this.onUpdate();
   }
 

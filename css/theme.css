@@ -39,6 +39,14 @@
 
   /* Grid dot colour for dark mode */
   --grid-dot-color: rgba(255,255,255,0.15);
+
+  /* Z‑Index Scale */
+  --z-canvas-wires: 1;
+  --z-canvas-components: 2;
+  --z-sidebar: 10;
+  --z-header: 20;
+  --z-context-menu: 1000;
+  --z-modal: 2000;
 }
 
 [data-theme="light"] {
