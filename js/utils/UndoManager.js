@@ -5,9 +5,12 @@ export class UndoManager {
   }
 
   execute(command) {
-    command.execute();
-    this.undoStack.push(command);
-    this.redoStack = [];
+    const success = command.execute();      // <-- now returns boolean
+    if (success) {
+      this.undoStack.push(command);
+      this.redoStack = [];
+    }
+    return success;   // forward result
   }
 
   undo() {
@@ -37,6 +40,7 @@ export class AddComponentCommand {
   execute() {
     this.engine.addComponent(this.component);
     this.canvas.addComponent(this.component);
+    return true;   // always succeeds
   }
   undo() {
     this.canvas._deleteComponent(this.component.id);
@@ -44,7 +48,7 @@ export class AddComponentCommand {
   }
 }
 
-// Command for deleting a component (saves wires to reconnect on undo)
+// Command for deleting a component
 export class DeleteComponentCommand {
   constructor(engine, canvas, component) {
     this.engine = engine;
@@ -62,6 +66,7 @@ export class DeleteComponentCommand {
       toNodeId: w.to.nodeId
     }));
     this.canvas._deleteComponent(this.component.id);
+    return true;
   }
   undo() {
     this.engine.addComponent(this.component);
@@ -73,7 +78,7 @@ export class DeleteComponentCommand {
   }
 }
 
-// Command for wiring
+// Command for wiring (now returns success)
 export class ConnectWireCommand {
   constructor(engine, canvas, fromNodeId, toNodeId) {
     this.engine = engine;
@@ -84,11 +89,17 @@ export class ConnectWireCommand {
   }
   execute() {
     this.engineWireId = this.engine.connect(this.fromNodeId, this.toNodeId);
-    this.canvas._addVisualWire(this.engineWireId, this.fromNodeId, this.toNodeId);
+    if (this.engineWireId) {
+      this.canvas._addVisualWire(this.engineWireId, this.fromNodeId, this.toNodeId);
+      return true;   // success
+    }
+    return false;    // connection refused
   }
   undo() {
-    this.engine.disconnect(this.engineWireId);
-    this.canvas._removeVisualWireByEngineId(this.engineWireId);
+    if (this.engineWireId) {
+      this.engine.disconnect(this.engineWireId);
+      this.canvas._removeVisualWireByEngineId(this.engineWireId);
+    }
   }
 }
 
@@ -110,6 +121,7 @@ export class DisconnectWireCommand {
     }
     this.engine.disconnect(this.wireId);
     this.canvas._removeVisualWireByEngineId(this.wireId);
+    return true;   // always succeeds
   }
   undo() {
     if (this.wireData) {
