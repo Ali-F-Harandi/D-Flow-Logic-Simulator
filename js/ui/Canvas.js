@@ -2,12 +2,12 @@ import { Wire } from '../core/Wire.js';
 import { generateId } from '../utils/IdGenerator.js';
 import { ContextMenu } from './ContextMenu.js';
 import { PropertyEditor } from './PropertyEditor.js';
-import {
-  UndoManager,
-  AddComponentCommand,
-  DeleteComponentCommand,
-  ConnectWireCommand,
-  DisconnectWireCommand
+import { 
+  UndoManager, 
+  AddComponentCommand, 
+  DeleteComponentCommand, 
+  ConnectWireCommand, 
+  DisconnectWireCommand 
 } from '../utils/UndoManager.js';
 import { NodePositionCache } from '../utils/NodePositionCache.js';
 import { GRID_SIZE } from '../config.js';
@@ -59,10 +59,23 @@ export class Canvas {
     this.selectionStart = null;
 
     this.gridSize = GRID_SIZE;
+
+    // 1. Create the position cache early
+    this.positionCache = new NodePositionCache(this.element, this.panOffset, this.scale);
+
+    // 2. Override _updateTransform so it updates the cache as well
+    const originalUpdateTransform = this._updateTransform.bind(this);
+    this._updateTransform = () => {
+      originalUpdateTransform();
+      this.positionCache.setTransform(this.panOffset, this.scale);
+      this._updateGridOffset();   // for grid pattern offset
+    };
+
+    // 3. Now call _updateTransform (it will call the overridden version)
     this._drawGrid();
     this._updateTransform();
 
-    // Performance: batch wire redraws
+    // Batched wire redraw
     this._redrawRequested = false;
     this._scheduleRedraw = () => {
       if (!this._redrawRequested) {
@@ -74,20 +87,10 @@ export class Canvas {
       }
     };
 
-    // Cached connector positions (invalidates on zoom/pan/move)
-    this.positionCache = new NodePositionCache(this.element, this.panOffset, this.scale);
-
-    // Override _updateTransform to also update cache
-    const originalUpdateTransform = this._updateTransform;
-    this._updateTransform = () => {
-      originalUpdateTransform.call(this);
-      this.positionCache.setTransform(this.panOffset, this.scale);
-    };
-
     // Accessibility
     this.element.setAttribute('role', 'region');
     this.element.setAttribute('aria-label', 'Circuit canvas');
-    this.element.setAttribute('tabindex', '0');  // focusable
+    this.element.setAttribute('tabindex', '0');
     this._focusedComponentIndex = -1;
 
     this._bindEvents();
@@ -192,6 +195,14 @@ export class Canvas {
     this.scene.style.transform = `translate(${this.panOffset.x}px, ${this.panOffset.y}px) scale(${this.scale})`;
   }
 
+  _updateGridOffset() {
+    const pattern = this.svgLayer.querySelector('#grid-pattern');
+    if (!pattern) return;
+    const size = this.gridSize * this.scale;
+    pattern.setAttribute('x', -this.panOffset.x % size);
+    pattern.setAttribute('y', -this.panOffset.y % size);
+  }
+
   _canvasCoords(eOrCoords) {
     const rect = this.element.getBoundingClientRect();
     if (eOrCoords.clientX !== undefined && eOrCoords.clientY !== undefined) {
@@ -252,9 +263,16 @@ export class Canvas {
   _updateGrid() {
     const pattern = this.svgLayer.querySelector('#grid-pattern');
     if (pattern) {
-      pattern.setAttribute('width', this.gridSize * this.scale);
-      pattern.setAttribute('height', this.gridSize * this.scale);
+      const size = this.gridSize * this.scale;
+      pattern.setAttribute('width', size);
+      pattern.setAttribute('height', size);
+      const dot = pattern.querySelector('circle');
+      if (dot) {
+        dot.setAttribute('cx', size / 2);
+        dot.setAttribute('cy', size / 2);
+      }
     }
+    this._updateGridOffset();
   }
 
   /* ---------- Panning ---------- */
@@ -392,15 +410,18 @@ export class Canvas {
     const svg = this.svgLayer;
     let pattern = svg.querySelector('#grid-pattern');
     if (pattern) pattern.remove();
+
     pattern = document.createElementNS('http://www.w3.org/2000/svg', 'pattern');
     pattern.id = 'grid-pattern';
-    pattern.setAttribute('width', this.gridSize);
-    pattern.setAttribute('height', this.gridSize);
     pattern.setAttribute('patternUnits', 'userSpaceOnUse');
+    const size = this.gridSize * this.scale;
+    pattern.setAttribute('width', size);
+    pattern.setAttribute('height', size);
+
     const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    dot.setAttribute('cx', this.gridSize);
-    dot.setAttribute('cy', this.gridSize);
-    dot.setAttribute('r', 1);
+    dot.setAttribute('cx', size / 2);
+    dot.setAttribute('cy', size / 2);
+    dot.setAttribute('r', 1.5);
     dot.classList.add('grid-dot');
     pattern.appendChild(dot);
     svg.appendChild(pattern);
@@ -427,7 +448,7 @@ export class Canvas {
     window.addEventListener('mousemove', (e) => this._onMouseMove(e));
     window.addEventListener('mouseup', (e) => this._onMouseUp(e));
     this.element.addEventListener('contextmenu', (e) => this._onContextMenu(e));
-    this.element.addEventListener('keydown', (e) => this._onKeyDown(e)); // keyboard
+    this.element.addEventListener('keydown', (e) => this._onKeyDown(e));
   }
 
   _onMouseDown(e) {
@@ -505,7 +526,7 @@ export class Canvas {
         comp.updatePosition(nx, ny);
       });
       this.dragData.components.forEach(comp => this._updateWiresForComponent(comp));
-      this.positionCache.invalidate();  // positions changed
+      this.positionCache.invalidate();
     }
     if (this.wiring && this.wiring.tempPath) {
       const fromPos = this._getNodePosition(this.wiring.fromNodeId);
@@ -605,7 +626,6 @@ export class Canvas {
         comp.updatePosition(nx, ny);
       }
     });
-    // Update wires for all selected
     this.selectedComponents.forEach(id => {
       const comp = this.components.find(c => c.id === id);
       if (comp) this._updateWiresForComponent(comp);
@@ -616,7 +636,6 @@ export class Canvas {
 
   _cycleComponentFocus(direction) {
     if (this.components.length === 0) return;
-    // Remove old focus
     if (this._focusedComponentIndex >= 0) {
       const prev = this.components[this._focusedComponentIndex];
       if (prev && prev.element) prev.element.classList.remove('component-focused');

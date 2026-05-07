@@ -78,7 +78,9 @@ export class Header {
     this.themeToggleBtn.addEventListener('click', () => {
       const root = document.documentElement;
       const current = root.getAttribute('data-theme') || 'dark';
-      const next = current === 'dark' ? 'light' : 'dark';
+      const order = ['dark', 'light', 'high-contrast'];
+      const nextIndex = (order.indexOf(current) + 1) % order.length;
+      const next = order[nextIndex];
       root.setAttribute('data-theme', next);
       localStorage.setItem('logic-sim-theme', next);
       this._updateThemeIcon(next);
@@ -160,7 +162,8 @@ export class Header {
 
   _updateThemeIcon(theme) {
     if (this.themeToggleBtn) {
-      this.themeToggleBtn.innerHTML = theme === 'dark' ? '🌙' : '☀️';
+      const icons = { dark: '🌙', light: '☀️', 'high-contrast': '⬛' };
+      this.themeToggleBtn.innerHTML = icons[theme] || '🌙';
     }
   }
 
