@@ -15,7 +15,7 @@ export class Clock extends Component {
     const ms = 1000 / (this.frequency * 2);
     this.intervalId = setInterval(() => {
       this.outputs[0].value = !this.outputs[0].value;
-      this.computeOutput();
+      this.computeOutput();   // triggers engine-wrapped propagation
     }, ms);
   }
 
@@ -30,9 +30,16 @@ export class Clock extends Component {
     if (this.running) { this.stop(); this.start(); }
   }
 
-  computeOutput() {
+  computeNextState() {
+    // Return current output value (already toggled by start())
+    return { outputs: [this.outputs[0].value] };
+  }
+
+  applyNextState(nextState) {
+    for (let i = 0; i < this.outputs.length; i++) {
+      this.outputs[i].value = nextState.outputs[i];
+    }
     this._updateConnectorStates();
-    return this.outputs;
   }
 
   reset() {

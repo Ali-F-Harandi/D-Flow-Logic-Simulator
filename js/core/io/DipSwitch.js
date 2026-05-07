@@ -11,10 +11,22 @@ export class DipSwitch extends Component {
     this.outputs[0].value = !this.outputs[0].value;
     this._updateAppearance();
     this._updateConnectorStates();
-    this.computeOutput();
+    this.computeOutput();   // triggers engine-wrapped propagation
   }
 
-  computeOutput() { return this.outputs; }
+  computeNextState() {
+    // Return the current output value (already toggled by toggle())
+    return { outputs: [this.outputs[0].value] };
+  }
+
+  applyNextState(nextState) {
+    // Apply outputs and update visuals
+    for (let i = 0; i < this.outputs.length; i++) {
+      this.outputs[i].value = nextState.outputs[i];
+    }
+    this._updateAppearance();
+    this._updateConnectorStates();
+  }
 
   reset() {
     this.outputs[0].value = false;

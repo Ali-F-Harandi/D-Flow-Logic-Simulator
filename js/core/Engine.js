@@ -42,10 +42,21 @@ export class Engine {
     const fromComp = this._findComponentByNode(fromNodeId);
     const toComp = this._findComponentByNode(toNodeId);
     if (!fromComp || !toComp) throw new Error('Node not found');
+    
+    // Prevent self-connection (output to own input)
+    if (fromComp.id === toComp.id) {
+      document.dispatchEvent(new CustomEvent('simulation-error', { detail: 'Cannot connect a component to itself!' }));
+      return null;
+    }
+    
     const toInput = toComp.inputs.find(inp => inp.id === toNodeId);
     if (!toInput) throw new Error('Input node not found');
+    
+    // Verify fromNodeId is actually an output
+    const fromOutput = fromComp.outputs.find(o => o.id === fromNodeId);
+    if (!fromOutput) throw new Error('From node is not an output');
 
-    // FIX: Remove orphan wire if input is already connected
+    // Remove orphan wire if input is already connected
     if (toInput.connectedTo) {
       const oldWireIndex = this.wires.findIndex(w => w.to.nodeId === toNodeId);
       if (oldWireIndex !== -1) {

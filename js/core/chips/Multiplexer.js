@@ -15,10 +15,11 @@ export class Multiplexer extends Component {
   }
 
   getProperties() { return []; }
+  setProperty(name, value) { return false; }
 
   render(container) {
     const H = 4 * this.GRID;
-    const W = 4 * this.GRID;
+    const W = 5 * this.GRID;    // wider for labels
     const el = document.createElement('div');
     el.className = 'component gate mux';
     el.style.width = `${W}px`;
@@ -40,7 +41,9 @@ export class Multiplexer extends Component {
     el.appendChild(this._createConnectorBlock(this.inputs[0], true, 'A', 1 * this.GRID));
     el.appendChild(this._createConnectorBlock(this.inputs[1], true, 'B', 2 * this.GRID));
     el.appendChild(this._createConnectorBlock(this.inputs[2], true, 'S', 3 * this.GRID));
-    el.appendChild(this._createConnectorBlock(this.outputs[0], false, 'Out', 1 * this.GRID));
+    // Output centered vertically
+    const outY = 2 * this.GRID;
+    el.appendChild(this._createConnectorBlock(this.outputs[0], false, 'Out', outY));
 
     container.appendChild(el);
     this.element = el;

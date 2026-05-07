@@ -6,10 +6,15 @@ export class SevenSegment extends Component {
     super(id, '7Seg', 5, 0);   // I0-I3 = BCD, I4 = DP
   }
 
-  computeOutput() {
+  computeNextState() {
+    // No outputs to compute, but we need to signal that display should update
+    return { outputs: [] };
+  }
+
+  applyNextState(nextState) {
+    // No outputs to apply, but update visual based on current input values
     this._updateDisplay();
     this._updateConnectorStates();
-    return this.outputs;
   }
 
   setInputValue(index, value) {

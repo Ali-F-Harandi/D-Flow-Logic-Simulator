@@ -24,6 +24,7 @@ export class Header {
         <button class="header-btn stop-btn">⏹ Stop</button>
         <button class="header-btn step-btn">⏭ Step</button>
         <button class="header-btn reset-btn">↺ Reset</button>
+        <button class="header-btn zoom-fit-btn" title="Zoom to fit all components">⊞</button>
         <button class="header-btn save-btn" title="Save to localStorage">💾</button>
         <button class="header-btn load-btn" title="Restore last saved">📂</button>
         <button class="header-btn export-btn">📤 Export</button>
@@ -45,6 +46,7 @@ export class Header {
     this.loadBtn = this.element.querySelector('.load-btn');
     this.exportBtn = this.element.querySelector('.export-btn');
     this.importBtn = this.element.querySelector('.import-btn');
+    this.zoomFitBtn = this.element.querySelector('.zoom-fit-btn');
 
     this.runBtn.addEventListener('click', () => {
       this.engine.run();
@@ -60,6 +62,12 @@ export class Header {
     this.resetBtn.addEventListener('click', () => {
       this.engine.reset();
       this.eventBus.emit('simulation-status', 'stopped');
+    });
+
+    this.zoomFitBtn.addEventListener('click', () => {
+      if (this.canvas) {
+        this.canvas.zoomToFit();
+      }
     });
 
     this.eventBus.on('simulation-status', (status) => this._updateButtons(status));
@@ -80,23 +88,27 @@ export class Header {
     this.saveBtn.addEventListener('click', () => {
       const state = Serializer.exportState(this.engine);
       localStorage.setItem('logic-sim-project', JSON.stringify(state));
-      alert('Project saved to localStorage.');
+      if (this.canvas) this.canvas.showToast('Project saved!', 'success');
+      else alert('Project saved to localStorage.');
     });
 
     // Load
     this.loadBtn.addEventListener('click', () => {
       const saved = localStorage.getItem('logic-sim-project');
       if (!saved) {
-        alert('No saved project found.');
+        if (this.canvas) this.canvas.showToast('No saved project found', 'warning');
+        else alert('No saved project found.');
         return;
       }
       if (confirm('Load saved project? This will replace the current circuit.')) {
         try {
           const data = JSON.parse(saved);
           Serializer.importState(data, this.engine, this.canvas, this.factory);
+          if (this.canvas) this.canvas.showToast('Project loaded!', 'success');
         } catch (e) {
           console.error(e);
-          alert('Failed to load project.');
+          if (this.canvas) this.canvas.showToast('Failed to load project', 'error');
+          else alert('Failed to load project.');
         }
       }
     });
@@ -127,8 +139,10 @@ export class Header {
           try {
             const data = JSON.parse(ev.target.result);
             Serializer.importState(data, this.engine, this.canvas, this.factory);
+            if (this.canvas) this.canvas.showToast('Circuit imported!', 'success');
           } catch (err) {
-            alert('Invalid circuit file.');
+            if (this.canvas) this.canvas.showToast('Invalid circuit file', 'error');
+            else alert('Invalid circuit file.');
             console.error(err);
           }
         };

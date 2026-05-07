@@ -53,6 +53,7 @@ export class Canvas {
     this.panStart = null;
 
     this.selectedComponents = new Set();
+    this.selectedWires = new Set();  // Track selected wires
     this.selectionRect = null;
     this.selectionStart = null;
 
@@ -93,10 +94,112 @@ export class Canvas {
       } else if (e.ctrlKey && e.key === 'y') {
         e.preventDefault();
         this.undoManager.redo();
+      } else if (e.ctrlKey && e.key === 'c') {
+        // Copy selected components
+        this._copySelected();
+      } else if (e.ctrlKey && e.key === 'v') {
+        // Paste copied components
+        this._pasteCopied();
       } else if (e.key === 'Escape') {
         this.clearSelection();
       }
     });
+
+    // Create toast container
+    this._createToastContainer();
+
+    // Clipboard for copy/paste
+    this._clipboard = null;
+  }
+
+  /* ---------- Toast Notifications ---------- */
+  _createToastContainer() {
+    this.toastContainer = document.createElement('div');
+    this.toastContainer.id = 'toast-container';
+    this.toastContainer.style.position = 'fixed';
+    this.toastContainer.style.bottom = '60px';
+    this.toastContainer.style.right = '20px';
+    this.toastContainer.style.zIndex = '9999';
+    this.toastContainer.style.display = 'flex';
+    this.toastContainer.style.flexDirection = 'column-reverse';
+    this.toastContainer.style.gap = '8px';
+    this.toastContainer.style.pointerEvents = 'none';
+    document.body.appendChild(this.toastContainer);
+  }
+
+  showToast(message, type = 'info', duration = 2500) {
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.textContent = message;
+    toast.style.padding = '8px 16px';
+    toast.style.borderRadius = '6px';
+    toast.style.fontSize = '13px';
+    toast.style.fontWeight = '500';
+    toast.style.pointerEvents = 'auto';
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateX(20px)';
+    toast.style.transition = 'opacity 0.3s, transform 0.3s';
+
+    if (type === 'error') {
+      toast.style.background = '#d32f2f';
+      toast.style.color = '#fff';
+    } else if (type === 'warning') {
+      toast.style.background = '#f9a825';
+      toast.style.color = '#1e1e1e';
+    } else if (type === 'success') {
+      toast.style.background = '#2e7d32';
+      toast.style.color = '#fff';
+    } else {
+      toast.style.background = 'var(--color-surface-alt)';
+      toast.style.color = 'var(--color-text)';
+      toast.style.border = '1px solid var(--color-border)';
+    }
+
+    this.toastContainer.appendChild(toast);
+    requestAnimationFrame(() => {
+      toast.style.opacity = '1';
+      toast.style.transform = 'translateX(0)';
+    });
+
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateX(20px)';
+      setTimeout(() => toast.remove(), 300);
+    }, duration);
+  }
+
+  /* ---------- Copy / Paste ---------- */
+  _copySelected() {
+    const ids = Array.from(this.selectedComponents);
+    if (ids.length === 0) return;
+    this._clipboard = ids.map(id => {
+      const comp = this.components.find(c => c.id === id);
+      return comp ? { type: comp.type, dx: comp.position.x, dy: comp.position.y } : null;
+    }).filter(Boolean);
+    if (this._clipboard.length > 0) {
+      // Normalize positions relative to top-left
+      const minX = Math.min(...this._clipboard.map(c => c.dx));
+      const minY = Math.min(...this._clipboard.map(c => c.dy));
+      this._clipboard.forEach(c => { c.dx -= minX; c.dy -= minY; });
+      this.showToast(`Copied ${this._clipboard.length} component(s)`, 'success');
+    }
+  }
+
+  _pasteCopied() {
+    if (!this._clipboard || this._clipboard.length === 0) {
+      this.showToast('Nothing to paste', 'warning');
+      return;
+    }
+    const offsetX = 80;
+    const offsetY = 40;
+    this._clipboard.forEach(c => {
+      this.eventBus.emit('component-drop', {
+        type: c.type,
+        x: c.dx + offsetX,
+        y: c.dy + offsetY
+      });
+    });
+    this.showToast(`Pasted ${this._clipboard.length} component(s)`, 'success');
   }
 
   /* ---------- Transform Helpers ---------- */
@@ -127,6 +230,38 @@ export class Canvas {
     this.panOffset.x = centerX - (centerX - this.panOffset.x) * factor;
     this.panOffset.y = centerY - (centerY - this.panOffset.y) * factor;
     this.scale = newScale;
+    this._updateTransform();
+    this._redrawWires();
+    this._updateGrid();
+  }
+
+  /**
+   * Zoom to fit all components in view.
+   */
+  zoomToFit() {
+    if (this.components.length === 0) return;
+    const canvasRect = this.element.getBoundingClientRect();
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    this.components.forEach(comp => {
+      if (comp.element) {
+        minX = Math.min(minX, comp.position.x);
+        minY = Math.min(minY, comp.position.y);
+        maxX = Math.max(maxX, comp.position.x + comp.element.offsetWidth);
+        maxY = Math.max(maxY, comp.position.y + comp.element.offsetHeight);
+      }
+    });
+    if (minX === Infinity) return;
+    const padding = 60;
+    const contentW = maxX - minX + padding * 2;
+    const contentH = maxY - minY + padding * 2;
+    const scaleX = canvasRect.width / contentW;
+    const scaleY = canvasRect.height / contentH;
+    this.scale = Math.min(scaleX, scaleY, this.maxScale);
+    this.scale = Math.max(this.scale, this.minScale);
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+    this.panOffset.x = canvasRect.width / 2 - centerX * this.scale;
+    this.panOffset.y = canvasRect.height / 2 - centerY * this.scale;
     this._updateTransform();
     this._redrawWires();
     this._updateGrid();
@@ -210,6 +345,31 @@ export class Canvas {
       if (comp && comp.element) comp.element.classList.remove('selected');
     });
     this.selectedComponents.clear();
+    this._clearWireSelection();
+  }
+
+  _clearWireSelection() {
+    this.selectedWires.forEach(wireId => {
+      const wire = this.wires.find(w => w.id === wireId);
+      if (wire && wire.element) {
+        wire.element.classList.remove('wire-selected');
+        const visual = wire.element.querySelector('.wire-visual');
+        if (visual) visual.setAttribute('stroke-width', '2');
+      }
+    });
+    this.selectedWires.clear();
+  }
+
+  _selectWire(wireId) {
+    this._clearWireSelection();
+    this.clearSelection();
+    const wire = this.wires.find(w => w.id === wireId);
+    if (wire && wire.element) {
+      this.selectedWires.add(wireId);
+      wire.element.classList.add('wire-selected');
+      const visual = wire.element.querySelector('.wire-visual');
+      if (visual) visual.setAttribute('stroke-width', '4');
+    }
   }
 
   deleteSelectedComponents() {
@@ -222,6 +382,17 @@ export class Canvas {
       }
     });
     this.selectedComponents.clear();
+
+    // Also delete selected wires
+    const wireIds = Array.from(this.selectedWires);
+    wireIds.forEach(wireId => {
+      const wire = this.wires.find(w => w.id === wireId);
+      if (wire) {
+        const cmd = new DisconnectWireCommand(this.engine, this, wire.engineId);
+        this.undoManager.execute(cmd);
+      }
+    });
+    this.selectedWires.clear();
   }
 
   /* ---------- SVG & Grid ---------- */
@@ -319,6 +490,19 @@ export class Canvas {
           this.dragData.origins[c.id] = { x: c.position.x, y: c.position.y };
         });
       }
+    } else if (e.target.closest('g[data-wire-id]')) {
+      // Click on a wire - select it
+      const wireEl = e.target.closest('g[data-wire-id]');
+      const wireId = wireEl.dataset.wireId;
+      this._clearWireSelection();
+      this.clearSelection();
+      const wire = this.wires.find(w => w.id === wireId);
+      if (wire) {
+        this.selectedWires.add(wireId);
+        wireEl.classList.add('wire-selected');
+        const visual = wireEl.querySelector('.wire-visual');
+        if (visual) visual.setAttribute('stroke-width', '4');
+      }
     } else if (!e.target.closest('.connector')) {
       this._startSelection(e);
     }
@@ -371,12 +555,27 @@ export class Canvas {
         // Allow wiring: output→input OR input→output
         if (isSourceOutput && !isTargetOutput) {
           // output → input (standard)
-          this._completeConnection(this.wiring.fromNodeId, targetConn.dataset.node);
+          const fromComp = this.engine._findComponentByNode(this.wiring.fromNodeId);
+          const toComp = this.engine._findComponentByNode(targetConn.dataset.node);
+          if (fromComp && toComp && fromComp.id === toComp.id) {
+            this.showToast('Cannot connect a component to itself!', 'error');
+          } else {
+            this._completeConnection(this.wiring.fromNodeId, targetConn.dataset.node);
+          }
         } else if (!isSourceOutput && isTargetOutput) {
           // input → output (reverse: swap direction)
-          this._completeConnection(targetConn.dataset.node, this.wiring.fromNodeId);
+          const fromComp = this.engine._findComponentByNode(targetConn.dataset.node);
+          const toComp = this.engine._findComponentByNode(this.wiring.fromNodeId);
+          if (fromComp && toComp && fromComp.id === toComp.id) {
+            this.showToast('Cannot connect a component to itself!', 'error');
+          } else {
+            this._completeConnection(targetConn.dataset.node, this.wiring.fromNodeId);
+          }
+        } else if (isSourceOutput && isTargetOutput) {
+          this.showToast('Cannot connect output to output', 'error');
+        } else {
+          this.showToast('Cannot connect input to input', 'error');
         }
-        // output→output and input→input are invalid, do nothing
       }
       this._cancelWiring();
     }
@@ -677,6 +876,7 @@ export class Canvas {
     path.setAttribute('stroke-width', '2');
     path.setAttribute('fill', 'none');
     path.setAttribute('pointer-events', 'none');
+    path.setAttribute('stroke-dasharray', '6,4');
     const fromPos = this._getNodePosition(nodeId);
     path.setAttribute('d', Wire.computePath(fromPos, fromPos));
     this.svgLayer.appendChild(path);
@@ -686,6 +886,10 @@ export class Canvas {
   _completeConnection(fromNodeId, toNodeId) {
     const cmd = new ConnectWireCommand(this.engine, this, fromNodeId, toNodeId);
     this.undoManager.execute(cmd);
+    // Check if the connection was rejected (returns null)
+    if (!this.undoManager.undoStack[this.undoManager.undoStack.length - 1]) {
+      this.showToast('Connection failed', 'error');
+    }
   }
 
   _cancelWiring() {
@@ -774,6 +978,7 @@ export class Canvas {
     });
     this.components = [];
     this.selectedComponents.clear();
+    this._clearWireSelection();
 
     // Remove all wire elements
     this.wires.forEach(wire => {

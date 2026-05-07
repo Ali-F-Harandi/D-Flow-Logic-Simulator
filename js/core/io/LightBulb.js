@@ -6,23 +6,29 @@ export class LightBulb extends Component {
     super(id, 'LightBulb', 1, 0);
   }
 
-  computeOutput() {
+  computeNextState() {
+    // No outputs to compute, but we need to signal that display should update
+    return { outputs: [] };
+  }
+
+  applyNextState(nextState) {
+    // No outputs to apply, but update visual based on current input values
     this._updateAppearance();
-    return this.outputs;
+    this._updateConnectorStates();
   }
 
   setInputValue(index, value) {
     if (this.inputs[index]) {
       this.inputs[index].value = value;
       this._updateAppearance();
-      // Don't call computeOutput here since there are no outputs to compute
-      // The Engine wrapper will handle propagation scheduling
+      this._updateConnectorStates();
     }
   }
 
   reset() {
     this.inputs.forEach(i => i.value = false);
     this._updateAppearance();
+    this._updateConnectorStates();
   }
 
   render(container) {

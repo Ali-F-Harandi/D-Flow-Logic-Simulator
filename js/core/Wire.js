@@ -8,6 +8,7 @@ export class Wire {
 
   /**
    * Shared path computation – also used by Canvas for preview wires.
+   * Improved routing with better backward/feedback loop handling.
    */
   static computePath(fromPos, toPos) {
     const startX = fromPos.x;
@@ -15,19 +16,34 @@ export class Wire {
     const endX = toPos.x;
     const endY = toPos.y;
 
-    if (endX >= startX - 10) {
-      // Standard Forward Routing (centered midpoint)
+    if (endX >= startX + 20) {
+      // Standard Forward Routing (centered midpoint with smooth corners)
       const midX = startX + (endX - startX) / 2;
+      return `M ${startX} ${startY} L ${midX} ${startY} L ${midX} ${endY} L ${endX} ${endY}`;
+    } else if (endX >= startX - 10) {
+      // Slightly backward – use wider arc
+      const midX = startX + 30;
+      const midX2 = endX - 30;
+      if (Math.abs(endY - startY) < 20) {
+        // Nearly same Y – go above
+        const arcY = Math.min(startY, endY) - 40;
+        return `M ${startX} ${startY} L ${midX} ${startY} L ${midX} ${arcY} L ${midX2} ${arcY} L ${midX2} ${endY} L ${endX} ${endY}`;
+      }
       return `M ${startX} ${startY} L ${midX} ${startY} L ${midX} ${endY} L ${endX} ${endY}`;
     } else {
       // Backward Routing (Feedback loop wrap-around)
-      const offset = 25;
-      const midY = startY + (endY - startY) / 2 + 50; // Drop it below the components
+      const offset = 40;
+      const midY = startY + (endY - startY) / 2;
+      // Determine if routing below or above is better
+      const routeBelow = true; // default: route below components
+      const clearY = routeBelow
+        ? Math.max(startY, endY) + offset + 30
+        : Math.min(startY, endY) - offset - 30;
 
       return `M ${startX} ${startY} ` +
              `L ${startX + offset} ${startY} ` +
-             `L ${startX + offset} ${midY} ` +
-             `L ${endX - offset} ${midY} ` +
+             `L ${startX + offset} ${clearY} ` +
+             `L ${endX - offset} ${clearY} ` +
              `L ${endX - offset} ${endY} ` +
              `L ${endX} ${endY}`;
     }

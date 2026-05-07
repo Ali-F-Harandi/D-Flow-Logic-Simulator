@@ -12,6 +12,19 @@ export class Serializer {
         connectedTo: inp.connectedTo ? { componentId: inp.connectedTo.componentId, nodeId: inp.connectedTo.nodeId } : null
       }));
       const outputStates = comp.outputs.map(o => ({ nodeId: o.id, value: o.value }));
+      
+      // Capture internal state for flip-flops and shift registers
+      let internalState = {};
+      if (comp._state !== undefined) {
+        internalState._state = Array.isArray(comp._state) ? [...comp._state] : { ...comp._state };
+      }
+      if (comp._prevClk !== undefined) {
+        internalState._prevClk = comp._prevClk;
+      }
+      if (comp.frequency !== undefined) {
+        internalState.frequency = comp.frequency;
+      }
+      
       components.push({
         id: comp.id,
         type: comp.type,
@@ -21,7 +34,8 @@ export class Serializer {
           return acc;
         }, {}),
         inputs: inputStates,
-        outputs: outputStates
+        outputs: outputStates,
+        internalState: Object.keys(internalState).length > 0 ? internalState : undefined
       });
     }
     const wires = engine.wires.map(w => ({
@@ -48,7 +62,7 @@ export class Serializer {
     const componentsData = JSON.parse(JSON.stringify(data.components));
     const wiresData = JSON.parse(JSON.stringify(data.wires));
 
-    // FIX: Clear canvas visual elements FIRST (before engine removes components)
+    // Clear canvas visual elements FIRST (before engine removes components)
     canvas.clearAll();
 
     // Remove all existing components from engine (this will also remove wires)
@@ -64,10 +78,24 @@ export class Serializer {
       const props = comp.getProperties();
       if (props) {
         props.forEach(prop => {
-          if (compData.properties.hasOwnProperty(prop.name)) {
+          if (compData.properties && compData.properties.hasOwnProperty(prop.name)) {
             comp.setProperty(prop.name, compData.properties[prop.name]);
           }
         });
+      }
+      // Restore internal state
+      if (compData.internalState) {
+        if (compData.internalState._state !== undefined) {
+          comp._state = Array.isArray(compData.internalState._state)
+            ? [...compData.internalState._state]
+            : { ...compData.internalState._state };
+        }
+        if (compData.internalState._prevClk !== undefined) {
+          comp._prevClk = compData.internalState._prevClk;
+        }
+        if (compData.internalState.frequency !== undefined && comp.setFrequency) {
+          comp.setFrequency(compData.internalState.frequency);
+        }
       }
       engine.addComponent(comp);
       canvas.addComponent(comp);
@@ -75,8 +103,28 @@ export class Serializer {
 
     // Restore connections
     for (const wire of wiresData) {
-      engine.connect(wire.from.nodeId, wire.to.nodeId, wire.id);
-      canvas._addVisualWire(wire.id, wire.from.nodeId, wire.to.nodeId);
+      const engineId = engine.connect(wire.from.nodeId, wire.to.nodeId, wire.id);
+      if (engineId) {
+        canvas._addVisualWire(engineId, wire.from.nodeId, wire.to.nodeId);
+      }
+    }
+
+    // Restore output values for I/O components (switches, clocks)
+    for (const compData of componentsData) {
+      if (compData.outputs) {
+        const comp = engine.components.get(compData.id);
+        if (comp) {
+          compData.outputs.forEach((outData, idx) => {
+            if (comp.outputs[idx]) {
+              comp.outputs[idx].value = outData.value;
+            }
+          });
+          // Update visual state for I/O components
+          if (typeof comp._updateAppearance === 'function') comp._updateAppearance();
+          if (typeof comp._updateDisplay === 'function') comp._updateDisplay();
+          if (typeof comp._updateConnectorStates === 'function') comp._updateConnectorStates();
+        }
+      }
     }
 
     // Restore simulation speed

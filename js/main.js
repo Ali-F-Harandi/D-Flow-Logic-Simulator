@@ -40,7 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
     panelManager.testBenchPanel.setOutputNode(nodeId);
   });
 
-  footer.setVersion('Beta-3');
+  footer.setVersion('Beta-4');
 
   // Auto‑restore saved project
   const saved = localStorage.getItem('logic-sim-project');
@@ -50,8 +50,10 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         const data = JSON.parse(saved);
         Serializer.importState(data, engine, canvas, factory);
+        canvas.showToast('Project restored from auto-save', 'info');
       } catch (err) {
         console.error('Failed to restore project.', err);
+        canvas.showToast('Failed to restore project', 'error');
       }
     }
   }

@@ -6,21 +6,29 @@ export class LogicProbe extends Component {
     super(id, 'Probe', 1, 0);
   }
 
-  computeOutput() {
+  computeNextState() {
+    // No outputs to compute, but we need to signal that display should update
+    return { outputs: [] };
+  }
+
+  applyNextState(nextState) {
+    // No outputs to apply, but update visual based on current input values
     this._updateDisplay();
-    return this.outputs;
+    this._updateConnectorStates();
   }
 
   setInputValue(index, value) {
     if (this.inputs[index]) {
       this.inputs[index].value = value;
       this._updateDisplay();
+      this._updateConnectorStates();
     }
   }
 
   reset() {
     this.inputs.forEach(i => i.value = false);
     this._updateDisplay();
+    this._updateConnectorStates();
   }
 
   render(container) {

@@ -18,10 +18,11 @@ export class FullAdder extends Component {
   }
 
   getProperties() { return []; }
+  setProperty(name, value) { return false; }
 
   render(container) {
     const H = 5 * this.GRID;   // 100px
-    const W = 4 * this.GRID;   // 80px
+    const W = 5 * this.GRID;   // 100px (wider for labels)
     const el = document.createElement('div');
     el.className = 'component gate full-adder';
     el.style.width = `${W}px`;
@@ -40,9 +41,11 @@ export class FullAdder extends Component {
     body.style.transform = 'translate(-50%, -50%)';
     el.appendChild(body);
 
+    // Input connectors on left: A at y=1grid, B at y=2grid, Cin at y=3grid
     el.appendChild(this._createConnectorBlock(this.inputs[0], true, 'A', 1 * this.GRID));
     el.appendChild(this._createConnectorBlock(this.inputs[1], true, 'B', 2 * this.GRID));
     el.appendChild(this._createConnectorBlock(this.inputs[2], true, 'Cin', 3 * this.GRID));
+    // Output connectors on right: Sum at y=1grid (aligned with A), Cout at y=3grid (aligned with Cin)
     el.appendChild(this._createConnectorBlock(this.outputs[0], false, 'Sum', 1 * this.GRID));
     el.appendChild(this._createConnectorBlock(this.outputs[1], false, 'Cout', 3 * this.GRID));
 

@@ -9,15 +9,28 @@ export class DipSwitch8 extends Component {
 
   toggleBit(bit) {
     this.outputs[bit].value = !this.outputs[bit].value;
+    this._updateAppearance();
     this._updateConnectorStates();
-    this.computeOutput();
+    this.computeOutput();   // triggers engine-wrapped propagation
   }
 
-  computeOutput() { return this.outputs; }
+  computeNextState() {
+    // Return current output values (already toggled by toggleBit())
+    return { outputs: this.outputs.map(o => o.value) };
+  }
+
+  applyNextState(nextState) {
+    // Apply outputs and update visuals
+    for (let i = 0; i < this.outputs.length; i++) {
+      this.outputs[i].value = nextState.outputs[i];
+    }
+    this._updateAppearance();
+    this._updateConnectorStates();
+  }
 
   reset() {
     this.outputs.forEach(o => o.value = false);
-    this._updateVisual();
+    this._updateAppearance();
     this._updateConnectorStates();
   }
 
