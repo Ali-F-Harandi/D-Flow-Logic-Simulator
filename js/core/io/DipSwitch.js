@@ -9,17 +9,19 @@ export class DipSwitch extends Component {
 
   toggle() {
     this.outputs[0].value = !this.outputs[0].value;
-    this._updateConnectorStates();
-    this.computeOutput();
+    this.computeOutput();   // triggers two‑phase + scheduling
   }
 
-  computeOutput() { return this.outputs; }
+  // Override computeNextState to return current output (no inputs)
+  computeNextState() {
+    return { outputs: [this.outputs[0].value] };
+  }
 
   render(container) {
-    const H = 3 * this.GRID; // 60
+    const H = 3 * this.GRID;
     const el = document.createElement('div');
     el.className = 'component dip-switch';
-    el.style.width = `${3 * this.GRID}px`;  // 60
+    el.style.width = `${3 * this.GRID}px`;
     el.style.height = `${H}px`;
     el.style.left = `${this.position.x}px`;
     el.style.top = `${this.position.y}px`;
@@ -55,7 +57,6 @@ export class DipSwitch extends Component {
     if (this.element) {
       const isOn = this.outputs[0].value === true;
       this.element.classList.toggle('on', isOn);
-      // Also change body text color for clarity
       const body = this.element.querySelector('.switch-body');
       if (body) {
         body.style.color = isOn ? '#ffffff' : 'var(--color-text)';

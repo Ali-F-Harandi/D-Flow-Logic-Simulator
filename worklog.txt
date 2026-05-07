@@ -224,3 +224,8 @@ Changes
     - Dropped components clamped to visible viewport to prevent off‑screen placement.
     - Fixed minor import bug (AddComponentCommand not found).
     Known issues: none.
+
+    [Beta-3] – 2026-05-07 (Critical Bugfixes)
+    - Fixed Bug 1.1: All flip‑flops now set nQ output to true on construction, matching internal state.
+    - Fixed Bug 1.2: Engine.connect() now removes the existing wire when overwriting a connection, preventing orphan wires.
+    - Fixed Bug 1.3: Added re‑entrant guard to _processQueue() (this._processing flag) so recursive calls cannot skip the iteration counter, preventing stack overflow from unstable circuits.

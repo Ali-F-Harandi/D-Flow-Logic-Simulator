@@ -59,7 +59,7 @@ export class Sidebar {
     const list = this.element.querySelector('.component-list');
     list.innerHTML = '';
 
-    const categories = ['Gates', 'Flip-Flops', 'Inputs', 'Outputs', 'Other'];
+    const categories = ['Gates', 'Flip-Flops', 'Chips', 'Inputs', 'Outputs', 'Other'];
     const grouped = {};
     categories.forEach(cat => (grouped[cat] = []));
 

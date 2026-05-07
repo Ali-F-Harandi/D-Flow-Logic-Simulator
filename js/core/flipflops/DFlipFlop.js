@@ -2,11 +2,12 @@ import { Component } from '../Component.js';
 
 export class DFlipFlop extends Component {
   static label = 'D Flip-Flop';
-  constructor(id) {
-    super(id, 'D', 2, 2);
-    this._prevClk = false;
-    this._state = { Q: false, nQ: true };
-  }
+constructor(id) {
+  super(id, 'D', 2, 2);
+  this._prevClk = false;
+  this._state = { Q: false, nQ: true };
+  this.outputs[1].value = true;   // nQ starts HIGH
+}
 
   computeNextState() {
     const d = this.inputs[0].value;

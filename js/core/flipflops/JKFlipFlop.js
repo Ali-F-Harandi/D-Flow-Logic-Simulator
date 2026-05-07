@@ -6,6 +6,7 @@ export class JKFlipFlop extends Component {
     super(id, 'JK', 3, 2);
     this._prevClk = false;
     this._state = { Q: false, nQ: true };
+    this.outputs[1].value = true;   // nQ starts HIGH
   }
 
   computeNextState() {
@@ -15,9 +16,12 @@ export class JKFlipFlop extends Component {
     let nextQ = this._state.Q;
     let nextNQ = this._state.nQ;
     if (clk && !this._prevClk) {
-      if (j && !k) { nextQ = true; nextNQ = false; }
+      if (j && !k) { nextQ = true;  nextNQ = false; }
       else if (!j && k) { nextQ = false; nextNQ = true; }
-      else if (j && k) { nextQ = !this._state.Q; nextNQ = !this._state.Q; }
+      else if (j && k) {
+        nextQ = !this._state.Q;      // toggle Q
+        nextNQ = this._state.Q;      // nQ = complement of the NEW Q (which is the old Q)
+      }
     }
     return { outputs: [nextQ, nextNQ], prevClk: clk };
   }

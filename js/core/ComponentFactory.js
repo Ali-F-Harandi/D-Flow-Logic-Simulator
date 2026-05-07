@@ -5,6 +5,9 @@ import { NandGate } from './gates/NandGate.js';
 import { NorGate } from './gates/NorGate.js';
 import { XorGate } from './gates/XorGate.js';
 import { XnorGate } from './gates/XnorGate.js';
+import { HalfAdder } from './chips/HalfAdder.js';
+import { FullAdder } from './chips/FullAdder.js';
+import { Multiplexer } from './chips/Multiplexer.js';
 import { DipSwitch } from './io/DipSwitch.js';
 import { DipSwitch8 } from './io/DipSwitch8.js';
 import { LightBulb } from './io/LightBulb.js';
@@ -15,6 +18,7 @@ import { SRFlipFlop } from './flipflops/SRFlipFlop.js';
 import { DFlipFlop } from './flipflops/DFlipFlop.js';
 import { JKFlipFlop } from './flipflops/JKFlipFlop.js';
 import { TFlipFlop } from './flipflops/TFlipFlop.js';
+import { ShiftRegister4 } from './flipflops/ShiftRegister4.js';
 import { generateId } from '../utils/IdGenerator.js';
 
 export class ComponentFactory {
@@ -27,6 +31,9 @@ export class ComponentFactory {
       'NOR': NorGate,
       'XOR': XorGate,
       'XNOR': XnorGate,
+      'HalfAdder': HalfAdder,
+      'FullAdder': FullAdder,
+      'Multiplexer': Multiplexer,
       'DipSwitch': DipSwitch,
       'DipSwitch8': DipSwitch8,
       'LightBulb': LightBulb,
@@ -36,7 +43,8 @@ export class ComponentFactory {
       'SR': SRFlipFlop,
       'D': DFlipFlop,
       'JK': JKFlipFlop,
-      'T': TFlipFlop
+      'T': TFlipFlop,
+      'ShiftRegister4': ShiftRegister4
     };
   }
 
@@ -54,12 +62,13 @@ export class ComponentFactory {
     return new Cls(id || generateId(type));
   }
 
-  // inside class ComponentFactory
   static getCategory(type) {
     const map = {
       'AND':'Gates', 'OR':'Gates', 'NOT':'Gates',
       'NAND':'Gates', 'NOR':'Gates', 'XOR':'Gates', 'XNOR':'Gates',
+      'HalfAdder':'Chips', 'FullAdder':'Chips', 'Multiplexer':'Chips',
       'SR':'Flip-Flops', 'D':'Flip-Flops', 'JK':'Flip-Flops', 'T':'Flip-Flops',
+      'ShiftRegister4':'Flip-Flops',
       'DipSwitch':'Inputs', 'DipSwitch8':'Inputs', 'Clock':'Inputs',
       'LightBulb':'Outputs', 'SevenSegment':'Outputs', 'LogicProbe':'Outputs'
     };

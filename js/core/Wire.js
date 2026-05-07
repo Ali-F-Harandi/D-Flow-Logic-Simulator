@@ -11,9 +11,23 @@ export class Wire {
     const startY = fromPos.y;
     const endX = toPos.x;
     const endY = toPos.y;
-    // Simple Manhattan routing
-    const midX = startX + 20;
-    return `M ${startX} ${startY} L ${midX} ${startY} L ${midX} ${endY} L ${endX} ${endY}`;
+
+    if (endX >= startX - 10) {
+      // Standard Forward Routing 
+      const midX = startX + (endX - startX) / 2;
+      return `M ${startX} ${startY} L ${midX} ${startY} L ${midX} ${endY} L ${endX} ${endY}`;
+    } else {
+      // Backward Routing (Feedback loop wrap-around)
+      const offset = 20; // Distance to push the wire outward
+      const midY = startY + (endY - startY) / 2 + 40; // Drop it below the components
+      
+      return `M ${startX} ${startY} 
+              L ${startX + offset} ${startY} 
+              L ${startX + offset} ${midY} 
+              L ${endX - offset} ${midY} 
+              L ${endX - offset} ${endY} 
+              L ${endX} ${endY}`;
+    }
   }
 
   render(svgLayer, getNodePosition) {

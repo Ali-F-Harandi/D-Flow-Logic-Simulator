@@ -7,15 +7,14 @@ export class SevenSegment extends Component {
     super(id, '7Seg', 5, 0);   // I0-I3 = BCD, I4 = DP
   }
 
-  computeOutput() {
+  applyNextState(nextState) {
+    super.applyNextState(nextState);
     this._updateDisplay();
-    this._updateConnectorStates();
-    return this.outputs;
   }
 
   render(container) {
-    const H = 6 * this.GRID;             // 120px
-    const W = 5 * this.GRID;             // 80px
+    const H = 6 * this.GRID;
+    const W = 5 * this.GRID;
     const el = document.createElement('div');
     el.className = 'component sevenseg';
     el.style.width = `${W}px`;
@@ -25,14 +24,14 @@ export class SevenSegment extends Component {
     el.setAttribute('draggable', 'false');
     el.draggable = false;
 
-    // 7‑segment digit SVG (user’s exact design)
+    // 7‑segment digit SVG
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', '-1 -1 13 20');
     svg.setAttribute('width', '56');
     svg.setAttribute('height', '100');
     svg.style.position = 'absolute';
     svg.style.top = '10px';
-    svg.style.left = '22px';               // leave room for input labels
+    svg.style.left = '22px';
     svg.innerHTML = `
       <polygon id="a" fill="#333" points="1,1  2,0  8,0  9,1  8,2  2,2"/>
       <polygon id="b" fill="#333" points="9,1 10,2 10,8  9,9  8,8  8,2"/>
@@ -41,12 +40,11 @@ export class SevenSegment extends Component {
       <polygon id="e" fill="#333" points="1,17  0,16  0,10  1, 9  2,10  2,16"/>
       <polygon id="f" fill="#333" points="1, 9  0, 8  0, 2  1, 1  2, 2  2, 8"/>
       <polygon id="g" fill="#333" points="1, 9  2, 8  8, 8  9, 9  8,10  2,10"/>
-      <!-- decimal point -->
       <circle id="dp" cx="11" cy="18" r="0.8" fill="#333"/>
     `;
     el.appendChild(svg);
 
-    // Input connectors – grid aligned, well inside the box
+    // Input connectors
     el.appendChild(this._createConnectorBlock(this.inputs[0], true, 'I0', 1 * this.GRID));
     el.appendChild(this._createConnectorBlock(this.inputs[1], true, 'I1', 2 * this.GRID));
     el.appendChild(this._createConnectorBlock(this.inputs[2], true, 'I2', 3 * this.GRID));

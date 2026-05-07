@@ -6,13 +6,8 @@ export class LogicProbe extends Component {
     super(id, 'Probe', 1, 0);
   }
 
-  computeOutput() {
-    this._updateConnectorStates();
-    return this.outputs;
-  }
-
-  setInputValue(index, value) {
-    super.setInputValue(index, value);
+  applyNextState(nextState) {
+    super.applyNextState(nextState);
     this._updateDisplay();
   }
 

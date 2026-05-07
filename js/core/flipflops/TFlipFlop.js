@@ -6,16 +6,16 @@ export class TFlipFlop extends Component {
     super(id, 'T', 2, 2);
     this._prevClk = false;
     this._state = { Q: false, nQ: true };
+    this.outputs[1].value = true;   // nQ starts HIGH
   }
-
   computeNextState() {
     const t = this.inputs[0].value;
     const clk = this.inputs[1].value;
     let nextQ = this._state.Q;
     let nextNQ = this._state.nQ;
     if (clk && !this._prevClk && t) {
-      nextQ = !this._state.Q;
-      nextNQ = !this._state.Q;   // note: nQ is complement of Q
+      nextQ = !this._state.Q;      // toggle Q
+      nextNQ = this._state.Q;      // nQ = complement of new Q (old Q)
     }
     return { outputs: [nextQ, nextNQ], prevClk: clk };
   }

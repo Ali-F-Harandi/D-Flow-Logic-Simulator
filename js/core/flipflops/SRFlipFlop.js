@@ -6,22 +6,30 @@ export class SRFlipFlop extends Component {
     super(id, 'SR', 3, 2);
     this._prevClk = false;
     this._state = { Q: false, nQ: true };
+    this.outputs[1].value = true;   // nQ starts HIGH
   }
 
-  computeOutput() {
+  computeNextState() {
     const s = this.inputs[0].value;
     const r = this.inputs[1].value;
     const clk = this.inputs[2].value;
+    let nextQ = this._state.Q;
+    let nextNQ = this._state.nQ;
     if (clk && !this._prevClk) {
-      if (s && !r) { this._state.Q = true; this._state.nQ = false; }
-      else if (!s && r) { this._state.Q = false; this._state.nQ = true; }
+      if (s && !r) { nextQ = true; nextNQ = false; }
+      else if (!s && r) { nextQ = false; nextNQ = true; }
     }
-    this._prevClk = clk;
-    this.outputs[0].value = this._state.Q;
-    this.outputs[1].value = this._state.nQ;
-    this._updateConnectorStates();
-    return this.outputs;
+    return { outputs: [nextQ, nextNQ], prevClk: clk };
   }
+
+  applyNextState(nextState) {
+    this._state.Q = nextState.outputs[0];
+    this._state.nQ = nextState.outputs[1];
+    this._prevClk = nextState.prevClk;
+    super.applyNextState(nextState);
+  }
+
+  getProperties() { return []; }
 
   render(container) {
     const H = 4 * this.GRID;  // 80

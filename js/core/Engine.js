@@ -4,12 +4,12 @@ export class Engine {
     this.wires = [];
     this.queue = new Set();
     this.running = false;
-    this.speed = 200; // ms per step (default)
+    this._processing = false;            // new flag
+    this.speed = 200;
     this.intervalId = null;
     this.onUpdate = null;
-    this.clocks = new Set();  // track clock components
+    this.clocks = new Set();
   }
-
   addComponent(component) {
     this.components.set(component.id, component);
     if (component.type === 'Clock') {
@@ -42,13 +42,25 @@ export class Engine {
     if (!fromComp || !toComp) throw new Error('Node not found');
     const toInput = toComp.inputs.find(inp => inp.id === toNodeId);
     if (!toInput) throw new Error('Input node not found');
+
+    // Remove previous connection if present, along with its wire
     if (toInput.connectedTo) {
-      console.warn(`Input ${toNodeId} already connected. Overwriting previous connection.`);
+      console.warn(`Input ${toNodeId} already connected. Overwriting.`);
+      const oldWireIndex = this.wires.findIndex(w =>
+        w.to.componentId === toComp.id && w.to.nodeId === toNodeId
+      );
+      if (oldWireIndex !== -1) {
+        this.wires.splice(oldWireIndex, 1);
+      }
     }
+
     toInput.connectedTo = { componentId: fromComp.id, nodeId: fromNodeId };
     const wireId = forceWireId || `wire_${Date.now()}_${Math.random()}`;
-    const wire = { id: wireId, from: { componentId: fromComp.id, nodeId: fromNodeId },
-                  to: { componentId: toComp.id, nodeId: toNodeId } };
+    const wire = {
+      id: wireId,
+      from: { componentId: fromComp.id, nodeId: fromNodeId },
+      to:   { componentId: toComp.id, nodeId: toNodeId }
+    };
     this.wires.push(wire);
     this._propagateFrom(fromComp);
     return wireId;
@@ -69,51 +81,55 @@ export class Engine {
 
   schedulePropagation(component) {
     this.queue.add(component);
-    if (!this.running) this._processQueue();
+    if (!this.running && !this._processing) this._processQueue();
   }
 
   _processQueue() {
-    const maxIterations = 10000;
-    let iterations = 0;
+    if (this._processing) return;       // prevent re‑entry
+    this._processing = true;
+    try {
+      const maxIterations = 10000;
+      let iterations = 0;
 
-    while (this.queue.size > 0 && iterations < maxIterations) {
-      // ---------- Phase 1: Evaluate ----------
-      const updates = [];
-      for (const comp of this.queue) {
-        const nextState = comp.computeNextState();
-        updates.push({ comp, nextState });
-      }
-      this.queue.clear();
+      while (this.queue.size > 0 && iterations < maxIterations) {
+        // --- Phase 1: Evaluate ---
+        const updates = [];
+        for (const comp of this.queue) {
+          const nextState = comp.computeNextState();
+          updates.push({ comp, nextState });
+        }
+        this.queue.clear();
 
-      // ---------- Phase 2: Apply & Propagate ----------
-      for (const { comp, nextState } of updates) {
-        comp.applyNextState(nextState);
-
-        // Push new values to downstream components via connected wires
-        for (let i = 0; i < comp.outputs.length; i++) {
-          const out = comp.outputs[i];
-          const connectedWires = this.wires.filter(w => w.from.nodeId === out.id);
-          for (const w of connectedWires) {
-            const targetComp = this.components.get(w.to.componentId);
-            if (targetComp) {
-              const inputIndex = targetComp.inputs.findIndex(inp => inp.id === w.to.nodeId);
-              if (inputIndex >= 0) {
-                targetComp.setInputValue(inputIndex, out.value);
+        // --- Phase 2: Apply & Propagate ---
+        for (const { comp, nextState } of updates) {
+          comp.applyNextState(nextState);
+          for (let i = 0; i < comp.outputs.length; i++) {
+            const out = comp.outputs[i];
+            const connectedWires = this.wires.filter(w => w.from.nodeId === out.id);
+            for (const w of connectedWires) {
+              const targetComp = this.components.get(w.to.componentId);
+              if (targetComp) {
+                const inputIndex = targetComp.inputs.findIndex(inp => inp.id === w.to.nodeId);
+                if (inputIndex >= 0) {
+                  targetComp.setInputValue(inputIndex, out.value);
+                }
               }
             }
           }
         }
+        iterations++;
       }
-      iterations++;
-    }
 
-    if (iterations >= maxIterations) {
-      console.warn('Propagation loop detected – circuit may be unstable.');
-      this.queue.clear();
-      document.dispatchEvent(new CustomEvent('simulation-error', { detail: 'Infinite Loop Detected! Circuit Unstable.' }));
-    }
+      if (iterations >= maxIterations) {
+        console.warn('Propagation loop detected – circuit may be unstable.');
+        this.queue.clear();
+        document.dispatchEvent(new CustomEvent('simulation-error', { detail: 'Infinite Loop Detected! Circuit Unstable.' }));
+      }
 
-    if (this.onUpdate) this.onUpdate();
+      if (this.onUpdate) this.onUpdate();
+    } finally {
+      this._processing = false;
+    }
   }
 
   step() {

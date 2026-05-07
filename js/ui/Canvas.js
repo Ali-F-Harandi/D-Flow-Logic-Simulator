@@ -32,7 +32,7 @@ export class Canvas {
     this.minScale = 0.2;
     this.maxScale = 4;
 
-    // Inner transformable container
+    // Inner transformable container – must fill the canvas-container
     this.scene = document.createElement('div');
     this.scene.id = 'canvas-scene';
     this.scene.style.position = 'absolute';
@@ -149,7 +149,6 @@ export class Canvas {
 
   /* ---------- Selection ---------- */
   _startSelection(e) {
-    if (!e.shiftKey) return;
     this.selectionStart = this._canvasCoords(e);
     this.selectionRect = document.createElement('div');
     this.selectionRect.className = 'selection-rect';

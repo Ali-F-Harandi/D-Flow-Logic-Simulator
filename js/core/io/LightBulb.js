@@ -7,20 +7,16 @@ export class LightBulb extends Component {
     super(id, 'LightBulb', 1, 0);
   }
 
-  computeOutput() {
-    this._updateAppearance();
-    this._updateConnectorStates();
-    return this.outputs;
-  }
-
-  setInputValue(index, value) {
-    super.setInputValue(index, value);
+  // No computeOutput override – uses base two‑phase
+  // Override applyNextState to update appearance AFTER state is applied
+  applyNextState(nextState) {
+    super.applyNextState(nextState);
     this._updateAppearance();
   }
 
   render(container) {
-    const H = 3 * this.GRID;          // 60px
-    const W = 3 * this.GRID;          // 60px
+    const H = 3 * this.GRID;
+    const W = 3 * this.GRID;
     const el = document.createElement('div');
     el.className = 'component light-bulb';
     el.style.width = `${W}px`;
@@ -30,7 +26,6 @@ export class LightBulb extends Component {
     el.setAttribute('draggable', 'false');
     el.draggable = false;
 
-    // SVG circle – exactly in the center
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('width', '40');
     svg.setAttribute('height', '40');
@@ -41,7 +36,7 @@ export class LightBulb extends Component {
     const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
     circle.setAttribute('cx', '20');
     circle.setAttribute('cy', '20');
-    circle.setAttribute('r', '16');          // bigger circle
+    circle.setAttribute('r', '16');
     circle.setAttribute('fill', '#333');
     circle.setAttribute('stroke', '#666');
     circle.setAttribute('stroke-width', '2');
@@ -49,7 +44,6 @@ export class LightBulb extends Component {
     svg.appendChild(circle);
     el.appendChild(svg);
 
-    // Input connector – grid‑aligned at y = 20 (center of component)
     el.appendChild(this._createConnectorBlock(
       this.inputs[0], true, 'I0', 1 * this.GRID
     ));
