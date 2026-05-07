@@ -2,18 +2,20 @@ import { Wire } from '../core/Wire.js';
 import { generateId } from '../utils/IdGenerator.js';
 import { ContextMenu } from './ContextMenu.js';
 import { PropertyEditor } from './PropertyEditor.js';
-import {
-  UndoManager,
-  AddComponentCommand,
-  DeleteComponentCommand,
-  ConnectWireCommand,
-  DisconnectWireCommand
+import { 
+  UndoManager, 
+  AddComponentCommand, 
+  DeleteComponentCommand, 
+  ConnectWireCommand, 
+  DisconnectWireCommand 
 } from '../utils/UndoManager.js';
 import { NodePositionCache } from '../utils/NodePositionCache.js';
 import { GRID_SIZE } from '../config.js';
 
 export class Canvas {
   constructor(container, eventBus, engine, factory, undoManager) {
+    // ... (constructor unchanged except where grid is set up; the code below uses the CSS grid approach from earlier, but the z-index fix is independent)
+    // NOTE: The following is the full constructor with the CSS grid setup for completeness.
     this.container = container;
     this.eventBus = eventBus;
     this.engine = engine;
@@ -439,6 +441,7 @@ export class Canvas {
         };
         selected.forEach(c => {
           this.dragData.origins[c.id] = { x: c.position.x, y: c.position.y };
+          c.element.style.zIndex = '1000';                 // <-- bring to front
         });
       }
     } else if (e.target.closest('g[data-wire-id]')) {
@@ -493,6 +496,7 @@ export class Canvas {
       return;
     }
     if (this.dragData) {
+      this.dragData.components.forEach(c => c.element.style.zIndex = '');  // reset
       this.dragData = null;
       this.isDragging = false;
     }
@@ -611,6 +615,7 @@ export class Canvas {
     const cleanup = () => {
       clearTimeout(longPressTimer);
       if (this.dragData) {
+        this.dragData.components.forEach(c => c.element.style.zIndex = '');  // reset
         this.dragData = null;
         this.isDragging = false;
       }
@@ -686,6 +691,7 @@ export class Canvas {
     const handleTouchEnd = (e) => {
       clearTimeout(longPressTimer);
       if (this.dragData) {
+        this.dragData.components.forEach(c => c.element.style.zIndex = '');  // reset
         this.dragData = null;
         this.isDragging = false;
       }
@@ -729,6 +735,7 @@ export class Canvas {
     };
     selected.forEach(c => {
       this.dragData.origins[c.id] = { x: c.position.x, y: c.position.y };
+      c.element.style.zIndex = '1000';                 // <-- bring to front on touch drag as well
     });
   }
 

@@ -27,22 +27,6 @@ export class TruthTablePanel {
       return;
     }
 
-    // --- SNAPSHOT: deep copy all component states ---
-    const componentSnapshots = new Map();
-    for (const comp of this.engine.components.values()) {
-      // Clone outputs, inputs, and internal state (prevClk, _state)
-      const internal = {};
-      if (comp._prevClk !== undefined) internal._prevClk = comp._prevClk;
-      if (comp._state !== undefined) {
-        internal._state = Array.isArray(comp._state) ? [...comp._state] : { ...comp._state };
-      }
-      componentSnapshots.set(comp.id, {
-        outputs: comp.outputs.map(o => o.value),
-        inputs: comp.inputs.map(i => i.value),
-        internal
-      });
-    }
-
     // Build input list
     const inputs = [];
     let totalBits = 0;
@@ -55,7 +39,31 @@ export class TruthTablePanel {
         totalBits += 8;
       }
     }
+
+    // -------- guard against too many combinations ----------
+    if (totalBits > 12) {
+      this.content.innerHTML = `<div style="color: var(--color-danger); padding: 10px;">
+        Too many input bits (${totalBits}). Maximum allowed is 12 to prevent browser freezing.
+      </div>`;
+      return;
+    }
+
     const combos = 1 << totalBits;
+
+    // --- SNAPSHOT: deep copy all component states ---
+    const componentSnapshots = new Map();
+    for (const comp of this.engine.components.values()) {
+      const internal = {};
+      if (comp._prevClk !== undefined) internal._prevClk = comp._prevClk;
+      if (comp._state !== undefined) {
+        internal._state = Array.isArray(comp._state) ? [...comp._state] : { ...comp._state };
+      }
+      componentSnapshots.set(comp.id, {
+        outputs: comp.outputs.map(o => o.value),
+        inputs: comp.inputs.map(i => i.value),
+        internal
+      });
+    }
 
     let html = '<table class="tt-table">';
     html += '<tr>';
@@ -105,7 +113,6 @@ export class TruthTablePanel {
         for (let i = 0; i < snap.inputs.length; i++) {
           comp.inputs[i].value = snap.inputs[i];
         }
-        // Restore internal state
         if (snap.internal._prevClk !== undefined) comp._prevClk = snap.internal._prevClk;
         if (snap.internal._state !== undefined) {
           if (Array.isArray(snap.internal._state)) {
@@ -114,14 +121,12 @@ export class TruthTablePanel {
             comp._state = { ...snap.internal._state };
           }
         }
-        // Refresh visuals
         if (typeof comp._updateAppearance === 'function') comp._updateAppearance();
         if (typeof comp._updateDisplay === 'function') comp._updateDisplay();
         if (typeof comp._updateConnectorStates === 'function') comp._updateConnectorStates();
       }
     }
 
-    // Final propagation to ensure UI matches restored state
     this.engine._processQueue();
     if (this.engine.onUpdate) this.engine.onUpdate();
 
