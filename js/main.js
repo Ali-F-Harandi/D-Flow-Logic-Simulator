@@ -10,6 +10,20 @@ import { Engine } from './core/Engine.js';
 import { UndoManager, AddComponentCommand } from './utils/UndoManager.js';
 import { Serializer } from './utils/Serializer.js';
 
+// --------------------------------------------------
+// GLOBAL ERROR HANDLER – shows any import/parse error
+// --------------------------------------------------
+window.addEventListener('error', (event) => {
+  console.error('Global error caught:', event.error);
+  const div = document.createElement('div');
+  div.style.position = 'fixed'; div.style.top = '0'; div.style.left = '0';
+  div.style.right = '0';
+  div.style.background = 'red'; div.style.color = 'white';
+  div.style.padding = '10px'; div.style.zIndex = '99999';
+  div.textContent = 'Error: ' + (event.error ? event.error.message : event.message);
+  document.body.appendChild(div);
+});
+
 document.addEventListener('DOMContentLoaded', () => {
   const appContainer = document.getElementById('app');
   const eventBus = new EventBus();

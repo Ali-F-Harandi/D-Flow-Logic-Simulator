@@ -65,7 +65,13 @@ export class Wire {
 
     const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     group.dataset.wireId = this.id;
-    group.style.pointerEvents = 'none';
+    // FIX: Do NOT set pointer-events: none on the group.
+    // The SVG layer already has pointer-events: none to let clicks
+    // pass through to connector dots, but children with their own
+    // pointer-events values can still be interactive.
+    // Previously, group.style.pointerEvents = 'none' prevented
+    // the hit-area path from receiving events, breaking wire selection.
+    group.style.pointerEvents = 'auto';
 
     const visualPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     visualPath.setAttribute('stroke', '#888');
@@ -84,6 +90,7 @@ export class Wire {
     const junctionDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
     junctionDot.setAttribute('r', JUNCTION_RADIUS);
     junctionDot.setAttribute('fill', '#888');
+    junctionDot.setAttribute('pointer-events', 'none');
     junctionDot.classList.add('wire-junction');
     junctionDot.style.display = 'none';
 
