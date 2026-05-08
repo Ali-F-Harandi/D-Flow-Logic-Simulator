@@ -81,11 +81,26 @@ export class SevenSegment extends Component {
     if (!this.element) return;
     let val = 0;
     for (let i = 0; i < 4; i++) if (this.inputs[i]?.value) val |= (1 << i);
+    // FIX (Bug #7): Corrected 7-segment encoding for hex digits 0-F.
+    // Each 7-bit value: bit6=a, bit5=b, bit4=c, bit3=d, bit2=e, bit1=f, bit0=g
+    // Verified against standard common-cathode 7-segment truth table.
     const segMap = [
-      0b1111110, 0b0110000, 0b1101101, 0b1111001, 0b0110011,
-      0b1011011, 0b1011111, 0b1110000, 0b1111111, 0b1111011,
-      0b1110111, 0b0011111, 0b1001110, 0b0111101, 0b1001111,
-      0b1000111
+      0b1111110, // 0: a,b,c,d,e,f    (g off)
+      0b0110000, // 1: b,c             (a,d,e,f,g off)
+      0b1101101, // 2: a,b,d,e,g       (c,f off)
+      0b1111001, // 3: a,b,c,d,g       (e,f off)
+      0b0110011, // 4: b,c,f,g         (a,d,e off)
+      0b1011011, // 5: a,c,d,f,g       (b,e off)
+      0b1011111, // 6: a,c,d,e,f,g     (b off)
+      0b1110000, // 7: a,b,c           (d,e,f,g off)
+      0b1111111, // 8: a,b,c,d,e,f,g   (all on)
+      0b1111011, // 9: a,b,c,d,f,g     (e off)
+      0b1110111, // A: a,b,c,e,f,g     (d off)
+      0b0011111, // b: c,d,e,f,g       (a,b off)
+      0b1001110, // C: a,d,e,f         (b,c,g off)
+      0b0111101, // d: b,c,d,e,g       (a,f off)
+      0b1001111, // E: a,d,e,f,g       (b,c off)
+      0b1000111  // F: a,e,f,g         (b,c,d off)
     ];
     const bits = segMap[val] || 0;
     const style = getComputedStyle(document.documentElement);

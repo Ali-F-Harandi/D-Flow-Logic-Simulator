@@ -34,6 +34,16 @@ export class DipSwitch extends Component {
     this._updateConnectorStates();
   }
 
+  /**
+   * FIX (Bug #5): resetState() preserves the user's toggle position.
+   * Only sequential component state should be reset, not input positions.
+   */
+  resetState() {
+    // Preserve current switch state – do nothing
+    this._updateAppearance();
+    this._updateConnectorStates();
+  }
+
   _updateAppearance() {
     if (this.element) {
       const isOn = this.outputs[0].value === true;
@@ -70,7 +80,11 @@ export class DipSwitch extends Component {
     el.appendChild(this._createConnectorBlock(this.outputs[0], false, 'O0', this.GRID));
 
     el.addEventListener('click', (e) => {
-      if (e.target.classList.contains('connector')) return;
+      // FIX (Bug #12): Skip toggle if clicking on or near a connector,
+      // or if a wiring preview path exists (wiring mode is active).
+      if (e.target.classList.contains('connector') || e.target.closest('.connector')) return;
+      // Also check if there's an active wiring preview on the page
+      if (document.querySelector('.wire-preview')) return;
       this.toggle();
     });
 

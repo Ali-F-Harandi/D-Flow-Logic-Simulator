@@ -43,14 +43,14 @@ export class AddComponentCommand {
     return true;
   }
   undo() {
-    // FIX (critical): Also remove visual wires connected to this component
+    // Also remove visual wires connected to this component
     const relatedWires = this.engine.wires.filter(w =>
       w.from.componentId === this.component.id || w.to.componentId === this.component.id
     );
     for (const w of relatedWires) {
       this.canvas._removeVisualWireByEngineId(w.id);
     }
-    this.canvas._deleteComponent(this.component.id);
+    this.canvas._deleteComponent(this.component.id, { skipEngine: true });
     this.engine.removeComponent(this.component.id);
   }
 }
@@ -64,6 +64,7 @@ export class DeleteComponentCommand {
     this.savedWires = [];
   }
   execute() {
+    // Save wire data for undo before removing anything
     const relatedWires = this.engine.wires.filter(w =>
       w.from.componentId === this.component.id || w.to.componentId === this.component.id
     );
@@ -72,11 +73,15 @@ export class DeleteComponentCommand {
       fromNodeId: w.from.nodeId,
       toNodeId: w.to.nodeId
     }));
-    // FIX (critical): Remove visual wires BEFORE deleting the component
+    // Remove visual wires BEFORE deleting the component
     for (const w of relatedWires) {
       this.canvas._removeVisualWireByEngineId(w.id);
     }
-    this.canvas._deleteComponent(this.component.id);
+    // FIX (Bug #2 High): Explicitly remove from engine – the command is the
+    // sole authority for state changes. CanvasComponentManager._deleteComponent
+    // should only handle DOM removal (see Bug #3 fix).
+    this.engine.removeComponent(this.component.id);
+    this.canvas._deleteComponent(this.component.id, { skipEngine: true });
     return true;
   }
   undo() {

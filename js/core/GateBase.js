@@ -54,6 +54,22 @@ export class GateBase extends Component {
       const newCount = parseInt(value, 10);
       if (newCount === this.inputs.length || newCount < 2 || newCount > 8) return false;
       const old = this.inputs;
+
+      // FIX (Bug #6 Medium): Disconnect wires for inputs that are being removed
+      // before rebuilding the inputs array, to prevent orphan wires in the engine.
+      if (newCount < old.length) {
+        for (let i = newCount; i < old.length; i++) {
+          const inp = old[i];
+          if (inp.connectedTo) {
+            // Find and remove the wire connected to this input
+            const wireIndex = this._engine?.wires.findIndex(w => w.to.nodeId === inp.id);
+            if (wireIndex !== -1 && this._engine) {
+              this._engine.disconnect(this._engine.wires[wireIndex].id);
+            }
+          }
+        }
+      }
+
       this.inputs = [];
       for (let i = 0; i < newCount; i++) {
         this.inputs.push({

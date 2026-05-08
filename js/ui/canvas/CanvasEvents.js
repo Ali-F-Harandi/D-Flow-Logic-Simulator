@@ -28,7 +28,7 @@ export class CanvasEvents {
     this.element = document.getElementById('canvas-container');
     if (!this.element) this.element = core.element;
 
-    console.log('[CanvasEvents] ready, element: ' + this.element.id);
+    // Removed console.log (code smell fix)
 
     this._focusedComponentIndex = -1;
 

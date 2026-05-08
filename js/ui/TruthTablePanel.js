@@ -15,6 +15,65 @@ export class TruthTablePanel {
     this.eventBus.on('generate-truth-table', (outputNodeId) => this.generate(outputNodeId));
   }
 
+  /**
+   * Deep-snapshot all component state so we can restore it perfectly after
+   * enumeration.  The previous implementation only shallow-copied _state
+   * and _prevClk, which could leave sequential components in an incorrect
+   * internal state after truth-table generation.
+   */
+  _snapshotAllComponents() {
+    const snapshot = new Map();
+    for (const comp of this.engine.components.values()) {
+      const internal = {};
+      if (comp._prevClk !== undefined) internal._prevClk = comp._prevClk;
+      if (comp._state !== undefined) {
+        internal._state = Array.isArray(comp._state)
+          ? [...comp._state]
+          : { ...comp._state };
+      }
+      if (comp.frequency !== undefined) internal.frequency = comp.frequency;
+      if (comp.running !== undefined) internal.running = comp.running;
+      snapshot.set(comp.id, {
+        outputs: comp.outputs.map(o => ({ value: o.value, connectedTo: comp.outputs.indexOf(o) })),
+        outputValues: comp.outputs.map(o => o.value),
+        inputValues: comp.inputs.map(i => i.value),
+        inputConnectedTo: comp.inputs.map(i => i.connectedTo ? { ...i.connectedTo } : null),
+        internal
+      });
+    }
+    return snapshot;
+  }
+
+  /**
+   * Restore all component state from a snapshot created by _snapshotAllComponents().
+   */
+  _restoreAllComponents(snapshot) {
+    for (const [compId, snap] of snapshot) {
+      const comp = this.engine.components.get(compId);
+      if (!comp) continue;
+
+      for (let i = 0; i < snap.outputValues.length; i++) {
+        comp.outputs[i].value = snap.outputValues[i];
+      }
+      for (let i = 0; i < snap.inputValues.length; i++) {
+        comp.inputs[i].value = snap.inputValues[i];
+        comp.inputs[i].connectedTo = snap.inputConnectedTo[i];
+      }
+      if (snap.internal._prevClk !== undefined) comp._prevClk = snap.internal._prevClk;
+      if (snap.internal._state !== undefined) {
+        comp._state = Array.isArray(snap.internal._state)
+          ? [...snap.internal._state]
+          : { ...snap.internal._state };
+      }
+      if (snap.internal.frequency !== undefined && comp.setFrequency) {
+        comp.setFrequency(snap.internal.frequency);
+      }
+      if (typeof comp._updateAppearance === 'function') comp._updateAppearance();
+      if (typeof comp._updateDisplay === 'function') comp._updateDisplay();
+      if (typeof comp._updateConnectorStates === 'function') comp._updateConnectorStates();
+    }
+  }
+
   generate(outputNodeId) {
     const inputComponents = [];
     for (const comp of this.engine.components.values()) {
@@ -48,18 +107,17 @@ export class TruthTablePanel {
 
     const combos = 1 << totalBits;
 
-    const componentSnapshots = new Map();
+    // FIX (Bug #1 Critical): Deep-snapshot ALL component state before enumeration
+    const snapshot = this._snapshotAllComponents();
+
+    // Reset all sequential component state so truth table enumeration
+    // starts from a clean slate for each combination.
     for (const comp of this.engine.components.values()) {
-      const internal = {};
-      if (comp._prevClk !== undefined) internal._prevClk = comp._prevClk;
+      if (comp._prevClk !== undefined) comp._prevClk = false;
       if (comp._state !== undefined) {
-        internal._state = Array.isArray(comp._state) ? [...comp._state] : { ...comp._state };
+        if (Array.isArray(comp._state)) comp._state = comp._state.map(() => false);
+        else if (comp._state.Q !== undefined) comp._state = { Q: false, nQ: true };
       }
-      componentSnapshots.set(comp.id, {
-        outputs: comp.outputs.map(o => o.value),
-        inputs: comp.inputs.map(i => i.value),
-        internal
-      });
     }
 
     let html = '<table class="tt-table">';
@@ -84,13 +142,22 @@ export class TruthTablePanel {
           bitIdx++;
         }
       }
+      // Reset sequential state before each evaluation so flip-flops
+      // don't accumulate state across truth table rows.
+      for (const comp of this.engine.components.values()) {
+        if (comp._prevClk !== undefined) comp._prevClk = false;
+        if (comp._state !== undefined) {
+          if (Array.isArray(comp._state)) comp._state = comp._state.map(() => false);
+          else if (comp._state.Q !== undefined) comp._state = { Q: false, nQ: true };
+        }
+      }
+
       this.engine._processQueue();
       const outComp = this.engine._findComponentByNode(outputNodeId);
       const outVal = outComp?.outputs.find(o => o.id === outputNodeId)?.value;
       html += '<tr>';
       bitIdx = 0;
       for (const inp of inputs) {
-        // FIX (critical): For DipSwitch8, display values in MSB→LSB order
         if (inp.comp.type === 'DipSwitch8') {
           for (let b = 7; b >= 0; b--) {
             const val = (c >> b) & 1;
@@ -108,28 +175,8 @@ export class TruthTablePanel {
       html += `<td>${outVal ? '1' : '0'}</td></tr>`;
     }
 
-    for (const [compId, snap] of componentSnapshots) {
-      const comp = this.engine.components.get(compId);
-      if (comp) {
-        for (let i = 0; i < snap.outputs.length; i++) {
-          comp.outputs[i].value = snap.outputs[i];
-        }
-        for (let i = 0; i < snap.inputs.length; i++) {
-          comp.inputs[i].value = snap.inputs[i];
-        }
-        if (snap.internal._prevClk !== undefined) comp._prevClk = snap.internal._prevClk;
-        if (snap.internal._state !== undefined) {
-          if (Array.isArray(snap.internal._state)) {
-            comp._state = [...snap.internal._state];
-          } else {
-            comp._state = { ...snap.internal._state };
-          }
-        }
-        if (typeof comp._updateAppearance === 'function') comp._updateAppearance();
-        if (typeof comp._updateDisplay === 'function') comp._updateDisplay();
-        if (typeof comp._updateConnectorStates === 'function') comp._updateConnectorStates();
-      }
-    }
+    // FIX (Bug #1 Critical): Restore ALL component state from the deep snapshot
+    this._restoreAllComponents(snapshot);
 
     this.engine._processQueue();
     if (this.engine.onUpdate) this.engine.onUpdate();

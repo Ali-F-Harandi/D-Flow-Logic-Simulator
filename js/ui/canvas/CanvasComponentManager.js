@@ -25,12 +25,24 @@ export class CanvasComponentManager {
     this.components.push(comp);
   }
 
-  _deleteComponent(compId) {
+  /**
+   * Remove a component from the canvas (DOM only).
+   * @param {string} compId
+   * @param {Object} [opts] - Options
+   * @param {boolean} [opts.skipEngine] - If true, do NOT call engine.removeComponent()
+   *   (the caller, e.g. a command, already did it).  FIX (Bug #3): Previously
+   *   this method always called engine.removeComponent(), which caused double
+   *   removal when called from DeleteComponentCommand and redundant engine
+   *   state changes.  Now the command is the sole authority for engine state.
+   */
+  _deleteComponent(compId, opts = {}) {
     const comp = this.components.find(c => c.id === compId);
     if (comp) {
       if (comp.element) comp.element.remove();
       this.components = this.components.filter(c => c.id !== compId);
-      this.engine.removeComponent(compId);
+      if (!opts.skipEngine) {
+        this.engine.removeComponent(compId);
+      }
     }
   }
 

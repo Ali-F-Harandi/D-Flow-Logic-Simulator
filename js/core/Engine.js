@@ -26,6 +26,9 @@ export class Engine {
     if (component.type === 'Clock') {
       this.clocks.add(component);
     }
+    // FIX (Bug #6): Store engine reference so GateBase.setProperty()
+    // can disconnect orphan wires when reducing input count.
+    component._engine = this;
     if (!component.isWrapped) {
       const origCompute = component.computeOutput.bind(component);
       component.computeOutput = () => {
@@ -186,8 +189,12 @@ export class Engine {
   reset() {
     this.stop();
     this.queue.clear();
+    // FIX (Bug #5 Medium): Use resetState() which preserves user-set
+    // input values (DipSwitch positions, Clock states) while still
+    // resetting sequential component internal state (flip-flop _state,
+    // _prevClk). Input components override resetState() as a no-op.
     for (const comp of this.components.values()) {
-      comp.reset();
+      comp.resetState();
     }
     if (this.onUpdate) this.onUpdate();
   }

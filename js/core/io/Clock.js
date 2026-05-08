@@ -48,6 +48,15 @@ export class Clock extends Component {
     this._updateConnectorStates();
   }
 
+  /**
+   * FIX (Bug #5): resetState() stops the clock but preserves its output value.
+   * Clock output will be re-driven when simulation starts again.
+   */
+  resetState() {
+    this.stop();
+    this._updateConnectorStates();
+  }
+
   getProperties() {
     return [{ name: 'frequency', label: 'Frequency (Hz)', type: 'number', value: this.frequency, min: 0.1, max: 100, step: 0.1 }];
   }

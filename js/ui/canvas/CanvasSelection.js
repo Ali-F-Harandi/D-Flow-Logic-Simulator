@@ -1,4 +1,4 @@
-import { DeleteComponentCommand, DisconnectWireCommand } from '../../utils/UndoManager.js';
+import { DeleteComponentCommand, DisconnectWireCommand, ConnectWireCommand } from '../../utils/UndoManager.js';
 
 export class CanvasSelection {
   constructor(engine, undoManager, compManager, wiring, toaster, core, containerElement, eventBus, canvas) {
@@ -56,15 +56,12 @@ export class CanvasSelection {
   updateSelection(e) {
     if (!this.selectionRect) return;
     const curr = this.core.canvasCoords(e.clientX, e.clientY);
-    // Convert scene coordinates back to viewport-relative pixels
-    // for positioning the selection rectangle overlay.
     const sceneRect = this.core.scene.getBoundingClientRect();
     const s = this.core.scale;
     const x = Math.min(this.selectionStart.x, curr.x) * s + sceneRect.left;
     const y = Math.min(this.selectionStart.y, curr.y) * s + sceneRect.top;
     const w = Math.abs(curr.x - this.selectionStart.x) * s;
     const h = Math.abs(curr.y - this.selectionStart.y) * s;
-    // Position relative to the canvas container
     const canvasRect = this.element.getBoundingClientRect();
     Object.assign(this.selectionRect.style, {
       left: (x - canvasRect.left) + 'px',
@@ -77,7 +74,6 @@ export class CanvasSelection {
   endSelection(e) {
     if (!this.selectionRect) return;
     const rect = this.selectionRect.getBoundingClientRect();
-    // Use scene-based coordinate conversion for consistency
     const sceneRect = this.core.scene.getBoundingClientRect();
     const s = this.core.scale;
     const minX = (rect.left - sceneRect.left) / s;
@@ -120,27 +116,112 @@ export class CanvasSelection {
     this.selectedWires.clear();
   }
 
+  /**
+   * FIX (Bug #4 High): Copy now preserves wire connections between
+   * selected components so that paste re-creates the wiring.
+   */
   copySelected() {
     const ids = Array.from(this.selectedComponents);
     if (ids.length === 0) return;
-    this._clipboard = ids.map(id => {
+    const idSet = new Set(ids);
+
+    // Save component info with input/output node index maps
+    const compEntries = ids.map(id => {
       const comp = this.compManager.getComponentById(id);
-      return comp ? { type: comp.type, dx: comp.position.x, dy: comp.position.y } : null;
+      if (!comp) return null;
+      return {
+        type: comp.type,
+        dx: comp.position.x,
+        dy: comp.position.y,
+        originalId: comp.id,
+        inputNodeIds: comp.inputs.map(inp => inp.id),
+        outputNodeIds: comp.outputs.map(out => out.id)
+      };
     }).filter(Boolean);
-    if (this._clipboard.length) {
-      const minX = Math.min(...this._clipboard.map(c => c.dx));
-      const minY = Math.min(...this._clipboard.map(c => c.dy));
-      this._clipboard.forEach(c => { c.dx -= minX; c.dy -= minY; });
-      this.toaster.show(`Copied ${this._clipboard.length} component(s)`, 'success');
+
+    if (compEntries.length) {
+      const minX = Math.min(...compEntries.map(c => c.dx));
+      const minY = Math.min(...compEntries.map(c => c.dy));
+      compEntries.forEach(c => { c.dx -= minX; c.dy -= minY; });
     }
+
+    // Save wires that connect two selected components (internal wires)
+    const internalWires = [];
+    for (const wire of this.engine.wires) {
+      if (idSet.has(wire.from.componentId) && idSet.has(wire.to.componentId)) {
+        // Store as relative indices so we can map to new components on paste
+        const fromCompEntry = compEntries.find(c => c.originalId === wire.from.componentId);
+        const toCompEntry = compEntries.find(c => c.originalId === wire.to.componentId);
+        if (fromCompEntry && toCompEntry) {
+          const fromOutputIdx = fromCompEntry.outputNodeIds.indexOf(wire.from.nodeId);
+          const toInputIdx = toCompEntry.inputNodeIds.indexOf(wire.to.nodeId);
+          if (fromOutputIdx !== -1 && toInputIdx !== -1) {
+            internalWires.push({
+              fromCompOriginalId: wire.from.componentId,
+              fromOutputIdx,
+              toCompOriginalId: wire.to.componentId,
+              toInputIdx
+            });
+          }
+        }
+      }
+    }
+
+    this._clipboard = { components: compEntries, wires: internalWires };
+    this.toaster.show(`Copied ${compEntries.length} component(s)${internalWires.length ? ` with ${internalWires.length} wire(s)` : ''}`, 'success');
   }
 
+  /**
+   * FIX (Bug #4 High): Paste now re-creates wire connections between
+   * pasted components by mapping the saved relative indices to the new IDs.
+   */
   pasteCopied() {
-    if (!this._clipboard?.length) { this.toaster.show('Nothing to paste', 'warning'); return; }
+    if (!this._clipboard?.components?.length) {
+      this.toaster.show('Nothing to paste', 'warning');
+      return;
+    }
     const offsetX = 80, offsetY = 40;
-    this._clipboard.forEach(c => {
-      this.eventBus.emit('component-drop', { type: c.type, x: c.dx + offsetX, y: c.dy + offsetY });
+    const idMapping = {}; // originalId -> new component
+
+    // Create all new components first
+    this._clipboard.components.forEach(c => {
+      this.eventBus.emit('component-drop', {
+        type: c.type,
+        x: c.dx + offsetX,
+        y: c.dy + offsetY
+      });
+      // The last component added should be the one we just created
+      // Find it by matching type and position
+      const newComps = this.compManager.components.filter(
+        comp => comp.type === c.type &&
+          comp.position.x === c.dx + offsetX &&
+          comp.position.y === c.dy + offsetY &&
+          !idMapping[c.originalId]
+      );
+      if (newComps.length > 0) {
+        idMapping[c.originalId] = newComps[newComps.length - 1];
+      }
     });
-    this.toaster.show(`Pasted ${this._clipboard.length} component(s)`, 'success');
+
+    // Re-create internal wires between pasted components
+    if (this._clipboard.wires && this._clipboard.wires.length > 0) {
+      for (const wireInfo of this._clipboard.wires) {
+        const fromComp = idMapping[wireInfo.fromCompOriginalId];
+        const toComp = idMapping[wireInfo.toCompOriginalId];
+        if (fromComp && toComp &&
+          fromComp.outputs[wireInfo.fromOutputIdx] &&
+          toComp.inputs[wireInfo.toInputIdx]) {
+          const fromNodeId = fromComp.outputs[wireInfo.fromOutputIdx].id;
+          const toNodeId = toComp.inputs[wireInfo.toInputIdx].id;
+          // Only connect if the input is not already connected
+          if (!toComp.inputs[wireInfo.toInputIdx].connectedTo) {
+            const cmd = new ConnectWireCommand(this.engine, this.canvas, fromNodeId, toNodeId);
+            this.undoManager.execute(cmd);
+          }
+        }
+      }
+    }
+
+    this.toaster.show(`Pasted ${this._clipboard.components.length} component(s)`, 'success');
   }
 }

@@ -45,6 +45,17 @@ export class ContextMenu {
     this.menu.style.left = `${x}px`;
     this.menu.style.top = `${y}px`;
     this.menu.style.display = 'block';
+
+    // FIX (Bug #10): Adjust menu position if it overflows the viewport
+    const menuRect = this.menu.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    if (menuRect.right > vw) {
+      this.menu.style.left = `${Math.max(0, vw - menuRect.width - 4)}px`;
+    }
+    if (menuRect.bottom > vh) {
+      this.menu.style.top = `${Math.max(0, vh - menuRect.height - 4)}px`;
+    }
   }
 
   hide() {

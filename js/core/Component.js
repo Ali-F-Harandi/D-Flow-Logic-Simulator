@@ -48,10 +48,28 @@ export class Component {
     this._updateConnectorStates();
   }
 
+  /**
+   * Full reset: clears all outputs and inputs.
+   * Used by Engine.reset() for gates and output-only components.
+   * Input components (DipSwitch, Clock, etc.) override this to
+   * preserve their user-set toggle state.
+   * Sequential components override this to also reset internal state.
+   */
   reset() {
     this.outputs.forEach(o => o.value = false);
     this.inputs.forEach(i => i.value = false);
     this._updateConnectorStates();
+  }
+
+  /**
+   * Sequential-state-only reset: clears internal sequential state
+   * (flip-flop _state, _prevClk) but preserves output values that
+   * are set by user interaction (e.g. DipSwitch toggle positions).
+   * Input components override this as a no-op.
+   */
+  resetState() {
+    // Default: same as reset() for combinational components
+    this.reset();
   }
 
   getProperties() { return []; }

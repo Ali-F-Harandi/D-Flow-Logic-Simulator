@@ -35,6 +35,15 @@ export class DipSwitch8 extends Component {
   }
 
   /**
+   * FIX (Bug #5): resetState() preserves the user's toggle positions.
+   * Only sequential component state should be reset, not input positions.
+   */
+  resetState() {
+    this._updateAppearance();
+    this._updateConnectorStates();
+  }
+
+  /**
    * Alias for _updateAppearance so TruthTablePanel can call either method.
    */
   _updateVisual() {

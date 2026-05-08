@@ -56,6 +56,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   footer.setVersion('Beta-4');
 
+  // FIX (Bug #8 Medium): Stop engine and clear clock intervals
+  // on page unload to prevent issues with auto-save and pending timers.
+  window.addEventListener('beforeunload', () => {
+    engine.stop();
+  });
+
   // Auto‑restore saved project
   const saved = localStorage.getItem('logic-sim-project');
   if (saved) {
