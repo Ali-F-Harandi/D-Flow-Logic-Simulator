@@ -77,7 +77,7 @@ export class TruthTablePanel {
   generate(outputNodeId) {
     const inputComponents = [];
     for (const comp of this.engine.components.values()) {
-      if (comp.type === 'DipSwitch' || comp.type === 'DipSwitch8') {
+      if (comp.type === 'ToggleSwitch' || comp.type === 'DipSwitch') {
         inputComponents.push(comp);
       }
     }
@@ -89,10 +89,10 @@ export class TruthTablePanel {
     const inputs = [];
     let totalBits = 0;
     for (const comp of inputComponents) {
-      if (comp.type === 'DipSwitch') {
+      if (comp.type === 'ToggleSwitch') {
         inputs.push({ comp, bits: [0] });
         totalBits++;
-      } else if (comp.type === 'DipSwitch8') {
+      } else if (comp.type === 'DipSwitch') {
         const n = comp._switchCount || 8;
         const bitIndices = [];
         for (let b = 0; b < n; b++) bitIndices.push(b);
@@ -126,7 +126,7 @@ export class TruthTablePanel {
     let html = '<table class="tt-table">';
     html += '<tr>';
     for (const inp of inputs) {
-      if (inp.comp.type === 'DipSwitch8') {
+      if (inp.comp.type === 'DipSwitch') {
         const n = inp.comp._switchCount || 8;
         for (let b = n - 1; b >= 0; b--) html += `<th>${inp.comp.id}.${b}</th>`;
       } else {
@@ -162,10 +162,10 @@ export class TruthTablePanel {
       html += '<tr>';
       bitIdx = 0;
       for (const inp of inputs) {
-        if (inp.comp.type === 'DipSwitch8') {
+        if (inp.comp.type === 'DipSwitch') {
           const n = inp.comp._switchCount || 8;
           for (let b = n - 1; b >= 0; b--) {
-            const val = (c >> (n - 1 - b)) & 1;
+            const val = (c >> b) & 1;
             html += `<td>${val}</td>`;
           }
           bitIdx += n;

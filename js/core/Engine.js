@@ -64,7 +64,10 @@ export class Engine {
   connect(fromNodeId, toNodeId, forceWireId = null) {
     const fromComp = this._findComponentByNode(fromNodeId);
     const toComp = this._findComponentByNode(toNodeId);
-    if (!fromComp || !toComp) throw new Error('Node not found');
+    if (!fromComp || !toComp) {
+      console.warn(`Engine.connect: Node not found (from=${fromNodeId}, to=${toNodeId})`);
+      return null;
+    }
 
     if (fromComp.id === toComp.id) {
       document.dispatchEvent(new CustomEvent('simulation-error', { detail: 'Cannot connect a component to itself!' }));
@@ -72,9 +75,15 @@ export class Engine {
     }
 
     const toInput = toComp.inputs.find(inp => inp.id === toNodeId);
-    if (!toInput) throw new Error('Input node not found');
+    if (!toInput) {
+      console.warn(`Engine.connect: Input node not found (${toNodeId})`);
+      return null;
+    }
     const fromOutput = fromComp.outputs.find(o => o.id === fromNodeId);
-    if (!fromOutput) throw new Error('From node is not an output');
+    if (!fromOutput) {
+      console.warn(`Engine.connect: From node is not an output (${fromNodeId})`);
+      return null;
+    }
 
     if (toInput.connectedTo) {
       const oldWireIndex = this.wires.findIndex(w => w.to.nodeId === toNodeId);
@@ -196,6 +205,14 @@ export class Engine {
     for (const comp of this.components.values()) {
       comp.resetState();
     }
+    // FIX: Re-propagate from all components to restore consistent state.
+    // After reset, input components may still output HIGH but downstream
+    // gates had their inputs cleared. This re-propagates signals so wire
+    // colors and component states match the actual logic.
+    for (const comp of this.components.values()) {
+      this.queue.add(comp);
+    }
+    this._processQueue();
     if (this.onUpdate) this.onUpdate();
   }
 
@@ -211,6 +228,21 @@ export class Engine {
     return this._nodeIndex.get(nodeId) || null;
   }
 
+  /**
+   * Re-index a component's nodes in the _nodeIndex.
+   * Must be called after setProperty() rebuilds the inputs/outputs arrays
+   * so that wire connections and signal propagation work with the new node IDs.
+   * @param {Component} comp
+   */
+  reindexComponent(comp) {
+    // Remove ALL old entries that point to this component
+    for (const [nodeId, c] of this._nodeIndex) {
+      if (c === comp) this._nodeIndex.delete(nodeId);
+    }
+    // Re-add current inputs and outputs
+    this._indexComponent(comp);
+  }
+
   _propagateFrom(comp) {
     this.queue.add(comp);
     if (!this._processing) this._processQueue();
@@ -224,6 +256,7 @@ export class Engine {
     this._nodeIndex.clear();
     for (const comp of this.components.values()) {
       this._indexComponent(comp);
+      comp._engine = this;  // CRITICAL: Set engine reference for setProperty
       if (comp.type === 'Clock') this.clocks.add(comp);
       if (!comp.isWrapped) {
         const origCompute = comp.computeOutput.bind(comp);

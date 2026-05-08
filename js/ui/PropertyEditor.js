@@ -81,8 +81,25 @@ export class PropertyEditor {
     props.forEach(prop => {
       const inputEl = this.dialog.querySelector(`#prop-${prop.name}`);
       if (inputEl) {
-        const newValue = inputEl.type === 'number' ? parseFloat(inputEl.value) : inputEl.value;
-        if (newValue !== prop.value) {
+        let newValue = inputEl.type === 'number' ? parseFloat(inputEl.value) : inputEl.value;
+
+        // Validate and clamp number inputs to min/max bounds
+        // This is critical for mobile browsers where <input type="number">
+        // min/max attributes are not enforced and users can type any value.
+        if (inputEl.type === 'number' && !isNaN(newValue)) {
+          if (prop.min !== undefined && newValue < prop.min) {
+            newValue = prop.min;
+          }
+          if (prop.max !== undefined && newValue > prop.max) {
+            newValue = prop.max;
+          }
+          // Round to step precision
+          if (prop.step !== undefined && prop.step >= 1) {
+            newValue = Math.round(newValue);
+          }
+        }
+
+        if (!isNaN(newValue) && newValue !== prop.value) {
           this.component.setProperty(prop.name, newValue);
           changed = true;
         }

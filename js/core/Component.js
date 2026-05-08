@@ -106,7 +106,12 @@ export class Component {
   rerender() {
     if (this.element && this.container) {
       const oldEl = this.element;
+      const nextSibling = oldEl.nextSibling;
       this.render(this.container);
+      // Preserve DOM order by inserting the new element where the old one was
+      if (nextSibling) {
+        this.container.insertBefore(this.element, nextSibling);
+      }
       oldEl.remove();
       return true;
     }

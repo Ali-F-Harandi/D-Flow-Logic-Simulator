@@ -92,7 +92,7 @@ export class CanvasTouch {
       const compEl = dipBit.closest('.component');
       if (compEl) {
         const comp = this.compManager.getComponentById(compEl.dataset.compId);
-        if (comp && comp.type === 'DipSwitch8' && typeof comp.toggleBit === 'function') {
+        if (comp && comp.type === 'DipSwitch' && typeof comp.toggleBit === 'function') {
           // Just set up long-press for context menu; toggle is handled by the
           // dip-bit's own touchend handler
           this.longPressFired = false;
@@ -113,14 +113,14 @@ export class CanvasTouch {
     if (compEl && !target.classList.contains('connector')) {
       const comp = this.compManager.getComponentById(compEl.dataset.compId);
       if (comp) {
-        // For ALL components (including DipSwitch): start drag immediately.
-        // For toggle-type components (DipSwitch), a short tap (no move) will
+        // For ALL components (including ToggleSwitch): start drag immediately.
+        // For toggle-type components (ToggleSwitch), a short tap (no move) will
         // toggle in _onTouchEnd, while a drag will move the component.
         e.preventDefault();
         this.dragHandler.startDrag(comp, touch.clientX, touch.clientY);
 
         // Also track tap for toggle-type components
-        const isTapToggleable = comp.type === 'DipSwitch';
+        const isTapToggleable = comp.type === 'ToggleSwitch';
         if (isTapToggleable && !target.closest('.connector')) {
           this.tappedComponent = comp;
         }
@@ -272,7 +272,7 @@ export class CanvasTouch {
     // Handle toggleable component tap (only if not moved and no long-press)
     if (this.tappedComponent && !this.touchMoved && !this.longPressFired) {
       const comp = this.tappedComponent;
-      if (comp.type === 'DipSwitch' && typeof comp.toggle === 'function') {
+      if (comp.type === 'ToggleSwitch' && typeof comp.toggle === 'function') {
         comp.toggle();
       }
       this.tappedComponent = null;

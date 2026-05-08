@@ -75,7 +75,8 @@
 }
 
 /* ===== Visual State for Switches & LEDs ===== */
-.dip-switch.on  { background: var(--color-accent); }
+.dip-switch.on,
+.toggle-switch.on  { background: var(--color-accent); }
 .light-bulb.lit .bulb-icon {
   background: radial-gradient(circle at 30% 30%, #ff0, #aa0);
 }

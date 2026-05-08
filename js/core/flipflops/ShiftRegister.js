@@ -1,12 +1,16 @@
 import { Component } from '../Component.js';
 
-export class ShiftRegister4 extends Component {
+/**
+ * Configurable Shift Register — 2 to 8 bits, default 8.
+ * Renamed from ShiftRegister4. Type string changed from 'ShiftRegister4' to 'ShiftRegister'.
+ */
+export class ShiftRegister extends Component {
   static label = 'Shift Register';
   static category = 'Flip-Flops';
 
   constructor(id, bitCount = 8) {
     bitCount = Math.max(2, Math.min(8, parseInt(bitCount, 10) || 8));
-    super(id, 'ShiftRegister4', 2, bitCount);   // Data, Clock → Q0..Q(n-1)
+    super(id, 'ShiftRegister', 2, bitCount);   // Data, Clock → Q0..Q(n-1)
     this._bitCount = bitCount;
     this._prevClk = false;
     this._state = new Array(bitCount).fill(false);
@@ -50,19 +54,17 @@ export class ShiftRegister4 extends Component {
   setProperty(name, value) {
     if (name === 'bits') {
       const newCount = parseInt(value, 10);
-      if (newCount === this._bitCount || newCount < 2 || newCount > 8) return false;
+      if (isNaN(newCount) || newCount === this._bitCount || newCount < 2 || newCount > 8) return false;
 
       // Disconnect wires for outputs being removed
       if (newCount < this._bitCount) {
         for (let i = newCount; i < this._bitCount; i++) {
           const out = this.outputs[i];
           if (out) {
-            // Find wires from this output and disconnect them
             const wiresToRemove = this._engine?.wires.filter(w => w.from.nodeId === out.id);
             if (wiresToRemove) {
               wiresToRemove.forEach(w => {
                 this._engine.disconnect(w.id);
-                // Remove visual wire via custom event
                 document.dispatchEvent(new CustomEvent('wire-removed', { detail: { wireId: w.id } }));
               });
             }
@@ -70,7 +72,6 @@ export class ShiftRegister4 extends Component {
         }
       }
 
-      // Save old state values
       const oldState = [...this._state];
       const oldOutputs = this.outputs.map(o => ({ value: o.value }));
 
@@ -89,6 +90,12 @@ export class ShiftRegister4 extends Component {
       this._state = new Array(newCount).fill(false);
       for (let i = 0; i < Math.min(newCount, oldState.length); i++) {
         this._state[i] = oldState[i];
+      }
+
+      // CRITICAL: Re-index the component's nodes in the engine so that
+      // wire connections and signal propagation work with the new node IDs.
+      if (this._engine) {
+        this._engine.reindexComponent(this);
       }
 
       this.rerender();

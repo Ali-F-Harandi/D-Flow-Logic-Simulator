@@ -24,8 +24,12 @@ export class UndoManager {
   redo() {
     const cmd = this.redoStack.pop();
     if (cmd) {
-      cmd.execute();
-      this.undoStack.push(cmd);
+      const success = cmd.execute();
+      if (success) {
+        this.undoStack.push(cmd);
+      }
+      // If redo fails, the command is discarded — correct behavior
+      // since the state it was supposed to produce didn't happen.
     }
   }
 }
@@ -36,17 +40,30 @@ export class AddComponentCommand {
     this.engine = engine;
     this.canvas = canvas;
     this.component = component;
+    this.savedWires = [];
   }
   execute() {
     this.engine.addComponent(this.component);
     this.canvas.addComponent(this.component);
+    // Restore wires that were saved from a previous undo
+    if (this.savedWires.length > 0) {
+      this.savedWires.forEach(w => {
+        const engineId = this.engine.connect(w.fromNodeId, w.toNodeId, w.wireId);
+        this.canvas._reconnectWire(engineId, w.fromNodeId, w.toNodeId);
+      });
+    }
     return true;
   }
   undo() {
-    // Also remove visual wires connected to this component
+    // Save wire data before removing so redo can restore them
     const relatedWires = this.engine.wires.filter(w =>
       w.from.componentId === this.component.id || w.to.componentId === this.component.id
     );
+    this.savedWires = relatedWires.map(w => ({
+      wireId: w.id,
+      fromNodeId: w.from.nodeId,
+      toNodeId: w.to.nodeId
+    }));
     for (const w of relatedWires) {
       this.canvas._removeVisualWireByEngineId(w.id);
     }
@@ -77,9 +94,6 @@ export class DeleteComponentCommand {
     for (const w of relatedWires) {
       this.canvas._removeVisualWireByEngineId(w.id);
     }
-    // FIX (Bug #2 High): Explicitly remove from engine – the command is the
-    // sole authority for state changes. CanvasComponentManager._deleteComponent
-    // should only handle DOM removal (see Bug #3 fix).
     this.engine.removeComponent(this.component.id);
     this.canvas._deleteComponent(this.component.id, { skipEngine: true });
     return true;

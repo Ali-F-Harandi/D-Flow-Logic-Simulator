@@ -10,8 +10,8 @@ import { BufferGate } from './gates/BufferGate.js';
 import { HalfAdder } from './chips/HalfAdder.js';
 import { FullAdder } from './chips/FullAdder.js';
 import { Multiplexer } from './chips/Multiplexer.js';
+import { ToggleSwitch } from './io/ToggleSwitch.js';
 import { DipSwitch } from './io/DipSwitch.js';
-import { DipSwitch8 } from './io/DipSwitch8.js';
 import { LightBulb } from './io/LightBulb.js';
 import { SevenSegment } from './io/SevenSegment.js';
 import { LogicProbe } from './io/LogicProbe.js';
@@ -22,7 +22,7 @@ import { SRFlipFlop } from './flipflops/SRFlipFlop.js';
 import { DFlipFlop } from './flipflops/DFlipFlop.js';
 import { JKFlipFlop } from './flipflops/JKFlipFlop.js';
 import { TFlipFlop } from './flipflops/TFlipFlop.js';
-import { ShiftRegister4 } from './flipflops/ShiftRegister4.js';
+import { ShiftRegister } from './flipflops/ShiftRegister.js';
 import { generateId } from '../utils/IdGenerator.js';
 
 export class ComponentFactory {
@@ -39,8 +39,8 @@ export class ComponentFactory {
       'HalfAdder': HalfAdder,
       'FullAdder': FullAdder,
       'Multiplexer': Multiplexer,
+      'ToggleSwitch': ToggleSwitch,
       'DipSwitch': DipSwitch,
-      'DipSwitch8': DipSwitch8,
       'LightBulb': LightBulb,
       'SevenSegment': SevenSegment,
       'LogicProbe': LogicProbe,
@@ -51,15 +51,16 @@ export class ComponentFactory {
       'D': DFlipFlop,
       'JK': JKFlipFlop,
       'T': TFlipFlop,
-      'ShiftRegister': ShiftRegister4,
+      'ShiftRegister': ShiftRegister,
       // Backward compatibility: old saved projects may use these type names
-      'ShiftRegister4': ShiftRegister4
+      'DipSwitch8': DipSwitch,
+      'ShiftRegister4': ShiftRegister
     };
   }
 
   getAvailableTypes() {
     // Hide backward-compat aliases from the sidebar
-    const hidden = new Set(['ShiftRegister4']);
+    const hidden = new Set(['DipSwitch8', 'ShiftRegister4']);
     return Object.keys(this.registry)
       .filter(key => !hidden.has(key))
       .map(key => ({
@@ -69,17 +70,39 @@ export class ComponentFactory {
       }));
   }
 
-  createComponent(type, id = null) {
-    // Backward compatibility: map old type names to new ones
-    // and pass appropriate constructor args for legacy components
+  /**
+   * Create a component from a type string.
+   * Handles backward compatibility for old type names:
+   *   - 'DipSwitch8' → DipSwitch (multi-switch, default 8)
+   *   - 'ShiftRegister4' → ShiftRegister (4-bit for old saves)
+   *   - Old 'DipSwitch' with 1 output → ToggleSwitch (old single toggle)
+   */
+  createComponent(type, id = null, componentData = null) {
+    // Migration: old 'DipSwitch' type was the single toggle switch (1 output).
+    // New 'DipSwitch' is the multi-switch DIP (2-8 outputs).
+    // We distinguish by checking componentData.outputs.length from the save file.
+    if (type === 'DipSwitch' && componentData) {
+      const outputCount = componentData.outputs?.length || 0;
+      if (outputCount <= 1) {
+        // Old save: 'DipSwitch' = single toggle switch → ToggleSwitch
+        type = 'ToggleSwitch';
+      }
+      // else: new save or already-migrated, 'DipSwitch' = multi DIP
+    }
+
     const Cls = this.registry[type];
     if (!Cls) throw new Error(`Unknown component type: ${type}`);
     try {
+      const compId = id || generateId(type);
       // Old ShiftRegister4 defaulted to 4 bits; new ShiftRegister defaults to 8
       if (type === 'ShiftRegister4') {
-        return new Cls(id || generateId(type), 4);
+        return new Cls(compId, 4);
       }
-      return new Cls(id || generateId(type));
+      // Old DipSwitch8 → new DipSwitch, default 8
+      if (type === 'DipSwitch8') {
+        return new Cls(compId, 8);
+      }
+      return new Cls(compId);
     } catch (err) {
       console.error(`ComponentFactory: Failed to create "${type}"`, err);
       throw new Error(`Could not create component: ${type}`);
@@ -93,7 +116,7 @@ export class ComponentFactory {
       'HalfAdder':'Chips', 'FullAdder':'Chips', 'Multiplexer':'Chips',
       'SR':'Flip-Flops', 'D':'Flip-Flops', 'JK':'Flip-Flops', 'T':'Flip-Flops',
       'ShiftRegister':'Flip-Flops', 'ShiftRegister4':'Flip-Flops',
-      'DipSwitch':'Inputs', 'DipSwitch8':'Inputs', 'Clock':'Inputs',
+      'ToggleSwitch':'Inputs', 'DipSwitch':'Inputs', 'DipSwitch8':'Inputs', 'Clock':'Inputs',
       'HighConstant':'Inputs', 'LowConstant':'Inputs',
       'LightBulb':'Outputs', 'SevenSegment':'Outputs', 'LogicProbe':'Outputs'
     };

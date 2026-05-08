@@ -65,7 +65,9 @@ export class Circuit {
   static fromJSON(data, factory) {
     const circuit = new Circuit();
     for (const compData of data.components) {
-      const comp = factory.createComponent(compData.type, compData.id);
+      // Pass componentData so the factory can migrate old type names
+      // (e.g., old 'DipSwitch' = single toggle → new 'ToggleSwitch')
+      const comp = factory.createComponent(compData.type, compData.id, compData);
       comp.position.x = compData.position.x;
       comp.position.y = compData.position.y;
       const props = comp.getProperties();
@@ -84,6 +86,13 @@ export class Circuit {
         }
         if (compData.internalState._prevClk !== undefined) comp._prevClk = compData.internalState._prevClk;
         if (compData.internalState.frequency !== undefined && comp.setFrequency) comp.setFrequency(compData.internalState.frequency);
+      }
+      // FIX: Restore output values (e.g., ToggleSwitch/DipSwitch positions)
+      // so that switch states are preserved after save/load.
+      if (compData.outputs) {
+        for (let i = 0; i < compData.outputs.length && i < comp.outputs.length; i++) {
+          comp.outputs[i].value = compData.outputs[i].value;
+        }
       }
       circuit.addComponent(comp);
     }
