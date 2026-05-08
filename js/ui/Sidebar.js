@@ -13,12 +13,6 @@ export class Sidebar {
     this._dragData = null;
     this._dragGhost = null;
 
-    // HP-5 FIX: Create backdrop element for mobile overlay
-    this._backdrop = document.createElement('div');
-    this._backdrop.className = 'sidebar-backdrop';
-    document.body.appendChild(this._backdrop);
-    this._backdrop.addEventListener('click', () => this.close());
-
     this.eventBus.on('toggle-sidebar', () => this.toggle());
 
     window.addEventListener('click', (e) => {
@@ -38,7 +32,7 @@ export class Sidebar {
     sidebar.innerHTML = `
       <div class="sidebar-header">Components</div>
       <div class="search-bar">
-        <input type="text" id="sidebar-search" placeholder="Search components..." autocomplete="off" aria-label="Search components">
+        <input type="text" id="sidebar-search" placeholder="Search components..." autocomplete="off">
       </div>
       <div class="component-list"></div>
     `;
@@ -157,8 +151,8 @@ export class Sidebar {
       ) {
         this.eventBus.emit('canvas-touch-drop', {
           type: this._dragData.type,
-          pageX: touch.pageX,
-          pageY: touch.pageY
+          clientX: touch.clientX,
+          clientY: touch.clientY
         });
       }
     }
@@ -171,19 +165,10 @@ export class Sidebar {
   }
 
   toggle() {
-    const opening = !this.element.classList.contains('open');
     this.element.classList.toggle('open');
-    // HP-5 FIX: Show/hide backdrop when sidebar opens/closes on mobile
-    if (opening) {
-      this._backdrop.classList.add('visible');
-    } else {
-      this._backdrop.classList.remove('visible');
-    }
   }
 
   close() {
     this.element.classList.remove('open');
-    // HP-5 FIX: Hide backdrop
-    this._backdrop.classList.remove('visible');
   }
 }

@@ -12,8 +12,8 @@ export class CanvasCore {
     this.scene.id = 'canvas-scene';
     this.scene.style.position = 'absolute';
     this.scene.style.transformOrigin = '0 0';
-    this.scene.style.width = '10000px';
-    this.scene.style.height = '10000px';
+    this.scene.style.width = '20000px';
+    this.scene.style.height = '20000px';
     this.element.appendChild(this.scene);
 
     // SVG layer for wires
@@ -27,11 +27,13 @@ export class CanvasCore {
   _createSVGLayer() {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('class', 'wire-layer');
+    svg.setAttribute('viewBox', '0 0 20000 20000');
+    svg.setAttribute('width', '20000');
+    svg.setAttribute('height', '20000');
     svg.style.position = 'absolute';
     svg.style.top = '0';
     svg.style.left = '0';
-    svg.style.width = '100%';
-    svg.style.height = '100%';
+    svg.style.overflow = 'visible';
     svg.style.pointerEvents = 'none';
     return svg;
   }
@@ -56,12 +58,14 @@ export class CanvasCore {
 
   /**
    * Convert screen (client) coordinates to canvas (scene) coordinates.
+   * Uses the scene element's bounding rect directly for accuracy,
+   * which avoids any offset between the canvas container and the scene.
    */
   canvasCoords(clientX, clientY) {
-    const rect = this.element.getBoundingClientRect();
+    const sceneRect = this.scene.getBoundingClientRect();
     return {
-      x: (clientX - rect.left - this.panOffset.x) / this.scale,
-      y: (clientY - rect.top - this.panOffset.y) / this.scale
+      x: (clientX - sceneRect.left) / this.scale,
+      y: (clientY - sceneRect.top) / this.scale
     };
   }
 

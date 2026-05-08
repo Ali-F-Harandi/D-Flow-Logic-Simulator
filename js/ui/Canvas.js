@@ -74,8 +74,10 @@ export class Canvas {
 
     this.eventBus.on('component-created', (comp) => this.addComponent(comp));
     this.eventBus.on('component-modified', (comp) => this._onComponentModified(comp));
-    this.eventBus.on('canvas-touch-drop', ({ type, pageX, pageY }) => {
-      const pos = this.core.canvasCoords(pageX, pageY);
+    this.eventBus.on('canvas-touch-drop', ({ type, clientX, clientY }) => {
+      // Use clientX/clientY (viewport-relative) instead of pageX/pageY
+      // (document-relative) because canvasCoords expects viewport coords.
+      const pos = this.core.canvasCoords(clientX, clientY);
       this._placeComponent(type, pos);
     });
 
@@ -169,8 +171,11 @@ export class Canvas {
   }
 
   _placeComponent(type, scenePos) {
-    let x = this.core.snap(scenePos.x - 40);
-    let y = this.core.snap(scenePos.y - 20);
+    // Center the component on the drop point using half of standard gate dimensions
+    const halfW = 2 * GRID_SIZE;   // 40px – half of 4*GRID
+    const halfH = 1.5 * GRID_SIZE; // 30px – half of 3*GRID (typical 2-input gate height)
+    let x = this.core.snap(scenePos.x - halfW);
+    let y = this.core.snap(scenePos.y - halfH);
     this.eventBus.emit('component-drop', { type, x, y });
   }
 

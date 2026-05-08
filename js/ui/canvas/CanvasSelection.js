@@ -10,7 +10,7 @@ export class CanvasSelection {
     this.core = core;
     this.element = containerElement;
     this.eventBus = eventBus;
-    this.canvas = canvas;
+    this.canvas = canvas;          // <-- store real Canvas instance
     this.selectedComponents = new Set();
     this.selectedWires = new Set();
     this.selectionRect = null;
@@ -39,18 +39,8 @@ export class CanvasSelection {
     this.selectedWires.clear();
   }
 
-  selectAll(components) {
-    this.clearSelection();
-    components.forEach(comp => {
-      if (comp.element) {
-        this.selectedComponents.add(comp.id);
-        comp.element.classList.add('selected');
-      }
-    });
-  }
-
   startSelection(e) {
-    const coords = this.core.canvasCoords(e.clientX || e.pageX, e.clientY || e.pageY);
+    const coords = this.core.canvasCoords(e.clientX, e.clientY);
     this.selectionStart = coords;
     this.selectionRect = document.createElement('div');
     this.selectionRect.className = 'selection-rect';
@@ -65,22 +55,35 @@ export class CanvasSelection {
 
   updateSelection(e) {
     if (!this.selectionRect) return;
-    const curr = this.core.canvasCoords(e.clientX || e.pageX, e.clientY || e.pageY);
-    const x = Math.min(this.selectionStart.x, curr.x) * this.core.scale + this.core.panOffset.x;
-    const y = Math.min(this.selectionStart.y, curr.y) * this.core.scale + this.core.panOffset.y;
-    const w = Math.abs(curr.x - this.selectionStart.x) * this.core.scale;
-    const h = Math.abs(curr.y - this.selectionStart.y) * this.core.scale;
-    Object.assign(this.selectionRect.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' });
+    const curr = this.core.canvasCoords(e.clientX, e.clientY);
+    // Convert scene coordinates back to viewport-relative pixels
+    // for positioning the selection rectangle overlay.
+    const sceneRect = this.core.scene.getBoundingClientRect();
+    const s = this.core.scale;
+    const x = Math.min(this.selectionStart.x, curr.x) * s + sceneRect.left;
+    const y = Math.min(this.selectionStart.y, curr.y) * s + sceneRect.top;
+    const w = Math.abs(curr.x - this.selectionStart.x) * s;
+    const h = Math.abs(curr.y - this.selectionStart.y) * s;
+    // Position relative to the canvas container
+    const canvasRect = this.element.getBoundingClientRect();
+    Object.assign(this.selectionRect.style, {
+      left: (x - canvasRect.left) + 'px',
+      top: (y - canvasRect.top) + 'px',
+      width: w + 'px',
+      height: h + 'px'
+    });
   }
 
   endSelection(e) {
     if (!this.selectionRect) return;
     const rect = this.selectionRect.getBoundingClientRect();
-    const canvasRect = this.element.getBoundingClientRect();
-    const minX = (rect.left - canvasRect.left - this.core.panOffset.x) / this.core.scale;
-    const minY = (rect.top - canvasRect.top - this.core.panOffset.y) / this.core.scale;
-    const maxX = minX + rect.width / this.core.scale;
-    const maxY = minY + rect.height / this.core.scale;
+    // Use scene-based coordinate conversion for consistency
+    const sceneRect = this.core.scene.getBoundingClientRect();
+    const s = this.core.scale;
+    const minX = (rect.left - sceneRect.left) / s;
+    const minY = (rect.top - sceneRect.top) / s;
+    const maxX = minX + rect.width / s;
+    const maxY = minY + rect.height / s;
     if (!(e && e.shiftKey)) this.clearSelection();
     this.compManager.components.forEach(comp => {
       if (!comp.element) return;
@@ -120,96 +123,24 @@ export class CanvasSelection {
   copySelected() {
     const ids = Array.from(this.selectedComponents);
     if (ids.length === 0) return;
-
-    // HP-4 FIX: Also save wire connections between copied components
-    // so that paste recreates them. Previously, copySelected() only
-    // saved component types and positions — pasted components had no
-    // wires between them, making copy/paste of sub-circuits useless.
-
-    // Collect components and their relative positions
-    const compData = ids.map(id => {
+    this._clipboard = ids.map(id => {
       const comp = this.compManager.getComponentById(id);
-      return comp ? { type: comp.type, dx: comp.position.x, dy: comp.position.y, id: comp.id } : null;
+      return comp ? { type: comp.type, dx: comp.position.x, dy: comp.position.y } : null;
     }).filter(Boolean);
-
-    const minX = Math.min(...compData.map(c => c.dx));
-    const minY = Math.min(...compData.map(c => c.dy));
-    compData.forEach(c => { c.dx -= minX; c.dy -= minY; });
-
-    // Find wires that connect pairs of selected components
-    const idSet = new Set(ids);
-    const wireData = this.wiring.wires
-      .filter(w => idSet.has(w.fromNode.nodeId.split('.')[0]) && idSet.has(w.toNode.nodeId.split('.')[0]))
-      .map(w => ({
-        fromNodeId: w.fromNode.nodeId,
-        toNodeId: w.toNode.nodeId,
-        fromCompId: w.fromNode.nodeId.split('.')[0],
-        toCompId: w.toNode.nodeId.split('.')[0]
-      }));
-
-    this._clipboard = { components: compData, wires: wireData };
-    if (this._clipboard.components.length) {
-      this.toaster.show(`Copied ${this._clipboard.components.length} component(s)`, 'success');
+    if (this._clipboard.length) {
+      const minX = Math.min(...this._clipboard.map(c => c.dx));
+      const minY = Math.min(...this._clipboard.map(c => c.dy));
+      this._clipboard.forEach(c => { c.dx -= minX; c.dy -= minY; });
+      this.toaster.show(`Copied ${this._clipboard.length} component(s)`, 'success');
     }
   }
 
   pasteCopied() {
-    if (!this._clipboard?.components?.length) { this.toaster.show('Nothing to paste', 'warning'); return; }
+    if (!this._clipboard?.length) { this.toaster.show('Nothing to paste', 'warning'); return; }
     const offsetX = 80, offsetY = 40;
-
-    // HP-4 FIX: Map old component IDs to new IDs so we can reconnect wires
-    const idMap = new Map(); // old comp id -> new comp id
-
-    this._clipboard.components.forEach(c => {
-      // Emit component-drop which creates a new component via factory
-      // We need the newly created component's ID, so we listen for it
-      const newCompId = this.eventBus.emit('component-drop', { type: c.type, x: c.dx + offsetX, y: c.dy + offsetY });
-      // Since component-drop is async (handled by main.js listener), we can't
-      // get the new ID here directly. Instead, we'll store the mapping after
-      // components are created, then connect wires in a deferred manner.
+    this._clipboard.forEach(c => {
+      this.eventBus.emit('component-drop', { type: c.type, x: c.dx + offsetX, y: c.dy + offsetY });
     });
-
-    // Deferred wire connection: after components are created (next frame),
-    // find the newly added components and connect their wires.
-    if (this._clipboard.wires?.length) {
-      // Use requestAnimationFrame to ensure components are created first
-      requestAnimationFrame(() => {
-        // Get the most recently created components that match the count
-        const allComps = this.compManager.components;
-        const pasteCount = this._clipboard.components.length;
-        const newComps = allComps.slice(-pasteCount);
-
-        // Build old ID → new ID mapping based on order
-        this._clipboard.components.forEach((c, i) => {
-          if (newComps[i]) {
-            idMap.set(c.id, newComps[i].id);
-          }
-        });
-
-        // Connect wires between pasted components
-        this._clipboard.wires.forEach(w => {
-          const newFromCompId = idMap.get(w.fromCompId);
-          const newToCompId = idMap.get(w.toCompId);
-          if (newFromCompId && newToCompId) {
-            // Reconstruct node IDs by replacing old comp ID with new comp ID
-            const newFromNodeId = w.fromNodeId.replace(w.fromCompId, newFromCompId);
-            const newToNodeId = w.toNodeId.replace(w.toCompId, newToCompId);
-
-            // Find the actual nodes in the new components
-            const fromComp = this.engine.components.get(newFromCompId);
-            const toComp = this.engine.components.get(newToCompId);
-            if (fromComp && toComp) {
-              const fromNode = fromComp.outputs.find(o => newFromNodeId.endsWith(o.id.split('.').slice(1).join('.')));
-              const toNode = toComp.inputs.find(i => newToNodeId.endsWith(i.id.split('.').slice(1).join('.')));
-              if (fromNode && toNode) {
-                this.wiring.completeConnection(fromNode.id, toNode.id);
-              }
-            }
-          }
-        });
-      });
-    }
-
-    this.toaster.show(`Pasted ${this._clipboard.components.length} component(s)`, 'success');
+    this.toaster.show(`Pasted ${this._clipboard.length} component(s)`, 'success');
   }
 }

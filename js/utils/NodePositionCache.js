@@ -1,24 +1,17 @@
 export class NodePositionCache {
   constructor(canvasElement, panOffset, scale) {
     this._canvas = canvasElement;
+    this._scene = canvasElement.querySelector('#canvas-scene');
     this._panOffset = panOffset;
     this._scale = scale;
     this._cache = new Map();
     this._valid = false;
-    this._rafId = null;
     this._observer = new ResizeObserver(() => this.invalidate());
     this._observer.observe(canvasElement);
   }
 
   invalidate() {
     this._valid = false;
-    // L-12: Debounced rebuild using requestAnimationFrame
-    if (this._rafId === null) {
-      this._rafId = requestAnimationFrame(() => {
-        this._rebuild();
-        this._rafId = null;
-      });
-    }
   }
 
   setTransform(panOffset, scale) {
@@ -32,9 +25,20 @@ export class NodePositionCache {
     return this._cache.get(nodeId) || { x: 0, y: 0 };
   }
 
+  /**
+   * Rebuild the position cache by reading connector dot positions.
+   * Uses the scene element's bounding rect for conversion, which
+   * avoids any offset between the canvas container and the scene.
+   */
   _rebuild() {
     this._cache.clear();
-    const canvasRect = this._canvas.getBoundingClientRect();
+    // Use the scene element for coordinate conversion – its getBoundingClientRect()
+    // already includes the CSS transform (translate + scale), so we can convert
+    // directly: sceneX = (dotCenterX_viewport - sceneRect.left) / scale
+    const scene = this._scene || this._canvas.querySelector('#canvas-scene');
+    const sceneRect = scene ? scene.getBoundingClientRect() : null;
+    const scale = this._scale;
+
     const dots = this._canvas.querySelectorAll('.connector[data-node]');
     dots.forEach(dot => {
       // Skip dots that are not visible (removed from DOM or hidden)
@@ -42,8 +46,18 @@ export class NodePositionCache {
 
       const nodeId = dot.dataset.node;
       const dotRect = dot.getBoundingClientRect();
-      const x = (dotRect.left + dotRect.width / 2 - canvasRect.left - this._panOffset.x) / this._scale;
-      const y = (dotRect.top + dotRect.height / 2 - canvasRect.top - this._panOffset.y) / this._scale;
+      let x, y;
+      if (sceneRect) {
+        // Direct conversion using scene's viewport position.
+        // sceneRect.left/top is the viewport position of the scene's origin (0,0).
+        x = (dotRect.left + dotRect.width / 2 - sceneRect.left) / scale;
+        y = (dotRect.top + dotRect.height / 2 - sceneRect.top) / scale;
+      } else {
+        // Fallback: use canvas container rect + panOffset
+        const canvasRect = this._canvas.getBoundingClientRect();
+        x = (dotRect.left + dotRect.width / 2 - canvasRect.left - this._panOffset.x) / scale;
+        y = (dotRect.top + dotRect.height / 2 - canvasRect.top - this._panOffset.y) / scale;
+      }
       this._cache.set(nodeId, { x, y });
     });
     this._valid = true;
@@ -51,9 +65,5 @@ export class NodePositionCache {
 
   disconnect() {
     this._observer.disconnect();
-    if (this._rafId !== null) {
-      cancelAnimationFrame(this._rafId);
-      this._rafId = null;
-    }
   }
 }

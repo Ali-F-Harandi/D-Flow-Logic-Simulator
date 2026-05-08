@@ -49,7 +49,7 @@ export class CanvasTouch {
   _onTouchStart(e) {
     this._cleanupTouch();
     if (e.touches.length === 2) {
-      this.lastTouchDist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
+      this.lastTouchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
       return;
     }
 
@@ -89,11 +89,11 @@ export class CanvasTouch {
   _onTouchMove(e) {
     if (e.touches.length === 2) {
       e.preventDefault();
-      const dist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
+      const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
       if (this.lastTouchDist) {
         const delta = dist > this.lastTouchDist ? 1 : -1;
-        const midX = (e.touches[0].pageX + e.touches[1].pageX) / 2;
-        const midY = (e.touches[0].pageY + e.touches[1].pageY) / 2;
+        const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
         const rect = this.element.getBoundingClientRect();
         this.core.zoom(delta, midX - rect.left, midY - rect.top);
       }

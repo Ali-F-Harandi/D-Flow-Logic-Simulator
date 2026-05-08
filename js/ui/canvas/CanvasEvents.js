@@ -9,7 +9,7 @@ export class CanvasEvents {
   constructor(
     compManager, dragHandler, wiring, selection, panZoom, core,
     contextMenu, propertyEditor, undoManager, eventBus, positionCache,
-    canvas
+    canvas          // <-- NEW PARAMETER
   ) {
     this.compManager = compManager;
     this.dragHandler = dragHandler;
@@ -22,11 +22,13 @@ export class CanvasEvents {
     this.undoManager = undoManager;
     this.eventBus = eventBus;
     this.positionCache = positionCache;
-    this.canvas = canvas;
+    this.canvas = canvas;    // <-- store real Canvas instance
     this._toaster = null;
 
     this.element = document.getElementById('canvas-container');
     if (!this.element) this.element = core.element;
+
+    console.log('[CanvasEvents] ready, element: ' + this.element.id);
 
     this._focusedComponentIndex = -1;
 
@@ -154,18 +156,12 @@ export class CanvasEvents {
   /* ---------- Keyboard ---------- */
   _bindKeyboard() {
     window.addEventListener('keydown', (e) => {
-      // HP-2 FIX: Skip if user is typing in an input/textarea to avoid
-      // intercepting legitimate text editing keystrokes.
-      const tag = document.activeElement?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-
       if (this.wiring.wiring) return;
       const step = this.core.gridSize;
       if (e.ctrlKey && e.key === 'z') { e.preventDefault(); this.undoManager.undo(); }
       else if (e.ctrlKey && e.key === 'y') { e.preventDefault(); this.undoManager.redo(); }
       else if (e.ctrlKey && e.key === 'c') { e.preventDefault(); this.selection.copySelected(); }
       else if (e.ctrlKey && e.key === 'v') { e.preventDefault(); this.selection.pasteCopied(); }
-      else if (e.ctrlKey && e.key === 'a') { e.preventDefault(); this.selection.selectAll(this.compManager.components); }
       else if (e.key === 'Escape') { this.selection.clearSelection(); }
       else if (e.key === 'Delete' || e.key === 'Backspace') {
         if (this.selection.selectedComponents.size > 0 || this.selection.selectedWires.size > 0) {
@@ -262,8 +258,12 @@ export class CanvasEvents {
       const type = e.dataTransfer.getData('text/plain');
       if (!type) return;
       const pos = this.core.canvasCoords(e.clientX, e.clientY);
-      const x = this.core.snap(pos.x - 40);
-      const y = this.core.snap(pos.y - 20);
+      // Use half of standard gate dimensions (4*GRID × 3*GRID) to center the
+      // component on the drop point.  Most components are 80×60 or smaller.
+      const halfW = 2 * 20;   // 40px – half of 4*GRID
+      const halfH = 1.5 * 20; // 30px – half of 3*GRID (typical 2-input gate height)
+      const x = this.core.snap(pos.x - halfW);
+      const y = this.core.snap(pos.y - halfH);
       this.eventBus.emit('component-drop', { type, x, y });
     });
   }
