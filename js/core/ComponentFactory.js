@@ -7,6 +7,7 @@ import { NorGate } from './gates/NorGate.js';
 import { XorGate } from './gates/XorGate.js';
 import { XnorGate } from './gates/XnorGate.js';
 import { BufferGate } from './gates/BufferGate.js';
+import { TriStateBuffer } from './gates/TriStateBuffer.js';
 import { HalfAdder } from './chips/HalfAdder.js';
 import { FullAdder } from './chips/FullAdder.js';
 import { Multiplexer } from './chips/Multiplexer.js';
@@ -18,7 +19,9 @@ import { LogicProbe } from './io/LogicProbe.js';
 import { Clock } from './io/Clock.js';
 import { HighConstant } from './io/HighConstant.js';
 import { LowConstant } from './io/LowConstant.js';
+import { LedArray } from './io/LedArray.js';
 import { SRFlipFlop } from './flipflops/SRFlipFlop.js';
+import { SRLatch } from './flipflops/SRLatch.js';
 import { DFlipFlop } from './flipflops/DFlipFlop.js';
 import { JKFlipFlop } from './flipflops/JKFlipFlop.js';
 import { TFlipFlop } from './flipflops/TFlipFlop.js';
@@ -36,6 +39,7 @@ export class ComponentFactory {
       'XOR': XorGate,
       'XNOR': XnorGate,
       'Buffer': BufferGate,
+      'TriState': TriStateBuffer,
       'HalfAdder': HalfAdder,
       'FullAdder': FullAdder,
       'Multiplexer': Multiplexer,
@@ -47,7 +51,9 @@ export class ComponentFactory {
       'Clock': Clock,
       'HighConstant': HighConstant,
       'LowConstant': LowConstant,
+      'LedArray': LedArray,
       'SR': SRFlipFlop,
+      'SRLatch': SRLatch,
       'D': DFlipFlop,
       'JK': JKFlipFlop,
       'T': TFlipFlop,
@@ -113,12 +119,13 @@ export class ComponentFactory {
     const map = {
       'AND':'Gates', 'OR':'Gates', 'NOT':'Gates',
       'NAND':'Gates', 'NOR':'Gates', 'XOR':'Gates', 'XNOR':'Gates', 'Buffer':'Gates',
+      'TriState':'Gates',
       'HalfAdder':'Chips', 'FullAdder':'Chips', 'Multiplexer':'Chips',
-      'SR':'Flip-Flops', 'D':'Flip-Flops', 'JK':'Flip-Flops', 'T':'Flip-Flops',
+      'SR':'Flip-Flops', 'SRLatch':'Flip-Flops', 'D':'Flip-Flops', 'JK':'Flip-Flops', 'T':'Flip-Flops',
       'ShiftRegister':'Flip-Flops', 'ShiftRegister4':'Flip-Flops',
       'ToggleSwitch':'Inputs', 'DipSwitch':'Inputs', 'DipSwitch8':'Inputs', 'Clock':'Inputs',
       'HighConstant':'Inputs', 'LowConstant':'Inputs',
-      'LightBulb':'Outputs', 'SevenSegment':'Outputs', 'LogicProbe':'Outputs'
+      'LightBulb':'Outputs', 'SevenSegment':'Outputs', 'LogicProbe':'Outputs', 'LedArray':'Outputs'
     };
     return map[type] || 'Other';
   }

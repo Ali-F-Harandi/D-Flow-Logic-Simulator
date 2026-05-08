@@ -306,6 +306,18 @@
   border-color: var(--color-accent);
 }
 
+/* ===== Tri-State Buffer Gate ===== */
+.tristate-gate {
+  border-color: #ff9800;
+  border-style: solid;
+}
+
+/* ===== SR Latch ===== */
+.sr-latch {
+  border-color: #ab47bc;
+  border-style: solid;
+}
+
 /* ===== High/Low Constant Components ===== */
 .high-constant,
 .low-constant {
@@ -321,10 +333,171 @@
   background: var(--color-surface);
 }
 
+/* ===== LED Array ===== */
+.led-array {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  text-align: center;
+}
+
 /* ===== Connector Magnet Highlight ===== */
 .connector.magnet-highlight {
   transform: scale(1.8);
   box-shadow: 0 0 8px var(--color-accent);
   z-index: 10;
   transition: transform 0.1s, box-shadow 0.1s;
+}
+
+/* ===== Help Overlay ===== */
+#help-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 9999;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-family);
+  color: var(--color-text);
+}
+.help-content {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-lg);
+  max-width: 600px;
+  width: 90vw;
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: var(--space-lg);
+}
+.help-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-md);
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--color-border);
+}
+.help-header h2 {
+  margin: 0;
+  color: var(--color-accent);
+  font-size: var(--font-size-lg);
+}
+.help-close-btn {
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+.help-close-btn:hover {
+  background: var(--color-danger);
+  color: white;
+  border-color: var(--color-danger);
+}
+.help-section {
+  margin-bottom: var(--space-md);
+}
+.help-section h3 {
+  color: var(--color-accent);
+  font-size: var(--font-size-md);
+  margin-bottom: var(--space-xs);
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 4px;
+}
+.shortcut-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.shortcut-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--color-border);
+}
+.shortcut-table td:first-child {
+  font-family: monospace;
+  white-space: nowrap;
+  color: var(--color-accent);
+  width: 40%;
+}
+kbd {
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-family: monospace;
+  font-size: 11px;
+}
+
+/* ===== Netlist Panel ===== */
+.netlist-section {
+  margin-bottom: 12px;
+}
+.netlist-section-title {
+  font-weight: 600;
+  color: var(--color-accent);
+  font-size: 12px;
+  margin-bottom: 4px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid var(--color-border);
+}
+.netlist-item {
+  padding: 2px 4px;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.netlist-comp-type {
+  color: var(--color-accent);
+  font-weight: 600;
+}
+.netlist-comp-id {
+  color: var(--color-text-muted);
+}
+.netlist-comp-meta {
+  color: var(--color-text-muted);
+  font-size: 10px;
+}
+.netlist-connection .netlist-from {
+  color: var(--color-success);
+}
+.netlist-connection .netlist-arrow {
+  color: var(--color-text-muted);
+}
+.netlist-connection .netlist-to {
+  color: #64b5f6;
+}
+.netlist-high {
+  color: var(--color-success);
+  font-weight: 600;
+}
+.netlist-low {
+  color: var(--color-text-muted);
+}
+.netlist-z {
+  color: #ff9800;
+  font-weight: 600;
+}
+.netlist-float {
+  color: #ff9800;
+  font-style: italic;
+}
+.netlist-unconnected {
+  color: var(--color-text-muted);
+  opacity: 0.8;
+}
+.netlist-empty {
+  color: var(--color-text-muted);
+  font-style: italic;
+  padding: 4px;
 }

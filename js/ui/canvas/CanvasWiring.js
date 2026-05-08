@@ -1,4 +1,5 @@
 import { Wire } from '../../core/Wire.js';
+import { AStarRouter } from '../../core/AStarRouter.js';
 import { generateId } from '../../utils/IdGenerator.js';
 import { ConnectWireCommand, DisconnectWireCommand } from '../../utils/UndoManager.js';
 
@@ -14,9 +15,24 @@ export class CanvasWiring {
     this.wiring = null;
     this._redrawRequested = false;
     this._redrawCallback = null;
+    this._router = null;  // A* router instance
   }
 
   getWires() { return this.wires; }
+
+  /**
+   * Create or get the A* router instance for smart wire routing.
+   */
+  _getRouter() {
+    const components = this._getComponents();
+    this._router = new AStarRouter(
+      components,
+      this.wires,
+      this.positionCache,
+      this.engine
+    );
+    return this._router;
+  }
 
   addVisualWire(engineId, fromNodeId, toNodeId) {
     const visualId = generateId('wire');
@@ -43,17 +59,19 @@ export class CanvasWiring {
   updateWiresForComponent(comp) {
     const prefix = comp.id + '.';
     const busY = this.core.getBusBarY(this._getComponents());
+    const router = this._getRouter();
     this.wires.forEach(wire => {
       if (wire.fromNode.nodeId.startsWith(prefix) || wire.toNode.nodeId.startsWith(prefix)) {
-        wire.updatePath((nodeId) => this.positionCache.getPosition(nodeId), busY);
+        wire.updatePath((nodeId) => this.positionCache.getPosition(nodeId), busY, router);
       }
     });
   }
 
   performRedraw(components) {
     const busY = this.core.getBusBarY(components);
+    const router = new AStarRouter(components, this.wires, this.positionCache, this.engine);
     this.wires.forEach(wire => {
-      wire.updatePath((nodeId) => this.positionCache.getPosition(nodeId), busY);
+      wire.updatePath((nodeId) => this.positionCache.getPosition(nodeId), busY, router);
       const sourceComp = this.engine._findComponentByNode(wire.fromNode.nodeId);
       if (sourceComp) {
         const outNode = sourceComp.outputs.find(o => o.id === wire.fromNode.nodeId);
@@ -101,10 +119,12 @@ export class CanvasWiring {
   }
 
   _renderWire(wire) {
+    const router = this._getRouter();
     wire.render(
       this.core.svgLayer,
       (nodeId) => this.positionCache.getPosition(nodeId),
-      this.core.getBusBarY(this._getComponents())
+      this.core.getBusBarY(this._getComponents()),
+      router
     );
   }
 

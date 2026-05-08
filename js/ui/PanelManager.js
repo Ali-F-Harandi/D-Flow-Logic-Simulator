@@ -1,5 +1,6 @@
 import { TruthTablePanel } from './TruthTablePanel.js';
 import { TestBenchPanel } from './TestBenchPanel.js';
+import { NetlistPanel } from './NetlistPanel.js';
 
 export class PanelManager {
   constructor(container, eventBus, engine) {
@@ -17,9 +18,11 @@ export class PanelManager {
 
     this.truthPanel = new TruthTablePanel(this.rightPanel, eventBus, engine);
     this.testBenchPanel = new TestBenchPanel(this.rightPanel, eventBus, engine);
+    this.netlistPanel = new NetlistPanel(this.rightPanel, eventBus, engine);
 
     this.truthPanel.panel.style.display = 'none';
     this.testBenchPanel.panel.style.display = 'none';
+    this.netlistPanel.panel.style.display = 'none';
 
     this.eventBus.on('toggle-right-panel', (width) => {
       this.toggleRightPanel(width);
@@ -112,10 +115,14 @@ export class PanelManager {
   showPanel(type) {
     this.truthPanel.panel.style.display = 'none';
     this.testBenchPanel.panel.style.display = 'none';
+    this.netlistPanel.panel.style.display = 'none';
     if (type === 'truth') {
       this.truthPanel.panel.style.display = 'block';
     } else if (type === 'testbench') {
       this.testBenchPanel.panel.style.display = 'block';
+    } else if (type === 'netlist') {
+      this.netlistPanel.panel.style.display = 'block';
+      this.netlistPanel.refresh();
     }
     if (!this.rightPanelOpen) {
       this.toggleRightPanel('300px');

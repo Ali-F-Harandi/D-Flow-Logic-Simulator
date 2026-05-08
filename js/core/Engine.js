@@ -155,7 +155,15 @@ export class Engine {
             if (targetComp) {
               const inputIndex = targetComp.inputs.findIndex(inp => inp.id === w.to.nodeId);
               if (inputIndex >= 0) {
-                targetComp.inputs[inputIndex].value = out.value;
+                // Z state (null) propagation: when a tri-state buffer outputs Z,
+                // the downstream input should NOT be driven. It retains its
+                // previous value from other sources (or stays false if no
+                // other source drives it). Only non-null values propagate.
+                if (out.value !== null) {
+                  targetComp.inputs[inputIndex].value = out.value;
+                }
+                // Always queue the target for re-evaluation since
+                // the wire color needs updating even for Z state
                 this.queue.add(targetComp);
               }
             }

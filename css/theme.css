@@ -50,6 +50,7 @@
   --connector-size: 10px;
   --wire-high-color: #00cc66;
   --wire-neutral-color: #888;
+  --wire-z-color: #ff9800;
   --gate-bg: var(--color-surface);
   --gate-body-color: var(--color-text);
   --gate-border: 1px solid var(--color-border);
@@ -66,7 +67,8 @@
   --switch-on-bg: var(--color-accent);
   --probe-high: #4ec9b0;
   --probe-low: #f44747;
-  --probe-z: #888;
+  --probe-z: #ff9800;
+  --wire-z-color: #ff9800;
   --truth-table-header-bg: var(--color-surface-alt);
   --truth-table-header-color: var(--color-accent);
   --truth-table-row-alt: rgba(255,255,255,0.03);
@@ -120,7 +122,8 @@
   --switch-on-bg: var(--color-accent);
   --probe-high: #4ec9b0;
   --probe-low: #f44747;
-  --probe-z: #888;
+  --probe-z: #ff9800;
+  --wire-z-color: #ff9800;
   --truth-table-header-bg: var(--color-surface-alt);
   --truth-table-header-color: var(--color-accent);
   --truth-table-row-alt: rgba(0,0,0,0.03);
@@ -158,6 +161,7 @@
   --connector-border: #fff;
   --wire-neutral-color: #fff;
   --wire-high-color: #0f0;
+  --wire-z-color: #ff0;
   --gate-bg: #000;
   --gate-body-color: #fff;
   --gate-border: 2px solid #fff;
@@ -174,7 +178,8 @@
   --switch-on-bg: #ff0;
   --probe-high: #0f0;
   --probe-low: #f00;
-  --probe-z: #fff;
+  --probe-z: #ff0;
+  --wire-z-color: #ff0;
   --truth-table-header-bg: #222;
   --truth-table-header-color: #ff0;
   --truth-table-row-alt: #333;

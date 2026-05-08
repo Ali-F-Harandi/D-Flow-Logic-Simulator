@@ -9,6 +9,7 @@ import { ComponentFactory } from './core/ComponentFactory.js';
 import { Engine } from './core/Engine.js';
 import { UndoManager, AddComponentCommand } from './utils/UndoManager.js';
 import { Serializer } from './utils/Serializer.js';
+import { HelpOverlay } from './ui/HelpOverlay.js';
 
 // --------------------------------------------------
 // GLOBAL ERROR HANDLER – shows any import/parse error
@@ -41,6 +42,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const footer = new Footer(appContainer, eventBus);
   const panelManager = new PanelManager(appContainer, eventBus, engine);
 
+  // Initialize keyboard shortcut help overlay
+  new HelpOverlay();
+
   eventBus.on('component-drop', ({ type, x, y }) => {
     const comp = factory.createComponent(type);
     comp.position.x = x;
@@ -54,7 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
     panelManager.testBenchPanel.setOutputNode(nodeId);
   });
 
-  footer.setVersion('Beta-4');
+  footer.setVersion('Beta-5');
 
   // FIX (Bug #8 Medium): Stop engine and clear clock intervals
   // on page unload to prevent issues with auto-save and pending timers.

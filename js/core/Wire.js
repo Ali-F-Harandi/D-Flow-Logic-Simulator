@@ -1,4 +1,5 @@
 import { WIRE_VISUAL_WIDTH, WIRE_HIT_WIDTH, JUNCTION_RADIUS } from '../config.js';
+import { AStarRouter } from './AStarRouter.js';
 
 export class Wire {
   constructor(id, fromNode, toNode) {
@@ -9,14 +10,30 @@ export class Wire {
   }
 
   /**
-   * Compute a Manhattan path.
+   * Compute a Manhattan path using A* routing if a router is provided,
+   * otherwise fall back to simple heuristic routing.
    * @param {Object} fromPos - { x, y }
    * @param {Object} toPos   - { x, y }
    * @param {Object} [opts]  - optional parameters
    * @param {number} [opts.minClearY] - a guaranteed safe Y below all components
+   * @param {AStarRouter} [opts.router] - A* router instance for smart routing
+   * @param {string} [opts.sourceNodeId] - source node ID for overlap checking
    * @returns {string} SVG path data
    */
   static computePath(fromPos, toPos, opts = {}) {
+    const { router, sourceNodeId } = opts;
+
+    // Try A* routing if a router is available
+    if (router) {
+      try {
+        return router.computePath(fromPos, toPos, sourceNodeId, opts);
+      } catch (e) {
+        // Fall back to simple routing on error
+        console.warn('A* routing failed, falling back to simple routing:', e);
+      }
+    }
+
+    // Simple Manhattan routing fallback
     const startX = fromPos.x;
     const startY = fromPos.y;
     const endX = toPos.x;
@@ -56,7 +73,7 @@ export class Wire {
     return Wire.computePath(fromPos, toPos, opts);
   }
 
-  render(svgLayer, getNodePosition, busBarY = null) {
+  render(svgLayer, getNodePosition, busBarY = null, router = null) {
     if (this.element) return;
 
     const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -89,7 +106,11 @@ export class Wire {
 
     const fromPos = getNodePosition(this.fromNode.nodeId);
     const toPos = getNodePosition(this.toNode.nodeId);
-    const d = this.getPath(fromPos, toPos, { minClearY: busBarY });
+    const d = this.getPath(fromPos, toPos, {
+      minClearY: busBarY,
+      router,
+      sourceNodeId: this.fromNode.nodeId
+    });
 
     visualPath.setAttribute('d', d);
     hitPath.setAttribute('d', d);
@@ -105,11 +126,15 @@ export class Wire {
     this.element = group;
   }
 
-  updatePath(getNodePosition, busBarY = null) {
+  updatePath(getNodePosition, busBarY = null, router = null) {
     if (!this.element) return;
     const fromPos = getNodePosition(this.fromNode.nodeId);
     const toPos = getNodePosition(this.toNode.nodeId);
-    const d = this.getPath(fromPos, toPos, { minClearY: busBarY });
+    const d = this.getPath(fromPos, toPos, {
+      minClearY: busBarY,
+      router,
+      sourceNodeId: this.fromNode.nodeId
+    });
 
     this.element.querySelector('.wire-visual').setAttribute('d', d);
     this.element.querySelector('.wire-hitarea').setAttribute('d', d);
@@ -123,13 +148,30 @@ export class Wire {
 
   updateColor(sourceValue) {
     if (this.element) {
-      // HP-7 FIX: Use CSS custom property values instead of hardcoded colors.
-      // Previously used hardcoded '#00cc66' / '#888' which broke in light
-      // theme and high-contrast theme. Now reads from theme CSS variables.
       const style = getComputedStyle(document.documentElement);
       const highColor = style.getPropertyValue('--wire-high-color').trim() || '#00cc66';
       const neutralColor = style.getPropertyValue('--wire-neutral-color').trim() || '#888';
-      const color = sourceValue ? highColor : neutralColor;
+      const zColor = style.getPropertyValue('--wire-z-color').trim() || '#ff9800';
+
+      let color;
+      if (sourceValue === true) {
+        color = highColor;
+      } else if (sourceValue === null) {
+        // Z state (high-impedance) — show in orange with dash pattern
+        color = zColor;
+        const visualPath = this.element.querySelector('.wire-visual');
+        if (visualPath) {
+          visualPath.setAttribute('stroke-dasharray', '6,4');
+        }
+      } else {
+        color = neutralColor;
+        // Clear any dash pattern for normal wires
+        const visualPath = this.element.querySelector('.wire-visual');
+        if (visualPath) {
+          visualPath.removeAttribute('stroke-dasharray');
+        }
+      }
+
       this.element.querySelector('.wire-visual').setAttribute('stroke', color);
       const junctionDot = this.element.querySelector('.wire-junction');
       if (junctionDot) {
