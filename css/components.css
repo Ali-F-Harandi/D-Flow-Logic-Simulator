@@ -38,9 +38,21 @@
   position: absolute;
   pointer-events: auto;
   z-index: 2;
+  transition: transform 0.1s, box-shadow 0.1s;
 }
 .connector.input  { left: -5px; }
 .connector.output { right: -5px; }
+
+/* Larger touch target for connectors on touch devices */
+@media (hover: none) and (pointer: coarse) {
+  .connector {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+  }
+  .connector.input  { left: -9px; }
+  .connector.output { right: -9px; }
+}
 
 /* Label sits next to the dot */
 .connector-label {
@@ -72,11 +84,11 @@
 .component-item {
   padding: var(--space-sm) var(--space-md);
   background: var(--color-surface-alt);
-  margin-bottom: var(--space-xs);
   border-radius: var(--border-radius);
   cursor: grab;
   border: 1px solid transparent;
   transition: border-color 0.2s;
+  -webkit-tap-highlight-color: transparent;
 }
 .component-item:hover { border-color: var(--color-accent); }
 
@@ -187,4 +199,58 @@
 /* ===== Toast Notification ===== */
 #toast-container {
   font-family: var(--font-family);
+}
+
+/* ===== Mobile Floating Delete Button ===== */
+#mobile-delete-btn {
+  position: fixed;
+  bottom: 80px;
+  right: 16px;
+  z-index: 999;
+  background: var(--color-danger);
+  color: #fff;
+  border: none;
+  border-radius: 28px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--font-family);
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(244, 71, 71, 0.5);
+  display: none;
+  align-items: center;
+  gap: 6px;
+  transition: transform 0.15s, box-shadow 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+#mobile-delete-btn:active {
+  transform: scale(0.95);
+  box-shadow: 0 2px 6px rgba(244, 71, 71, 0.4);
+}
+
+/* ===== Sidebar 2-Column Grid ===== */
+.group-items {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-xs);
+  padding: var(--space-xs) 0;
+}
+.group-items .component-item {
+  text-align: center;
+  padding: var(--space-sm) var(--space-xs);
+  font-size: var(--font-size-sm);
+  margin-bottom: 0;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ===== Connector Magnet Highlight ===== */
+.connector.magnet-highlight {
+  transform: scale(1.8);
+  box-shadow: 0 0 8px var(--color-accent);
+  z-index: 10;
+  transition: transform 0.1s, box-shadow 0.1s;
 }

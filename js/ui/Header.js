@@ -28,6 +28,7 @@ export class Header {
         <button class="header-btn step-btn" title="Advance one step" aria-label="Step simulation">⏭ Step</button>
         <button class="header-btn reset-btn" title="Reset all component states" aria-label="Reset simulation">↺ Reset</button>
         <button class="header-btn zoom-fit-btn" title="Zoom to fit all components" aria-label="Zoom to fit">⊞</button>
+        <button class="header-btn center-btn" title="Center canvas view" aria-label="Center view">⊕</button>
         <button class="header-btn save-btn" title="Save to browser storage" aria-label="Save project">💾</button>
         <button class="header-btn load-btn" title="Restore last saved project" aria-label="Load project">📂</button>
         <button class="header-btn export-btn" title="Export circuit as JSON file" aria-label="Export circuit">📤 Export</button>
@@ -50,6 +51,7 @@ export class Header {
     this.exportBtn = this.element.querySelector('.export-btn');
     this.importBtn = this.element.querySelector('.import-btn');
     this.zoomFitBtn = this.element.querySelector('.zoom-fit-btn');
+    this.centerBtn = this.element.querySelector('.center-btn');
 
     this.runBtn.addEventListener('click', () => {
       this.engine.run();
@@ -70,6 +72,13 @@ export class Header {
     this.zoomFitBtn.addEventListener('click', () => {
       if (this.canvas) {
         this.canvas.zoomToFit();
+      }
+    });
+
+    this.centerBtn.addEventListener('click', () => {
+      if (this.canvas) {
+        this.canvas.core.centerView();
+        this.canvas.wiring.scheduleRedraw();
       }
     });
 

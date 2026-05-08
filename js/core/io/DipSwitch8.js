@@ -106,8 +106,19 @@ export class DipSwitch8 extends Component {
         : 'var(--color-surface)';
       square.style.border = '1px solid #666';
       square.style.cursor = 'pointer';
+      // Larger touch target for mobile — invisible padding around the visual square
+      square.style.paddingTop = '6px';
+      square.style.paddingBottom = '6px';
+      square.style.marginTop = '-6px';
+      square.style.boxSizing = 'content-box';
       square.addEventListener('click', (e) => {
         e.stopPropagation();
+        this.toggleBit(parseInt(square.dataset.bit));
+      });
+      // Touch support for DIP8 bit toggles on mobile
+      square.addEventListener('touchend', (e) => {
+        e.stopPropagation();
+        e.preventDefault(); // Prevent duplicate click
         this.toggleBit(parseInt(square.dataset.bit));
       });
       el.appendChild(square);

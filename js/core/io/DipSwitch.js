@@ -88,6 +88,18 @@ export class DipSwitch extends Component {
       this.toggle();
     });
 
+    // Touch support: handle tap-to-toggle on mobile
+    // The touch event fires before click, so we handle it here to ensure
+    // immediate response on mobile. The click handler serves as fallback.
+    el.addEventListener('touchend', (e) => {
+      if (e.target.classList.contains('connector') || e.target.closest('.connector')) return;
+      if (document.querySelector('.wire-preview')) return;
+      // Only handle if the touch didn't move (i.e., it's a tap, not a drag)
+      // The CanvasTouch handler sets a flag we can check
+      e.preventDefault(); // Prevent duplicate click event
+      this.toggle();
+    });
+
     container.appendChild(el);
     this.element = el;
     this.container = container;

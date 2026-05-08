@@ -72,6 +72,10 @@ export class Canvas {
 
     this.engine.onUpdate = () => this.wiring.scheduleRedraw();
 
+    // Center the canvas view so (0,0) is at the center of the viewport
+    // with equal blank area in all four directions (N, S, E, W).
+    requestAnimationFrame(() => this.core.centerView());
+
     this.eventBus.on('component-created', (comp) => this.addComponent(comp));
     this.eventBus.on('component-modified', (comp) => this._onComponentModified(comp));
     this.eventBus.on('canvas-touch-drop', ({ type, clientX, clientY }) => {
@@ -88,6 +92,38 @@ export class Canvas {
     this.element.setAttribute('role', 'region');
     this.element.setAttribute('aria-label', 'Circuit canvas');
     this.element.setAttribute('tabindex', '0');
+
+    // Floating mobile delete button — appears when selection is active
+    this._createMobileDeleteButton();
+  }
+
+  /**
+   * Create a floating delete button for mobile devices.
+   * Shows when components or wires are selected, and deletes them on tap.
+   */
+  _createMobileDeleteButton() {
+    const btn = document.createElement('button');
+    btn.id = 'mobile-delete-btn';
+    btn.textContent = '🗑 Delete';
+    btn.title = 'Delete selected components/wires';
+    btn.setAttribute('aria-label', 'Delete selected');
+    btn.style.display = 'none';
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.selection.deleteSelectedComponents();
+    });
+    document.body.appendChild(btn);
+    this._mobileDeleteBtn = btn;
+
+    // Show/hide based on selection changes
+    const updateVisibility = () => {
+      const hasSelection = this.selection.selectedComponents.size > 0 || this.selection.selectedWires.size > 0;
+      btn.style.display = hasSelection ? 'flex' : 'none';
+    };
+
+    // Check periodically for selection changes (simple approach)
+    setInterval(updateVisibility, 300);
   }
 
   // Public delegations

@@ -31,6 +31,7 @@ export class CanvasEvents {
     // Removed console.log (code smell fix)
 
     this._focusedComponentIndex = -1;
+    this._lastMagnetNodeId = null;
 
     this._bindMouse();
     this._bindKeyboard();
@@ -113,7 +114,17 @@ export class CanvasEvents {
       if (this.dragHandler.isDragging) { this.dragHandler.moveDrag(e.clientX, e.clientY); }
       if (this.wiring.wiring && this.wiring.wiring.tempPath) {
         const fromPos = this.positionCache.getPosition(this.wiring.wiring.fromNodeId);
-        const toPos = this.core.canvasCoords(e.clientX, e.clientY);
+        let toPos = this.core.canvasCoords(e.clientX, e.clientY);
+        // AUTO-MAGNET: Snap wire end to nearest compatible connector
+        const magnetResult = this._findNearestConnector(e.clientX, e.clientY);
+        if (magnetResult) {
+          toPos = magnetResult.position;
+          this._highlightConnector(magnetResult.nodeId, true);
+        }
+        if (this._lastMagnetNodeId && this._lastMagnetNodeId !== magnetResult?.nodeId) {
+          this._highlightConnector(this._lastMagnetNodeId, false);
+        }
+        this._lastMagnetNodeId = magnetResult?.nodeId || null;
         const busY = this.core.getBusBarY(this.compManager.components);
         this.wiring.wiring.tempPath.setAttribute('d', Wire.computePath(fromPos, toPos, { minClearY: busY }));
       }
@@ -144,6 +155,11 @@ export class CanvasEvents {
           else errorMsg = 'Cannot connect input to input';
           if (!success && !errorMsg) errorMsg = 'Connection failed';
           if (errorMsg) this.toaster ? this.toaster.show(errorMsg, 'error') : console.warn(errorMsg);
+        }
+        // Clear magnet highlight
+        if (this._lastMagnetNodeId) {
+          this._highlightConnector(this._lastMagnetNodeId, false);
+          this._lastMagnetNodeId = null;
         }
         this.wiring.cancelWiring();
         return;
@@ -266,5 +282,70 @@ export class CanvasEvents {
       const y = this.core.snap(pos.y - halfH);
       this.eventBus.emit('component-drop', { type, x, y });
     });
+  }
+
+  /* ---------- Auto-Magnet Helpers ---------- */
+
+  /**
+   * Find the nearest connector to a screen point within the magnet radius.
+   * Returns { nodeId, isOutput, position: {x, y} } or null.
+   */
+  _findNearestConnector(clientX, clientY) {
+    const MAGNET_RADIUS = 30;
+    const fromIsOutput = this.wiring.wiring?.fromIsOutput;
+    const fromNodeId = this.wiring.wiring?.fromNodeId;
+    let closest = null;
+    let closestDist = MAGNET_RADIUS;
+
+    for (const comp of this.compManager.components) {
+      const allNodes = [
+        ...comp.inputs.map(inp => ({ nodeId: inp.id, isOutput: false })),
+        ...comp.outputs.map(out => ({ nodeId: out.id, isOutput: true }))
+      ];
+
+      for (const nodeInfo of allNodes) {
+        if (fromIsOutput === nodeInfo.isOutput) continue;
+        if (comp.id === this.engine._findComponentByNode(fromNodeId)?.id) continue;
+        if (!nodeInfo.isOutput) {
+          const inputNode = comp.inputs.find(i => i.id === nodeInfo.nodeId);
+          if (inputNode?.connectedTo) continue;
+        }
+
+        try {
+          const pos = this.positionCache.getPosition(nodeInfo.nodeId);
+          if (!pos) continue;
+          const rect = this.core.element.getBoundingClientRect();
+          const screenX = rect.left + pos.x * this.core.scale + this.core.panOffset.x;
+          const screenY = rect.top + pos.y * this.core.scale + this.core.panOffset.y;
+          const dist = Math.hypot(clientX - screenX, clientY - screenY);
+
+          if (dist < closestDist) {
+            closestDist = dist;
+            closest = { nodeId: nodeInfo.nodeId, isOutput: nodeInfo.isOutput, position: pos };
+          }
+        } catch (e) { /* skip */ }
+      }
+    }
+    return closest;
+  }
+
+  /**
+   * Visually highlight/unhighlight a connector dot for auto-magnet feedback.
+   */
+  _highlightConnector(nodeId, highlight) {
+    if (!nodeId) return;
+    const comp = this.engine._findComponentByNode(nodeId);
+    if (!comp?.element) return;
+    const dot = comp.element.querySelector(`.connector[data-node="${nodeId}"]`);
+    if (!dot) return;
+    if (highlight) {
+      dot.style.transform = 'scale(1.8)';
+      dot.style.boxShadow = '0 0 8px var(--color-accent)';
+      dot.style.zIndex = '10';
+    } else {
+      dot.style.transform = '';
+      dot.style.boxShadow = '';
+      dot.style.zIndex = '';
+    }
   }
 }

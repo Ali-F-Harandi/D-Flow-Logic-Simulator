@@ -1,11 +1,11 @@
 import { Wire } from '../../core/Wire.js';
-import { DeleteComponentCommand } from '../../utils/UndoManager.js';
+import { DeleteComponentCommand, DisconnectWireCommand } from '../../utils/UndoManager.js';
 
 export class CanvasTouch {
   constructor(
     core, compManager, dragHandler, wiring, selection, panZoom,
     contextMenu, propertyEditor, element, undoManager, engine,
-    canvas           // <-- NEW PARAMETER
+    canvas           // <-- Canvas instance
   ) {
     this.core = core;
     this.compManager = compManager;
@@ -18,13 +18,29 @@ export class CanvasTouch {
     this.element = element;
     this.undoManager = undoManager;
     this.engine = engine;
-    this.canvas = canvas;    // <-- store
+    this.canvas = canvas;
 
     this.touchPanning = false;
     this.touchPanStart = null;
     this.longPressTimer = null;
     this.lastTouchDist = null;
     this.touchMoved = false;
+
+    // Long-press configuration
+    this.LONG_PRESS_MS = 500;
+    this.LONG_PRESS_MOVE_THRESHOLD = 10; // px before we consider it a move (not long-press)
+
+    // Auto-magnet configuration
+    this.MAGNET_RADIUS = 30; // px — snap distance for connector magnet
+
+    // Track touch start position for move threshold detection
+    this.touchStartPos = null;
+
+    // Track if long press already fired (to avoid double actions)
+    this.longPressFired = false;
+
+    // Track if a component was tapped (for toggle actions)
+    this.tappedComponent = null;
 
     this._bindEvents();
   }
@@ -44,78 +60,220 @@ export class CanvasTouch {
     this.touchPanStart = null;
     this.lastTouchDist = null;
     this.touchMoved = false;
+    this.touchStartPos = null;
+    this.longPressFired = false;
+    this.tappedComponent = null;
   }
 
   _onTouchStart(e) {
     this._cleanupTouch();
     if (e.touches.length === 2) {
-      this.lastTouchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      // Pinch zoom — store initial distance
+      this.lastTouchDist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      this.lastPinchCenter = {
+        x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+        y: (e.touches[0].clientY + e.touches[1].clientY) / 2
+      };
       return;
     }
 
     const touch = e.touches[0];
     const target = e.target;
-    const compEl = target.closest('.component');
+    this.touchStartPos = { x: touch.clientX, y: touch.clientY };
+    this.touchMoved = false;
 
+    // ---- Check for DIP8 bit toggle squares ----
+    const dipBit = target.closest('.dip-bit');
+    if (dipBit) {
+      // Don't preventDefault() — let the dip-bit's own touchend handler fire
+      const compEl = dipBit.closest('.component');
+      if (compEl) {
+        const comp = this.compManager.getComponentById(compEl.dataset.compId);
+        if (comp && comp.type === 'DipSwitch8' && typeof comp.toggleBit === 'function') {
+          // Just set up long-press for context menu; toggle is handled by the
+          // dip-bit's own touchend handler
+          this.longPressFired = false;
+          this.longPressTimer = setTimeout(() => {
+            if (!this.longPressFired) {
+              this.longPressFired = true;
+              if (navigator.vibrate) navigator.vibrate(50);
+              this._showComponentContextMenu(comp, touch.clientX, touch.clientY);
+            }
+          }, this.LONG_PRESS_MS);
+        }
+      }
+      return;
+    }
+
+    // ---- Check for Switch (DipSwitch) tap ----
+    const compEl = target.closest('.component');
     if (compEl && !target.classList.contains('connector')) {
-      e.preventDefault();
       const comp = this.compManager.getComponentById(compEl.dataset.compId);
       if (comp) {
-        this.touchMoved = false;
+        // Check if it's a toggle-type component (DipSwitch) that should
+        // respond to taps rather than drag. DipSwitch8 has its own bit-toggle
+        // handlers (.dip-bit), so we only need to handle DipSwitch here.
+        const isTapToggleable = comp.type === 'DipSwitch';
+
+        if (isTapToggleable && !target.closest('.connector')) {
+          // Don't start drag for tap-toggle components — just set up long press.
+          // Don't call e.preventDefault() so that the component's own touchend
+          // handler can fire for tap-to-toggle functionality.
+          this.tappedComponent = comp;
+          this.longPressFired = false;
+          this.longPressTimer = setTimeout(() => {
+            if (!this.touchMoved && !this.longPressFired) {
+              this.longPressFired = true;
+              if (navigator.vibrate) navigator.vibrate(50);
+              this._showComponentContextMenu(comp, touch.clientX, touch.clientY);
+            }
+          }, this.LONG_PRESS_MS);
+          return;
+        }
+
+        // For non-toggle components: prevent default and start drag
+        e.preventDefault();
         this.dragHandler.startDrag(comp, touch.clientX, touch.clientY);
+
+        // Set up long-press timer for context menu
+        this.longPressFired = false;
         this.longPressTimer = setTimeout(() => {
-          if (!this.touchMoved) {
-            this.contextMenu.show(touch.clientX, touch.clientY, [
-              { label: 'Properties', action: () => this.propertyEditor.open(comp) },
-              { label: 'Delete', action: () => {
-                const cmd = new DeleteComponentCommand(this.engine, this.canvas, comp);
-                this.undoManager.execute(cmd);
-              }}
-            ]);
+          if (!this.touchMoved && !this.longPressFired) {
+            this.longPressFired = true;
+            // Cancel drag since long-press triggers context menu instead
+            if (this.dragHandler.isDragging) this.dragHandler.endDrag();
+            if (navigator.vibrate) navigator.vibrate(50);
+            this._showComponentContextMenu(comp, touch.clientX, touch.clientY);
           }
-        }, 500);
+        }, this.LONG_PRESS_MS);
+        return;
       }
-    } else if (target.classList.contains('connector')) {
+    }
+
+    // ---- Check for connector tap (wire start) ----
+    if (target.classList.contains('connector')) {
       e.preventDefault();
       const nodeId = target.dataset.node;
       const comp = this.engine._findComponentByNode(nodeId);
-      if (comp) this.wiring.startWiring(comp, nodeId, target.classList.contains('output'));
-    } else {
-      this.touchPanning = true;
-      this.touchPanStart = { x: touch.clientX - this.core.panOffset.x, y: touch.clientY - this.core.panOffset.y };
+      if (comp) {
+        this.wiring.startWiring(comp, nodeId, target.classList.contains('output'));
+      }
+      return;
     }
+
+    // ---- Check for wire tap (for selection) ----
+    const wireEl = target.closest('g[data-wire-id]');
+    if (wireEl) {
+      const wireId = wireEl.dataset.wireId;
+      const wire = this.wiring.wires.find(w => w.id === wireId);
+      if (wire) {
+        e.preventDefault();
+        this.selection._clearWireSelection();
+        this.selection.clearSelection();
+        this.selection.selectedWires.add(wireId);
+        wireEl.classList.add('wire-selected');
+        const visual = wireEl.querySelector('.wire-visual');
+        if (visual) visual.setAttribute('stroke-width', '4');
+
+        // Long-press on wire shows context menu
+        this.longPressFired = false;
+        this.longPressTimer = setTimeout(() => {
+          if (!this.touchMoved && !this.longPressFired) {
+            this.longPressFired = true;
+            if (navigator.vibrate) navigator.vibrate(50);
+            this._showWireContextMenu(wire, touch.clientX, touch.clientY);
+          }
+        }, this.LONG_PRESS_MS);
+        return;
+      }
+    }
+
+    // ---- Empty canvas: start panning ----
+    this.touchPanning = true;
+    this.touchPanStart = {
+      x: touch.clientX - this.core.panOffset.x,
+      y: touch.clientY - this.core.panOffset.y
+    };
+
+    // Long-press on empty canvas
+    this.longPressFired = false;
+    this.longPressTimer = setTimeout(() => {
+      if (!this.touchMoved && !this.longPressFired) {
+        this.longPressFired = true;
+        if (navigator.vibrate) navigator.vibrate(50);
+        this._showCanvasContextMenu(touch.clientX, touch.clientY);
+      }
+    }, this.LONG_PRESS_MS);
   }
 
   _onTouchMove(e) {
+    // Pinch zoom
     if (e.touches.length === 2) {
       e.preventDefault();
-      const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      const dist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
       if (this.lastTouchDist) {
-        const delta = dist > this.lastTouchDist ? 1 : -1;
+        // FIX: Use proportional scaling instead of +1/-1 steps for smoother pinch zoom
+        const scaleFactor = dist / this.lastTouchDist;
         const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
         const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
         const rect = this.element.getBoundingClientRect();
-        this.core.zoom(delta, midX - rect.left, midY - rect.top);
+        this.core.zoomProportional(scaleFactor, midX - rect.left, midY - rect.top);
       }
       this.lastTouchDist = dist;
+      this.lastPinchCenter = {
+        x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+        y: (e.touches[0].clientY + e.touches[1].clientY) / 2
+      };
       return;
+    }
+
+    const touch = e.touches[0];
+
+    // Detect if touch moved beyond threshold
+    if (this.touchStartPos) {
+      const dx = touch.clientX - this.touchStartPos.x;
+      const dy = touch.clientY - this.touchStartPos.y;
+      if (Math.hypot(dx, dy) > this.LONG_PRESS_MOVE_THRESHOLD) {
+        this.touchMoved = true;
+        clearTimeout(this.longPressTimer);
+        this.longPressTimer = null;
+        // If moved significantly, it's a drag — cancel any pending tap
+        this.tappedComponent = null;
+      }
     }
 
     if (this.dragHandler.isDragging) {
       e.preventDefault();
-      this.touchMoved = true;
-      clearTimeout(this.longPressTimer);
-      const touch = e.touches[0];
       this.dragHandler.moveDrag(touch.clientX, touch.clientY);
     } else if (this.touchPanning) {
-      const touch = e.touches[0];
       this.panZoom.movePan(touch.clientX, touch.clientY);
     }
 
+    // Wire drawing with auto-magnet
     if (this.wiring.wiring && this.wiring.wiring.tempPath) {
+      e.preventDefault();
       const fromPos = this.wiring.positionCache.getPosition(this.wiring.wiring.fromNodeId);
-      const touch = e.touches[0];
-      const toPos = this.core.canvasCoords(touch.clientX, touch.clientY);
+
+      // AUTO-MAGNET: Find the nearest connector to the touch point and snap to it
+      let toPos = this.core.canvasCoords(touch.clientX, touch.clientY);
+      const magnetResult = this._findNearestConnector(touch.clientX, touch.clientY);
+      if (magnetResult) {
+        toPos = magnetResult.position;
+        // Highlight the magnetized connector
+        this._highlightConnector(magnetResult.nodeId, true);
+      }
+      // Un-highlight previously highlighted connector
+      if (this._lastMagnetNodeId && this._lastMagnetNodeId !== magnetResult?.nodeId) {
+        this._highlightConnector(this._lastMagnetNodeId, false);
+      }
+      this._lastMagnetNodeId = magnetResult?.nodeId || null;
+
       const busY = this.core.getBusBarY(this.compManager.components);
       this.wiring.wiring.tempPath.setAttribute('d', Wire.computePath(fromPos, toPos, { minClearY: busY }));
     }
@@ -123,22 +281,186 @@ export class CanvasTouch {
 
   _onTouchEnd(e) {
     clearTimeout(this.longPressTimer);
+
+    // Handle toggleable component tap (only if not moved and no long-press)
+    // This is a fallback — most toggle components handle their own touchend now
+    if (this.tappedComponent && !this.touchMoved && !this.longPressFired) {
+      const comp = this.tappedComponent;
+      if (comp.type === 'Clock' && typeof comp.toggle === 'function') {
+        // Clock doesn't have a toggle, but if we add one in the future...
+      }
+      this.tappedComponent = null;
+    }
+
+    // End drag if active
     if (this.dragHandler.isDragging) this.dragHandler.endDrag();
+
+    // Complete wire connection with auto-magnet
     if (this.wiring.wiring && this.wiring.wiring.tempPath) {
       const touch = e.changedTouches[0];
-      const targetConn = document.elementFromPoint(touch.clientX, touch.clientY);
-      if (targetConn?.classList.contains('connector') && targetConn.dataset.node) {
-        const isTargetOutput = targetConn.classList.contains('output');
+
+      // AUTO-MAGNET: Try to find the nearest connector to snap to
+      const magnetResult = this._findNearestConnector(touch.clientX, touch.clientY);
+      if (magnetResult) {
+        const isTargetOutput = magnetResult.isOutput;
         const isSourceOutput = this.wiring.wiring.fromIsOutput;
         if (isSourceOutput && !isTargetOutput) {
-          this.wiring.completeConnection(this.wiring.wiring.fromNodeId, targetConn.dataset.node);
+          this.wiring.completeConnection(this.wiring.wiring.fromNodeId, magnetResult.nodeId);
         } else if (!isSourceOutput && isTargetOutput) {
-          this.wiring.completeConnection(targetConn.dataset.node, this.wiring.wiring.fromNodeId);
+          this.wiring.completeConnection(magnetResult.nodeId, this.wiring.wiring.fromNodeId);
+        }
+        this._highlightConnector(magnetResult.nodeId, false);
+      } else {
+        // Fallback: try elementFromPoint
+        const targetEl = document.elementFromPoint(touch.clientX, touch.clientY);
+        if (targetEl?.classList.contains('connector') && targetEl.dataset.node) {
+          const isTargetOutput = targetEl.classList.contains('output');
+          const isSourceOutput = this.wiring.wiring.fromIsOutput;
+          if (isSourceOutput && !isTargetOutput) {
+            this.wiring.completeConnection(this.wiring.wiring.fromNodeId, targetEl.dataset.node);
+          } else if (!isSourceOutput && isTargetOutput) {
+            this.wiring.completeConnection(targetEl.dataset.node, this.wiring.wiring.fromNodeId);
+          }
         }
       }
+
+      // Clear magnet highlights
+      if (this._lastMagnetNodeId) {
+        this._highlightConnector(this._lastMagnetNodeId, false);
+        this._lastMagnetNodeId = null;
+      }
+
       this.wiring.cancelWiring();
     }
+
     if (this.selection.selectionRect) this.selection.endSelection(e);
     this._cleanupTouch();
+  }
+
+  /* ========== Auto-Magnet Helper ========== */
+
+  /**
+   * Find the nearest connector to a screen point within the magnet radius.
+   * Returns { nodeId, isOutput, position: {x, y} } or null.
+   */
+  _findNearestConnector(clientX, clientY) {
+    const fromIsOutput = this.wiring.wiring?.fromIsOutput;
+    const fromNodeId = this.wiring.wiring?.fromNodeId;
+    let closest = null;
+    let closestDist = this.MAGNET_RADIUS;
+
+    for (const comp of this.compManager.components) {
+      // Check all connectors on this component
+      const allNodes = [
+        ...comp.inputs.map(inp => ({ nodeId: inp.id, isOutput: false })),
+        ...comp.outputs.map(out => ({ nodeId: out.id, isOutput: true }))
+      ];
+
+      for (const nodeInfo of allNodes) {
+        // Skip same-direction connections (output→output, input→input)
+        if (fromIsOutput === nodeInfo.isOutput) continue;
+        // Skip self-connection
+        if (comp.id === this.engine._findComponentByNode(fromNodeId)?.id) continue;
+        // Skip already-connected inputs
+        if (!nodeInfo.isOutput) {
+          const inputNode = comp.inputs.find(i => i.id === nodeInfo.nodeId);
+          if (inputNode?.connectedTo) continue;
+        }
+
+        try {
+          const pos = this.wiring.positionCache.getPosition(nodeInfo.nodeId);
+          if (!pos) continue;
+
+          // Convert position to screen coordinates for distance check
+          const rect = this.core.element.getBoundingClientRect();
+          const screenX = rect.left + pos.x * this.core.scale + this.core.panOffset.x;
+          const screenY = rect.top + pos.y * this.core.scale + this.core.panOffset.y;
+          const dist = Math.hypot(clientX - screenX, clientY - screenY);
+
+          if (dist < closestDist) {
+            closestDist = dist;
+            closest = { nodeId: nodeInfo.nodeId, isOutput: nodeInfo.isOutput, position: pos };
+          }
+        } catch (e) {
+          // Position not available yet, skip
+        }
+      }
+    }
+    return closest;
+  }
+
+  /**
+   * Visually highlight/unhighlight a connector dot for auto-magnet feedback.
+   */
+  _highlightConnector(nodeId, highlight) {
+    if (!nodeId) return;
+    const comp = this.engine._findComponentByNode(nodeId);
+    if (!comp?.element) return;
+    const dot = comp.element.querySelector(`.connector[data-node="${nodeId}"]`);
+    if (!dot) return;
+    if (highlight) {
+      dot.style.transform = 'scale(1.8)';
+      dot.style.boxShadow = '0 0 8px var(--color-accent)';
+      dot.style.zIndex = '10';
+    } else {
+      dot.style.transform = '';
+      dot.style.boxShadow = '';
+      dot.style.zIndex = '';
+    }
+  }
+
+  /* ========== Context Menu Builders ========== */
+
+  _showComponentContextMenu(comp, clientX, clientY) {
+    const items = [
+      { label: 'Properties', action: () => this.propertyEditor.open(comp) },
+      { label: 'Delete', action: () => {
+        const cmd = new DeleteComponentCommand(this.engine, this.canvas, comp);
+        this.undoManager.execute(cmd);
+      }},
+      { label: 'Select', action: () => {
+        this.selection.clearSelection();
+        this.selection.selectedComponents.add(comp.id);
+        if (comp.element) comp.element.classList.add('selected');
+      }}
+    ];
+    this.contextMenu.show(clientX, clientY, items);
+  }
+
+  _showWireContextMenu(wire, clientX, clientY) {
+    const items = [
+      { label: 'Delete Wire', action: () => {
+        const cmd = new DisconnectWireCommand(this.engine, this.canvas, wire.engineId);
+        this.undoManager.execute(cmd);
+      }},
+      { label: 'Select Wire', action: () => {
+        this.selection._clearWireSelection();
+        this.selection.clearSelection();
+        this.selection.selectedWires.add(wire.id);
+        if (wire.element) {
+          wire.element.classList.add('wire-selected');
+          const visual = wire.element.querySelector('.wire-visual');
+          if (visual) visual.setAttribute('stroke-width', '4');
+        }
+      }}
+    ];
+    this.contextMenu.show(clientX, clientY, items);
+  }
+
+  _showCanvasContextMenu(clientX, clientY) {
+    const items = [];
+    // Show paste option if clipboard has content
+    if (this.selection._clipboard?.components?.length) {
+      items.push({ label: 'Paste', action: () => this.selection.pasteCopied() });
+    }
+    items.push({ label: 'Select All', action: () => {
+      this.selection.clearSelection();
+      this.compManager.components.forEach(comp => {
+        this.selection.selectedComponents.add(comp.id);
+        if (comp.element) comp.element.classList.add('selected');
+      });
+    }});
+    items.push({ label: 'Zoom to Fit', action: () => this.canvas.zoomToFit() });
+    this.contextMenu.show(clientX, clientY, items);
   }
 }

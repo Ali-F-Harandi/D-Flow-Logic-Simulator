@@ -71,11 +71,31 @@ export class CanvasCore {
 
   /**
    * Zoom by delta steps. centerX/Y are relative to the canvas container.
+   * Used for mouse wheel zoom (discrete steps).
    */
   zoom(delta, centerX, centerY) {
     const oldScale = this.scale;
     const newScale = Math.min(this.maxScale, Math.max(this.minScale,
       oldScale * (delta > 0 ? 1.1 : 0.9)));
+    const factor = newScale / oldScale;
+    this.panOffset.x = centerX - (centerX - this.panOffset.x) * factor;
+    this.panOffset.y = centerY - (centerY - this.panOffset.y) * factor;
+    this.scale = newScale;
+    this.applyTransform();
+  }
+
+  /**
+   * Zoom proportionally by a scale factor. centerX/Y are relative to the canvas container.
+   * Used for pinch zoom on touch devices — provides much smoother zoom than discrete steps.
+   * @param {number} scaleFactor - The ratio to scale by (e.g., 1.02 for slight zoom in, 0.98 for slight zoom out)
+   * @param {number} centerX - X position relative to canvas container
+   * @param {number} centerY - Y position relative to canvas container
+   */
+  zoomProportional(scaleFactor, centerX, centerY) {
+    const oldScale = this.scale;
+    // Clamp the scale factor to prevent zooming too fast in a single frame
+    const clampedFactor = Math.max(0.95, Math.min(1.05, scaleFactor));
+    const newScale = Math.min(this.maxScale, Math.max(this.minScale, oldScale * clampedFactor));
     const factor = newScale / oldScale;
     this.panOffset.x = centerX - (centerX - this.panOffset.x) * factor;
     this.panOffset.y = centerY - (centerY - this.panOffset.y) * factor;
@@ -103,5 +123,20 @@ export class CanvasCore {
       }
     }
     return maxBottom + 40;
+  }
+
+  /**
+   * Center the canvas view so that the scene origin (0, 0) is at the center
+   * of the viewport, with equal blank area in all four directions (N, S, E, W).
+   * This gives a balanced starting view where new components can be placed
+   * symmetrically around the center point.
+   */
+  centerView() {
+    const rect = this.element.getBoundingClientRect();
+    // Place the scene origin (0,0) at the center of the visible canvas area
+    this.panOffset.x = rect.width / 2;
+    this.panOffset.y = rect.height / 2;
+    this.scale = 1;
+    this.applyTransform();
   }
 }
