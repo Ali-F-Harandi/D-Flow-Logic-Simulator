@@ -119,3 +119,9 @@
     gap: 2px;
   }
 }
+
+/* L-8: Visual running indicator */
+#header.sim-running {
+  border-bottom: 2px solid var(--color-success);
+  box-shadow: 0 2px 8px rgba(78, 201, 176, 0.3);
+}

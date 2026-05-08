@@ -65,7 +65,7 @@ export class DipSwitch8 extends Component {
     el.draggable = false;
 
     const body = document.createElement('div');
-    body.className = 'dip8-body';
+    body.className = 'dip8-body component-body-centered';
     body.textContent = 'DIP8';
     body.style.position = 'absolute';
     body.style.top = '10px';
@@ -113,6 +113,8 @@ export class DipSwitch8 extends Component {
 
   _updateConnectorStates() {
     super._updateConnectorStates();
-    this._updateAppearance();
+    // M-13: Removed duplicate _updateAppearance() call here.
+    // super._updateConnectorStates() already calls _updateBorderState(),
+    // and toggleBit/reset call _updateAppearance() directly.
   }
 }

@@ -63,8 +63,11 @@ export class Wire {
     group.dataset.wireId = this.id;
     group.style.pointerEvents = 'auto';
 
+    const style = getComputedStyle(document.documentElement);
+    const neutralColor = style.getPropertyValue('--wire-neutral-color').trim() || '#888';
+
     const visualPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    visualPath.setAttribute('stroke', '#888');
+    visualPath.setAttribute('stroke', neutralColor);
     visualPath.setAttribute('stroke-width', WIRE_VISUAL_WIDTH);
     visualPath.setAttribute('fill', 'none');
     visualPath.setAttribute('pointer-events', 'none');
@@ -79,7 +82,7 @@ export class Wire {
 
     const junctionDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
     junctionDot.setAttribute('r', JUNCTION_RADIUS);
-    junctionDot.setAttribute('fill', '#888');
+    junctionDot.setAttribute('fill', neutralColor);
     junctionDot.setAttribute('pointer-events', 'none');
     junctionDot.classList.add('wire-junction');
     junctionDot.style.display = 'none';

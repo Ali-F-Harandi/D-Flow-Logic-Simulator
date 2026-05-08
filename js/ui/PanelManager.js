@@ -31,9 +31,8 @@ export class PanelManager {
       this.testBenchPanel.setOutputNode(nodeId);
     });
 
-    // FIX (critical): Close right panel when clicking outside.
-    // Uses bubbling phase (not capture) and excludes canvas and header.
-    document.addEventListener('click', (e) => {
+    // M-16: Conditional click listener — only active when panel is open
+    this._outsideClickHandler = (e) => {
       if (
         this.rightPanelOpen &&
         !this.rightPanel.contains(e.target) &&
@@ -44,7 +43,7 @@ export class PanelManager {
       ) {
         this.toggleRightPanel('0px');
       }
-    }, false);
+    };
   }
 
   createRightPanel() {
@@ -102,6 +101,12 @@ export class PanelManager {
     if (this.rightPanel) {
       this.rightPanel.classList.toggle('open', this.rightPanelOpen);
     }
+    // M-16: Add/remove document click listener based on panel state
+    if (this.rightPanelOpen) {
+      document.addEventListener('click', this._outsideClickHandler, false);
+    } else {
+      document.removeEventListener('click', this._outsideClickHandler, false);
+    }
   }
 
   showPanel(type) {
@@ -114,6 +119,9 @@ export class PanelManager {
     }
     if (!this.rightPanelOpen) {
       this.toggleRightPanel('300px');
+    } else {
+      // Panel already open — ensure click listener is active
+      document.addEventListener('click', this._outsideClickHandler, false);
     }
   }
 }

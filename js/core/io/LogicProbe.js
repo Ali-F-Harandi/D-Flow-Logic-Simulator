@@ -43,14 +43,10 @@ export class LogicProbe extends Component {
     el.draggable = false;
 
     const indicator = document.createElement('div');
-    indicator.className = 'probe-indicator';
+    indicator.className = 'probe-indicator component-body-centered';
     indicator.textContent = '?';
     indicator.style.fontSize = '24px';
     indicator.style.fontWeight = 'bold';
-    indicator.style.position = 'absolute';
-    indicator.style.top = '50%';
-    indicator.style.left = '50%';
-    indicator.style.transform = 'translate(-50%, -50%)';
     el.appendChild(indicator);
 
     el.appendChild(this._createConnectorBlock(this.inputs[0], true, 'I0', this.GRID));
@@ -66,8 +62,12 @@ export class LogicProbe extends Component {
     const inp = this.inputs[0]?.value;
     const indicator = this.element.querySelector('.probe-indicator');
     if (!indicator) return;
-    if (inp === true) { indicator.textContent = '1'; indicator.style.color = '#4ec9b0'; }
-    else if (inp === false) { indicator.textContent = '0'; indicator.style.color = '#f44747'; }
-    else { indicator.textContent = 'Z'; indicator.style.color = '#888'; }
+    const style = getComputedStyle(document.documentElement);
+    const highColor = style.getPropertyValue('--probe-high').trim() || '#4ec9b0';
+    const lowColor = style.getPropertyValue('--probe-low').trim() || '#f44747';
+    const zColor = style.getPropertyValue('--probe-z').trim() || '#888';
+    if (inp === true) { indicator.textContent = '1'; indicator.style.color = highColor; }
+    else if (inp === false) { indicator.textContent = '0'; indicator.style.color = lowColor; }
+    else { indicator.textContent = 'Z'; indicator.style.color = zColor; }
   }
 }

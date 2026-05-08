@@ -58,9 +58,9 @@ export class Component {
   setProperty(name, value) { return false; }
 
   _getStateColor(value) {
-    if (value === true)  return '#4ec9b0';
-    if (value === false) return '#666';
-    return '#666';
+    if (value === true)  return 'var(--color-success)';
+    if (value === false) return 'var(--color-text-muted)';
+    return 'var(--color-text-muted)';
   }
 
   _updateConnectorStates() {
@@ -77,8 +77,8 @@ export class Component {
   _updateBorderState() {
     if (!this.element) return;
     if (this.outputs.length > 0 && this.outputs.some(o => o.value === true)) {
-      this.element.style.borderColor = '#4ec9b0';
-      this.element.style.boxShadow = '0 0 8px rgba(78,201,176,0.5)';
+      this.element.style.borderColor = 'var(--gate-highlight-border)';
+      this.element.style.boxShadow = 'var(--gate-highlight-shadow)';
     } else {
       this.element.style.borderColor = 'var(--color-border)';
       this.element.style.boxShadow = 'var(--shadow-sm)';

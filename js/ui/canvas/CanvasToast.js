@@ -11,6 +11,9 @@ export class CanvasToast {
   _createContainer() {
     this.toastContainer = document.createElement('div');
     this.toastContainer.id = 'toast-container';
+    this.toastContainer.setAttribute('role', 'status');
+    this.toastContainer.setAttribute('aria-live', 'polite');
+    this.toastContainer.setAttribute('aria-atomic', 'true');
     document.body.appendChild(this.toastContainer);
   }
 

@@ -36,8 +36,12 @@ export class TestBenchPanel {
     if (this.selectedOutput) {
       const comp = this.engine._findComponentByNode(this.selectedOutput);
       const val = comp?.outputs.find(o => o.id === this.selectedOutput)?.value ? '1' : '0';
-      this.history.push(`Step ${this.stepCount}: ${val}`);
-      this.outputDiv.innerHTML = this.history.join('<br>');
+      const line = `Step ${this.stepCount}: ${val}`;
+      this.history.push(line);
+      const div = document.createElement('div');
+      div.textContent = line;
+      this.outputDiv.appendChild(div);
+      this.outputDiv.scrollTop = this.outputDiv.scrollHeight;
     }
   }
 

@@ -20,15 +20,13 @@ export class GateBase extends Component {
     el.style.left = `${this.position.x}px`;
     el.style.top = `${this.position.y}px`;
     el.setAttribute('draggable', 'false');
+    el.setAttribute('role', 'group');
+    el.setAttribute('aria-label', `${bodyText} gate`);
     el.draggable = false;
 
     const body = document.createElement('div');
-    body.className = 'gate-body';
+    body.className = 'gate-body component-body-centered';
     body.textContent = bodyText;
-    body.style.position = 'absolute';
-    body.style.top = '50%';
-    body.style.left = '50%';
-    body.style.transform = 'translate(-50%, -50%)';
     el.appendChild(body);
 
     // Input connectors
@@ -43,5 +41,30 @@ export class GateBase extends Component {
     this.element = el;
     this.container = container;
     this._updateConnectorStates();
+  }
+
+  // M-1: Shared property accessors for all multi-input gates.
+  // Previously duplicated across 6 gate classes.
+  getProperties() {
+    return [{ name: 'inputs', label: 'Inputs', type: 'number', value: this.inputs.length, min: 2, max: 8 }];
+  }
+
+  setProperty(name, value) {
+    if (name === 'inputs') {
+      const newCount = parseInt(value, 10);
+      if (newCount === this.inputs.length || newCount < 2 || newCount > 8) return false;
+      const old = this.inputs;
+      this.inputs = [];
+      for (let i = 0; i < newCount; i++) {
+        this.inputs.push({
+          id: `${this.id}.input.${i}`,
+          value: (old[i] ? old[i].value : false),
+          connectedTo: (old[i] ? old[i].connectedTo : null)
+        });
+      }
+      this.rerender();
+      return true;
+    }
+    return false;
   }
 }

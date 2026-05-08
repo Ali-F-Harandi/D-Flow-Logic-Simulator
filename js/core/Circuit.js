@@ -12,10 +12,8 @@ export class Circuit {
   }
 
   removeComponent(compId) {
+    // Wire cleanup is handled by Engine.disconnect() before this call
     this.components.delete(compId);
-    this.wires = this.wires.filter(w =>
-      w.from.componentId !== compId && w.to.componentId !== compId
-    );
   }
 
   addWire(wire) {

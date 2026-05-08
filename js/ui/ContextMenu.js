@@ -9,12 +9,13 @@ export class ContextMenu {
   _createDOM() {
     this.menu = document.createElement('div');
     this.menu.id = 'context-menu';
+    this.menu.setAttribute('role', 'menu');
     this.menu.style.position = 'fixed';
     this.menu.style.background = 'var(--color-surface)';
     this.menu.style.border = '1px solid var(--color-border)';
     this.menu.style.borderRadius = '4px';
     this.menu.style.boxShadow = 'var(--shadow-md)';
-    this.menu.style.zIndex = 'var(--z-context-menu)';
+    this.menu.style.setProperty('z-index', 'var(--z-context-menu)');
     this.menu.style.display = 'none';
     document.body.appendChild(this.menu);
   }
@@ -31,6 +32,8 @@ export class ContextMenu {
     items.forEach(item => {
       const div = document.createElement('div');
       div.className = 'context-menu-item';
+      div.setAttribute('role', 'menuitem');
+      div.setAttribute('tabindex', '-1');
       div.textContent = item.label;
       div.addEventListener('click', (e) => {
         e.stopPropagation();

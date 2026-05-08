@@ -17,30 +17,54 @@ export class PropertyEditor {
   open(component) {
     this.component = component;
     const props = component.getProperties();
+
+    // Clear previous content
+    this.dialog.textContent = '';
+
     if (!props || props.length === 0) {
-      this.dialog.innerHTML = `<p>No editable properties.</p><button id="prop-close">Close</button>`;
-      this.dialog.querySelector('#prop-close').onclick = () => this.close();
+      const p = document.createElement('p');
+      p.textContent = 'No editable properties.';
+      this.dialog.appendChild(p);
+      const closeBtn = document.createElement('button');
+      closeBtn.textContent = 'Close';
+      closeBtn.addEventListener('click', () => this.close());
+      this.dialog.appendChild(closeBtn);
       this.dialog.style.display = 'block';
       return;
     }
 
-    let html = `<h3>Properties: ${component.type}</h3>`;
-    props.forEach(prop => {
-      html += `<label>${prop.label}: <input type="${prop.type}" id="prop-${prop.name}" value="${prop.value}"`;
-      if (prop.min !== undefined) html += ` min="${prop.min}"`;
-      if (prop.max !== undefined) html += ` max="${prop.max}"`;
-      if (prop.step !== undefined) html += ` step="${prop.step}"`;
-      html += `></label><br>`;
-    });
-    html += `<div style="margin-top:15px; display:flex; gap:10px; justify-content:flex-end;">`;
-    html += `<button id="prop-cancel">Cancel</button>`;
-    html += `<button id="prop-save">Save</button>`;
-    html += `</div>`;
-    this.dialog.innerHTML = html;
-    this.dialog.style.display = 'block';
+    const h3 = document.createElement('h3');
+    h3.textContent = `Properties: ${component.type}`;
+    this.dialog.appendChild(h3);
 
-    this.dialog.querySelector('#prop-cancel').onclick = () => this.close();
-    this.dialog.querySelector('#prop-save').onclick = () => this._save();
+    props.forEach(prop => {
+      const label = document.createElement('label');
+      label.textContent = `${prop.label}: `;
+      const input = document.createElement('input');
+      input.type = prop.type;
+      input.id = `prop-${prop.name}`;
+      input.value = prop.value;
+      if (prop.min !== undefined) input.min = prop.min;
+      if (prop.max !== undefined) input.max = prop.max;
+      if (prop.step !== undefined) input.step = prop.step;
+      label.appendChild(input);
+      this.dialog.appendChild(label);
+      this.dialog.appendChild(document.createElement('br'));
+    });
+
+    const btnContainer = document.createElement('div');
+    btnContainer.style.cssText = 'margin-top:15px; display:flex; gap:10px; justify-content:flex-end;';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', () => this.close());
+    const saveBtn = document.createElement('button');
+    saveBtn.textContent = 'Save';
+    saveBtn.addEventListener('click', () => this._save());
+    btnContainer.appendChild(cancelBtn);
+    btnContainer.appendChild(saveBtn);
+    this.dialog.appendChild(btnContainer);
+
+    this.dialog.style.display = 'block';
 
     this._escapeHandler = (e) => {
       if (e.key === 'Escape') {

@@ -10,6 +10,7 @@ export class Engine {
     this.onUpdate = null;
     this.clocks = new Set();
     this._processing = false;
+    this._nodeIndex = new Map();
   }
 
   get components() {
@@ -21,6 +22,7 @@ export class Engine {
 
   addComponent(component) {
     this.circuit.addComponent(component);
+    this._indexComponent(component);
     if (component.type === 'Clock') {
       this.clocks.add(component);
     }
@@ -34,9 +36,17 @@ export class Engine {
     }
   }
 
+  _indexComponent(comp) {
+    comp.inputs.forEach(inp => this._nodeIndex.set(inp.id, comp));
+    comp.outputs.forEach(out => this._nodeIndex.set(out.id, comp));
+  }
+
   removeComponent(compId) {
     const comp = this.components.get(compId);
     if (!comp) return;
+    // Un-index the component's nodes before removal
+    comp.inputs.forEach(inp => this._nodeIndex.delete(inp.id));
+    comp.outputs.forEach(out => this._nodeIndex.delete(out.id));
     if (comp.type === 'Clock') {
       comp.stop();
       this.clocks.delete(comp);
@@ -191,11 +201,7 @@ export class Engine {
   }
 
   _findComponentByNode(nodeId) {
-    for (const comp of this.components.values()) {
-      if (comp.inputs.some(i => i.id === nodeId) || comp.outputs.some(o => o.id === nodeId))
-        return comp;
-    }
-    return null;
+    return this._nodeIndex.get(nodeId) || null;
   }
 
   _propagateFrom(comp) {
@@ -207,7 +213,10 @@ export class Engine {
     this.stop();
     this.circuit = circuit;
     this.clocks.clear();
+    // Rebuild node index
+    this._nodeIndex.clear();
     for (const comp of this.components.values()) {
+      this._indexComponent(comp);
       if (comp.type === 'Clock') this.clocks.add(comp);
       if (!comp.isWrapped) {
         const origCompute = comp.computeOutput.bind(comp);

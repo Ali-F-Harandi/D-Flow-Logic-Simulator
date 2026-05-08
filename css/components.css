@@ -176,6 +176,14 @@
   filter: drop-shadow(0 0 4px var(--color-accent));
 }
 
+/* ===== Centered component body (replaces inline centering styles) ===== */
+.component-body-centered {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
 /* ===== Toast Notification ===== */
 #toast-container {
   font-family: var(--font-family);

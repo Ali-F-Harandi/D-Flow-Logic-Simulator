@@ -165,6 +165,7 @@ export class CanvasEvents {
       else if (e.ctrlKey && e.key === 'y') { e.preventDefault(); this.undoManager.redo(); }
       else if (e.ctrlKey && e.key === 'c') { e.preventDefault(); this.selection.copySelected(); }
       else if (e.ctrlKey && e.key === 'v') { e.preventDefault(); this.selection.pasteCopied(); }
+      else if (e.ctrlKey && e.key === 'a') { e.preventDefault(); this.selection.selectAll(this.compManager.components); }
       else if (e.key === 'Escape') { this.selection.clearSelection(); }
       else if (e.key === 'Delete' || e.key === 'Backspace') {
         if (this.selection.selectedComponents.size > 0 || this.selection.selectedWires.size > 0) {

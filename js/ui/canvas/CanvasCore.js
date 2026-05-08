@@ -12,8 +12,8 @@ export class CanvasCore {
     this.scene.id = 'canvas-scene';
     this.scene.style.position = 'absolute';
     this.scene.style.transformOrigin = '0 0';
-    this.scene.style.width = '20000px';
-    this.scene.style.height = '20000px';
+    this.scene.style.width = '10000px';
+    this.scene.style.height = '10000px';
     this.element.appendChild(this.scene);
 
     // SVG layer for wires

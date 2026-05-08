@@ -38,7 +38,7 @@ export class Sidebar {
     sidebar.innerHTML = `
       <div class="sidebar-header">Components</div>
       <div class="search-bar">
-        <input type="text" id="sidebar-search" placeholder="Search components..." autocomplete="off">
+        <input type="text" id="sidebar-search" placeholder="Search components..." autocomplete="off" aria-label="Search components">
       </div>
       <div class="component-list"></div>
     `;

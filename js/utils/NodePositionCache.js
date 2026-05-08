@@ -5,12 +5,20 @@ export class NodePositionCache {
     this._scale = scale;
     this._cache = new Map();
     this._valid = false;
+    this._rafId = null;
     this._observer = new ResizeObserver(() => this.invalidate());
     this._observer.observe(canvasElement);
   }
 
   invalidate() {
     this._valid = false;
+    // L-12: Debounced rebuild using requestAnimationFrame
+    if (this._rafId === null) {
+      this._rafId = requestAnimationFrame(() => {
+        this._rebuild();
+        this._rafId = null;
+      });
+    }
   }
 
   setTransform(panOffset, scale) {
@@ -43,5 +51,9 @@ export class NodePositionCache {
 
   disconnect() {
     this._observer.disconnect();
+    if (this._rafId !== null) {
+      cancelAnimationFrame(this._rafId);
+      this._rafId = null;
+    }
   }
 }

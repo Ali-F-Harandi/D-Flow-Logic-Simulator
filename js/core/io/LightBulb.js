@@ -55,8 +55,11 @@ export class LightBulb extends Component {
     circle.setAttribute('cx', '20');
     circle.setAttribute('cy', '20');
     circle.setAttribute('r', '16');
-    circle.setAttribute('fill', '#333');
-    circle.setAttribute('stroke', '#666');
+    const rootStyle = getComputedStyle(document.documentElement);
+    const offFill = rootStyle.getPropertyValue('--led-off-fill').trim() || '#333';
+    const offStroke = rootStyle.getPropertyValue('--led-off-stroke').trim() || '#666';
+    circle.setAttribute('fill', offFill);
+    circle.setAttribute('stroke', offStroke);
     circle.setAttribute('stroke-width', '2');
     circle.classList.add('led-circle');
     svg.appendChild(circle);
@@ -78,8 +81,14 @@ export class LightBulb extends Component {
     const circle = this.element.querySelector('.led-circle');
     if (!circle) return;
     const lit = this.inputs[0]?.value === true;
-    circle.setAttribute('fill', lit ? '#ff4444' : '#333');
-    circle.setAttribute('stroke', lit ? '#ff8888' : '#666');
-    circle.style.filter = lit ? 'drop-shadow(0 0 6px rgba(255,0,0,0.8))' : 'none';
+    const style = getComputedStyle(document.documentElement);
+    const onFill = style.getPropertyValue('--led-on-fill').trim() || '#ff4444';
+    const onStroke = style.getPropertyValue('--led-on-stroke').trim() || '#ff8888';
+    const offFill = style.getPropertyValue('--led-off-fill').trim() || '#333';
+    const offStroke = style.getPropertyValue('--led-off-stroke').trim() || '#666';
+    const glow = style.getPropertyValue('--led-glow').trim() || 'drop-shadow(0 0 6px rgba(255,0,0,0.8))';
+    circle.setAttribute('fill', lit ? onFill : offFill);
+    circle.setAttribute('stroke', lit ? onStroke : offStroke);
+    circle.style.filter = lit ? glow : 'none';
   }
 }

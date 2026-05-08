@@ -51,15 +51,16 @@ export class SevenSegment extends Component {
     svg.style.position = 'absolute';
     svg.style.top = '10px';
     svg.style.left = '22px';
+    // Static SVG markup — safe (no user input interpolated)
     svg.innerHTML = `
-      <polygon class="seg-a" fill="#333" points="1,1  2,0  8,0  9,1  8,2  2,2"/>
-      <polygon class="seg-b" fill="#333" points="9,1 10,2 10,8  9,9  8,8  8,2"/>
-      <polygon class="seg-c" fill="#333" points="9,9 10,10 10,16  9,17  8,16  8,10"/>
-      <polygon class="seg-d" fill="#333" points="9,17  8,18  2,18  1,17  2,16  8,16"/>
-      <polygon class="seg-e" fill="#333" points="1,17  0,16  0,10  1, 9  2,10  2,16"/>
-      <polygon class="seg-f" fill="#333" points="1, 9  0, 8  0, 2  1, 1  2, 2  2, 8"/>
-      <polygon class="seg-g" fill="#333" points="1, 9  2, 8  8, 8  9, 9  8,10  2,10"/>
-      <circle class="seg-dp" cx="11" cy="18" r="0.8" fill="#333"/>
+      <polygon class="seg-a" fill="var(--led-off-fill)" points="1,1  2,0  8,0  9,1  8,2  2,2"/>
+      <polygon class="seg-b" fill="var(--led-off-fill)" points="9,1 10,2 10,8  9,9  8,8  8,2"/>
+      <polygon class="seg-c" fill="var(--led-off-fill)" points="9,9 10,10 10,16  9,17  8,16  8,10"/>
+      <polygon class="seg-d" fill="var(--led-off-fill)" points="9,17  8,18  2,18  1,17  2,16  8,16"/>
+      <polygon class="seg-e" fill="var(--led-off-fill)" points="1,17  0,16  0,10  1, 9  2,10  2,16"/>
+      <polygon class="seg-f" fill="var(--led-off-fill)" points="1, 9  0, 8  0, 2  1, 1  2, 2  2, 8"/>
+      <polygon class="seg-g" fill="var(--led-off-fill)" points="1, 9  2, 8  8, 8  9, 9  8,10  2,10"/>
+      <circle class="seg-dp" cx="11" cy="18" r="0.8" fill="var(--led-off-fill)"/>
     `;
     el.appendChild(svg);
 
@@ -87,17 +88,20 @@ export class SevenSegment extends Component {
       0b1000111
     ];
     const bits = segMap[val] || 0;
+    const style = getComputedStyle(document.documentElement);
+    const onFill = style.getPropertyValue('--led-on-fill').trim() || '#ff4444';
+    const offFill = style.getPropertyValue('--led-off-fill').trim() || '#333';
     const segs = ['a','b','c','d','e','f','g'];
     segs.forEach((seg, idx) => {
       const poly = this.element.querySelector(`.seg-${seg}`);
-      if (poly) poly.setAttribute('fill', (bits >> (6 - idx)) & 1 ? '#ff4444' : '#333');
+      if (poly) poly.setAttribute('fill', (bits >> (6 - idx)) & 1 ? onFill : offFill);
     });
 
     // decimal point
     const dp = this.element.querySelector('.seg-dp');
     if (dp) {
       const dpOn = this.inputs[4]?.value === true;
-      dp.setAttribute('fill', dpOn ? '#ff4444' : '#333');
+      dp.setAttribute('fill', dpOn ? onFill : offFill);
     }
   }
 }

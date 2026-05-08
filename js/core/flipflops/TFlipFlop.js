@@ -38,6 +38,8 @@ export class TFlipFlop extends Component {
     this._updateConnectorStates();
   }
 
+  getProperties() { return []; }
+
   render(container) {
     const H = 4 * this.GRID;
     const el = document.createElement('div');

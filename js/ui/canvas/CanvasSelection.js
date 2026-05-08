@@ -39,6 +39,16 @@ export class CanvasSelection {
     this.selectedWires.clear();
   }
 
+  selectAll(components) {
+    this.clearSelection();
+    components.forEach(comp => {
+      if (comp.element) {
+        this.selectedComponents.add(comp.id);
+        comp.element.classList.add('selected');
+      }
+    });
+  }
+
   startSelection(e) {
     const coords = this.core.canvasCoords(e.clientX || e.pageX, e.clientY || e.pageY);
     this.selectionStart = coords;

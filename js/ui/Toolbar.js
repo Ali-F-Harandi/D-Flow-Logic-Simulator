@@ -48,14 +48,17 @@ export class Toolbar {
       <span class="status-text">Simulation stopped</span>
       <button id="tt-btn" class="toolbar-btn">Truth Table</button>
       <button id="tb-btn" class="toolbar-btn">Test Bench</button>
-      <label class="speed-label" for="speed-slider">Speed: <input type="range" id="speed-slider" name="speed-slider" min="50" max="1000" value="800"></label>
+      <label class="speed-label" for="speed-slider">Speed: <input type="range" id="speed-slider" name="speed-slider" min="50" max="1000" value="800" step="50"></label>
+      <span id="speed-value">200ms</span>
     `;
     // Slider: Inverted so right = faster, left = slower
     // Slider value goes 50..1000, but we invert: speed = 1050 - sliderValue
     // So slider=50 → speed=1000 (slow), slider=1000 → speed=50 (fast)
     const slider = toolbar.querySelector('#speed-slider');
+    const speedValue = toolbar.querySelector('#speed-value');
     slider.addEventListener('input', (e) => {
       const inverted = 1050 - parseInt(e.target.value);
+      speedValue.textContent = `${inverted}ms`;
       this.eventBus.emit('speed-change', inverted);
     });
     return toolbar;

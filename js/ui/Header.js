@@ -20,19 +20,19 @@ export class Header {
     const header = document.createElement('header');
     header.id = 'header';
     header.innerHTML = `
-      <button class="hamburger-btn" title="Toggle sidebar">☰</button>
+      <button class="hamburger-btn" title="Toggle sidebar" aria-label="Toggle sidebar">☰</button>
       <span class="app-title">Logic Gate Simulator</span>
       <div class="header-controls">
-        <button class="header-btn run-btn" title="Run simulation (continuous)">▶ Run</button>
-        <button class="header-btn stop-btn" title="Stop simulation">⏹ Stop</button>
-        <button class="header-btn step-btn" title="Advance one step">⏭ Step</button>
-        <button class="header-btn reset-btn" title="Reset all component states">↺ Reset</button>
-        <button class="header-btn zoom-fit-btn" title="Zoom to fit all components">⊞</button>
-        <button class="header-btn save-btn" title="Save to browser storage">💾</button>
-        <button class="header-btn load-btn" title="Restore last saved project">📂</button>
-        <button class="header-btn export-btn" title="Export circuit as JSON file">📤 Export</button>
-        <button class="header-btn import-btn" title="Import circuit from JSON file">📥 Import</button>
-        <button class="header-btn theme-toggle-btn" title="Toggle theme (dark/light/high-contrast)">🌙</button>
+        <button class="header-btn run-btn" title="Run simulation (continuous)" aria-label="Run simulation">▶ Run</button>
+        <button class="header-btn stop-btn" title="Stop simulation" aria-label="Stop simulation">⏹ Stop</button>
+        <button class="header-btn step-btn" title="Advance one step" aria-label="Step simulation">⏭ Step</button>
+        <button class="header-btn reset-btn" title="Reset all component states" aria-label="Reset simulation">↺ Reset</button>
+        <button class="header-btn zoom-fit-btn" title="Zoom to fit all components" aria-label="Zoom to fit">⊞</button>
+        <button class="header-btn save-btn" title="Save to browser storage" aria-label="Save project">💾</button>
+        <button class="header-btn load-btn" title="Restore last saved project" aria-label="Load project">📂</button>
+        <button class="header-btn export-btn" title="Export circuit as JSON file" aria-label="Export circuit">📤 Export</button>
+        <button class="header-btn import-btn" title="Import circuit from JSON file" aria-label="Import circuit">📥 Import</button>
+        <button class="header-btn theme-toggle-btn" title="Toggle theme (dark/light/high-contrast)" aria-label="Toggle theme">🌙</button>
       </div>
     `;
     return header;
@@ -175,6 +175,7 @@ export class Header {
     this.runBtn.disabled = running;
     this.stopBtn.disabled = !running;
     this.stepBtn.disabled = running;
+    this.element.classList.toggle('sim-running', running);
   }
 
   // HP-2 FIX: Removed _bindGlobalShortcuts() entirely.
