@@ -93,8 +93,11 @@ export class TruthTablePanel {
         inputs.push({ comp, bits: [0] });
         totalBits++;
       } else if (comp.type === 'DipSwitch8') {
-        inputs.push({ comp, bits: [0,1,2,3,4,5,6,7] });
-        totalBits += 8;
+        const n = comp._switchCount || 8;
+        const bitIndices = [];
+        for (let b = 0; b < n; b++) bitIndices.push(b);
+        inputs.push({ comp, bits: bitIndices });
+        totalBits += n;
       }
     }
 
@@ -124,7 +127,8 @@ export class TruthTablePanel {
     html += '<tr>';
     for (const inp of inputs) {
       if (inp.comp.type === 'DipSwitch8') {
-        for (let b = 7; b >= 0; b--) html += `<th>${inp.comp.id}.${b}</th>`;
+        const n = inp.comp._switchCount || 8;
+        for (let b = n - 1; b >= 0; b--) html += `<th>${inp.comp.id}.${b}</th>`;
       } else {
         html += `<th>${inp.comp.id}</th>`;
       }
@@ -159,11 +163,12 @@ export class TruthTablePanel {
       bitIdx = 0;
       for (const inp of inputs) {
         if (inp.comp.type === 'DipSwitch8') {
-          for (let b = 7; b >= 0; b--) {
-            const val = (c >> b) & 1;
+          const n = inp.comp._switchCount || 8;
+          for (let b = n - 1; b >= 0; b--) {
+            const val = (c >> (n - 1 - b)) & 1;
             html += `<td>${val}</td>`;
           }
-          bitIdx += 8;
+          bitIdx += n;
         } else {
           for (const b of inp.bits) {
             const val = (c >> bitIdx) & 1;

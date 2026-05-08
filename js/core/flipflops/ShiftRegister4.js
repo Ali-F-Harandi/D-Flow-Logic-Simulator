@@ -1,22 +1,25 @@
 import { Component } from '../Component.js';
 
 export class ShiftRegister4 extends Component {
-  static label = 'Shift Reg 4';
+  static label = 'Shift Register';
   static category = 'Flip-Flops';
 
-  constructor(id) {
-    super(id, 'ShiftRegister4', 2, 4);   // Data, Clock → Q0..Q3
+  constructor(id, bitCount = 8) {
+    bitCount = Math.max(2, Math.min(8, parseInt(bitCount, 10) || 8));
+    super(id, 'ShiftRegister4', 2, bitCount);   // Data, Clock → Q0..Q(n-1)
+    this._bitCount = bitCount;
     this._prevClk = false;
-    this._state = [false, false, false, false];
+    this._state = new Array(bitCount).fill(false);
   }
+
+  get bitCount() { return this._bitCount; }
 
   computeNextState() {
     const data = this.inputs[0].value;
     const clk = this.inputs[1].value;
-    // Compute next state WITHOUT mutating this._state
     let nextState;
     if (clk && !this._prevClk) {
-      nextState = [Boolean(data), this._state[0], this._state[1], this._state[2]];
+      nextState = [Boolean(data), ...this._state.slice(0, this._bitCount - 1)];
     } else {
       nextState = [...this._state];
     }
@@ -36,14 +39,67 @@ export class ShiftRegister4 extends Component {
   reset() {
     super.reset();
     this._prevClk = false;
-    this._state = [false, false, false, false];
+    this._state = new Array(this._bitCount).fill(false);
     this._updateConnectorStates();
   }
 
-  getProperties() { return []; }
+  getProperties() {
+    return [{ name: 'bits', label: 'Bits', type: 'number', value: this._bitCount, min: 2, max: 8, step: 1 }];
+  }
+
+  setProperty(name, value) {
+    if (name === 'bits') {
+      const newCount = parseInt(value, 10);
+      if (newCount === this._bitCount || newCount < 2 || newCount > 8) return false;
+
+      // Disconnect wires for outputs being removed
+      if (newCount < this._bitCount) {
+        for (let i = newCount; i < this._bitCount; i++) {
+          const out = this.outputs[i];
+          if (out) {
+            // Find wires from this output and disconnect them
+            const wiresToRemove = this._engine?.wires.filter(w => w.from.nodeId === out.id);
+            if (wiresToRemove) {
+              wiresToRemove.forEach(w => {
+                this._engine.disconnect(w.id);
+                // Remove visual wire via custom event
+                document.dispatchEvent(new CustomEvent('wire-removed', { detail: { wireId: w.id } }));
+              });
+            }
+          }
+        }
+      }
+
+      // Save old state values
+      const oldState = [...this._state];
+      const oldOutputs = this.outputs.map(o => ({ value: o.value }));
+
+      this._bitCount = newCount;
+
+      // Rebuild outputs array
+      this.outputs = [];
+      for (let i = 0; i < newCount; i++) {
+        this.outputs.push({
+          id: `${this.id}.output.${i}`,
+          value: i < oldOutputs.length ? oldOutputs[i].value : false
+        });
+      }
+
+      // Rebuild state
+      this._state = new Array(newCount).fill(false);
+      for (let i = 0; i < Math.min(newCount, oldState.length); i++) {
+        this._state[i] = oldState[i];
+      }
+
+      this.rerender();
+      return true;
+    }
+    return false;
+  }
 
   render(container) {
-    const H = 6 * this.GRID;
+    const n = this._bitCount;
+    const H = (n + 1) * this.GRID;
     const W = 5 * this.GRID;
     const el = document.createElement('div');
     el.className = 'component flipflop shift-reg';
@@ -56,7 +112,7 @@ export class ShiftRegister4 extends Component {
 
     const body = document.createElement('div');
     body.className = 'ff-body';
-    body.textContent = 'SR4';
+    body.textContent = `SR${n}`;
     body.style.position = 'absolute';
     body.style.top = '50%';
     body.style.left = '50%';
@@ -65,7 +121,7 @@ export class ShiftRegister4 extends Component {
 
     el.appendChild(this._createConnectorBlock(this.inputs[0], true, 'D', 1 * this.GRID));
     el.appendChild(this._createConnectorBlock(this.inputs[1], true, 'CLK', 2 * this.GRID));
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < n; i++) {
       el.appendChild(this._createConnectorBlock(this.outputs[i], false, `Q${i}`, (1 + i) * this.GRID));
     }
 

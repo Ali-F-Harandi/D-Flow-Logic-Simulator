@@ -136,7 +136,10 @@ export class CanvasEvents {
       if (this.dragHandler.isDragging) { this.dragHandler.endDrag(); return; }
 
       if (this.wiring.wiring && this.wiring.wiring.tempPath) {
+        // First try: check if mouse is directly over a connector
         const targetConn = e.target.closest('.connector');
+        let connected = false;
+
         if (targetConn && targetConn.dataset.node) {
           const isTargetOutput = targetConn.classList.contains('output');
           const isSourceOutput = this.wiring.wiring.fromIsOutput;
@@ -153,9 +156,38 @@ export class CanvasEvents {
             else success = this.wiring.completeConnection(targetConn.dataset.node, this.wiring.wiring.fromNodeId);
           } else if (isSourceOutput && isTargetOutput) errorMsg = 'Cannot connect output to output';
           else errorMsg = 'Cannot connect input to input';
-          if (!success && !errorMsg) errorMsg = 'Connection failed';
-          if (errorMsg) this.toaster ? this.toaster.show(errorMsg, 'error') : console.warn(errorMsg);
+          if (success) connected = true;
+          else if (errorMsg) this.toaster ? this.toaster.show(errorMsg, 'error') : console.warn(errorMsg);
         }
+
+        // Second try: if direct click failed, use auto-magnet result to connect
+        if (!connected && this._lastMagnetNodeId) {
+          const magnetComp = this.engine._findComponentByNode(this._lastMagnetNodeId);
+          const magnetDot = magnetComp?.element?.querySelector(`.connector[data-node="${this._lastMagnetNodeId}"]`);
+          const isMagnetOutput = magnetDot?.classList.contains('output') ?? false;
+          const isSourceOutput = this.wiring.wiring.fromIsOutput;
+          let success = false;
+          if (isSourceOutput && !isMagnetOutput) {
+            const fromComp = this.engine._findComponentByNode(this.wiring.wiring.fromNodeId);
+            if (fromComp && fromComp.id === magnetComp?.id) {
+              // self-connection check
+            } else {
+              success = this.wiring.completeConnection(this.wiring.wiring.fromNodeId, this._lastMagnetNodeId);
+            }
+          } else if (!isSourceOutput && isMagnetOutput) {
+            const fromComp = this.engine._findComponentByNode(this._lastMagnetNodeId);
+            const toComp = this.engine._findComponentByNode(this.wiring.wiring.fromNodeId);
+            if (fromComp && toComp && fromComp.id === toComp.id) {
+              // self-connection check
+            } else {
+              success = this.wiring.completeConnection(this._lastMagnetNodeId, this.wiring.wiring.fromNodeId);
+            }
+          }
+          if (!success && !connected) {
+            // No error toast for magnet fallback — the wire just didn't land on a compatible connector
+          }
+        }
+
         // Clear magnet highlight
         if (this._lastMagnetNodeId) {
           this._highlightConnector(this._lastMagnetNodeId, false);

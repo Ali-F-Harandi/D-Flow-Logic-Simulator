@@ -108,35 +108,22 @@ export class CanvasTouch {
       return;
     }
 
-    // ---- Check for Switch (DipSwitch) tap ----
+    // ---- Check for component touch ----
     const compEl = target.closest('.component');
     if (compEl && !target.classList.contains('connector')) {
       const comp = this.compManager.getComponentById(compEl.dataset.compId);
       if (comp) {
-        // Check if it's a toggle-type component (DipSwitch) that should
-        // respond to taps rather than drag. DipSwitch8 has its own bit-toggle
-        // handlers (.dip-bit), so we only need to handle DipSwitch here.
-        const isTapToggleable = comp.type === 'DipSwitch';
-
-        if (isTapToggleable && !target.closest('.connector')) {
-          // Prevent default to stop browser from interfering with touch events.
-          // We handle the toggle ourselves in _onTouchEnd.
-          e.preventDefault();
-          this.tappedComponent = comp;
-          this.longPressFired = false;
-          this.longPressTimer = setTimeout(() => {
-            if (!this.touchMoved && !this.longPressFired) {
-              this.longPressFired = true;
-              if (navigator.vibrate) navigator.vibrate(50);
-              this._showComponentContextMenu(comp, touch.clientX, touch.clientY);
-            }
-          }, this.LONG_PRESS_MS);
-          return;
-        }
-
-        // For non-toggle components: prevent default and start drag
+        // For ALL components (including DipSwitch): start drag immediately.
+        // For toggle-type components (DipSwitch), a short tap (no move) will
+        // toggle in _onTouchEnd, while a drag will move the component.
         e.preventDefault();
         this.dragHandler.startDrag(comp, touch.clientX, touch.clientY);
+
+        // Also track tap for toggle-type components
+        const isTapToggleable = comp.type === 'DipSwitch';
+        if (isTapToggleable && !target.closest('.connector')) {
+          this.tappedComponent = comp;
+        }
 
         // Set up long-press timer for context menu
         this.longPressFired = false;

@@ -300,6 +300,26 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+/* ===== Buffer Gate ===== */
+.buffer-gate {
+  border-color: var(--color-accent);
+}
+
+/* ===== High/Low Constant Components ===== */
+.high-constant,
+.low-constant {
+  border-radius: var(--border-radius);
+  text-align: center;
+}
+.high-constant {
+  border-color: var(--color-success);
+  background: var(--color-surface);
+}
+.low-constant {
+  border-color: var(--color-text-muted);
+  background: var(--color-surface);
+}
+
 /* ===== Connector Magnet Highlight ===== */
 .connector.magnet-highlight {
   transform: scale(1.8);
