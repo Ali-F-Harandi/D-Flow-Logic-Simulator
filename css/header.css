@@ -5,9 +5,12 @@
   display: flex;
   align-items: center;
   padding: var(--space-sm) var(--space-md);
-  gap: var(--space-md);
+  gap: var(--space-sm);
   box-shadow: var(--shadow-md);
   z-index: 20;
+  /* HP-1 FIX: Allow header to wrap on small screens instead of overflowing */
+  flex-wrap: wrap;
+  min-height: 40px;
 }
 
 #header .app-title {
@@ -19,24 +22,32 @@
   -webkit-text-fill-color: transparent;
   background-clip: text;
   user-select: none;
+  /* HP-1 FIX: Prevent title from shrinking too much */
+  flex-shrink: 0;
 }
 
 #header .header-controls {
   display: flex;
-  gap: var(--space-sm);
+  gap: var(--space-xs);
   margin-left: auto;
+  /* HP-1 FIX: Allow controls to wrap on narrow screens */
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 #header .header-btn {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   color: var(--color-text);
-  padding: var(--space-xs) var(--space-md);
+  padding: var(--space-xs) var(--space-sm);
   border-radius: var(--border-radius);
   cursor: pointer;
   font-size: var(--font-size-sm);
   transition: all var(--transition-speed);
   box-shadow: var(--shadow-sm);
+  /* HP-1 FIX: Prevent buttons from shrinking to unreadable size */
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 #header .header-btn:hover:not(:disabled) {
   background: var(--color-accent);
@@ -57,6 +68,7 @@
   cursor: pointer;
   padding: var(--space-xs);
   display: none;
+  flex-shrink: 0;
 }
 
 .theme-toggle-btn {
@@ -66,6 +78,7 @@
   font-size: 1.2rem;
   cursor: pointer;
   padding: var(--space-xs);
+  flex-shrink: 0;
 }
 
 @media (max-width: 1024px) {
@@ -77,8 +90,32 @@
 @media (max-width: 767px) {
   #header {
     justify-content: space-between;
+    /* HP-1 FIX: Smaller padding on mobile */
+    padding: var(--space-xs) var(--space-sm);
   }
   #header .header-controls {
     margin-left: 0;
+    /* HP-1 FIX: On very small screens, spread buttons across full width */
+    width: 100%;
+    justify-content: center;
+  }
+  #header .header-btn {
+    /* HP-1 FIX: Smaller padding for mobile buttons */
+    padding: 2px 6px;
+    font-size: 11px;
+  }
+  #header .app-title {
+    font-size: var(--font-size-md);
+  }
+}
+
+/* HP-1 FIX: Extra-small screens need even more compact header */
+@media (max-width: 480px) {
+  #header .header-btn {
+    padding: 2px 4px;
+    font-size: 10px;
+  }
+  #header .header-controls {
+    gap: 2px;
   }
 }

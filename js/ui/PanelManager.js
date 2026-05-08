@@ -15,7 +15,6 @@ export class PanelManager {
     this.createSplitter();
     this.setupResize();
 
-    // Initialize sub-panels
     this.truthPanel = new TruthTablePanel(this.rightPanel, eventBus, engine);
     this.testBenchPanel = new TestBenchPanel(this.rightPanel, eventBus, engine);
 
@@ -32,14 +31,8 @@ export class PanelManager {
       this.testBenchPanel.setOutputNode(nodeId);
     });
 
-    // FIX BUG #4: Close right panel when clicking outside.
-    // Previously used capture phase (3rd arg = true) which fired BEFORE
-    // all other click handlers, and only excluded #toolbar button and
-    // .connector. This caused the panel to close on ANY canvas interaction
-    // (toggling switches, starting wires, dragging components, clicking
-    // header buttons). Now uses bubbling phase (false) and adds exclusion
-    // for #canvas-container and #header so normal circuit interaction
-    // does not close the panel.
+    // FIX (critical): Close right panel when clicking outside.
+    // Uses bubbling phase (not capture) and excludes canvas and header.
     document.addEventListener('click', (e) => {
       if (
         this.rightPanelOpen &&
@@ -99,7 +92,7 @@ export class PanelManager {
 
   toggleRightPanel(width) {
     if (width === undefined) {
-      this.container.style.setProperty('--right-panel-width', 
+      this.container.style.setProperty('--right-panel-width',
         this.rightPanelOpen ? '0px' : '300px');
       this.rightPanelOpen = !this.rightPanelOpen;
     } else {

@@ -5,12 +5,12 @@ export class UndoManager {
   }
 
   execute(command) {
-    const success = command.execute();      // <-- now returns boolean
+    const success = command.execute();
     if (success) {
       this.undoStack.push(command);
       this.redoStack = [];
     }
-    return success;   // forward result
+    return success;
   }
 
   undo() {
@@ -40,10 +40,10 @@ export class AddComponentCommand {
   execute() {
     this.engine.addComponent(this.component);
     this.canvas.addComponent(this.component);
-    return true;   // always succeeds
+    return true;
   }
   undo() {
-    // FIX BUG #1: Also remove visual wires connected to this component before deleting
+    // FIX (critical): Also remove visual wires connected to this component
     const relatedWires = this.engine.wires.filter(w =>
       w.from.componentId === this.component.id || w.to.componentId === this.component.id
     );
@@ -72,11 +72,7 @@ export class DeleteComponentCommand {
       fromNodeId: w.from.nodeId,
       toNodeId: w.to.nodeId
     }));
-    // FIX BUG #1: Remove visual wires BEFORE deleting the component.
-    // Previously, _deleteComponent only removed the component DOM element
-    // and called engine.removeComponent (which disconnects wires in the
-    // data model but does NOT dispatch 'wire-removed' events), leaving
-    // ghost SVG wire elements on the canvas.
+    // FIX (critical): Remove visual wires BEFORE deleting the component
     for (const w of relatedWires) {
       this.canvas._removeVisualWireByEngineId(w.id);
     }
@@ -106,9 +102,9 @@ export class ConnectWireCommand {
     this.engineWireId = this.engine.connect(this.fromNodeId, this.toNodeId);
     if (this.engineWireId) {
       this.canvas._addVisualWire(this.engineWireId, this.fromNodeId, this.toNodeId);
-      return true;   // success
+      return true;
     }
-    return false;    // connection refused
+    return false;
   }
   undo() {
     if (this.engineWireId) {
@@ -136,7 +132,7 @@ export class DisconnectWireCommand {
     }
     this.engine.disconnect(this.wireId);
     this.canvas._removeVisualWireByEngineId(this.wireId);
-    return true;   // always succeeds
+    return true;
   }
   undo() {
     if (this.wireData) {

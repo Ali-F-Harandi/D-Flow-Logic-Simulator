@@ -18,7 +18,7 @@
   box-shadow: var(--shadow-md);
 }
 
-/* ===== Gate / Flip‑Flop / Clock Body ===== */
+/* ===== Gate / Flip-Flop / Clock Body ===== */
 .gate-body,
 .ff-body,
 .clock-body,
@@ -115,11 +115,11 @@
   text-align: center;
 }
 .tt-content th {
-  background: var(--color-surface-alt);
-  color: var(--color-accent);
+  background: var(--truth-table-header-bg);
+  color: var(--truth-table-header-color);
 }
 .tt-content tr:nth-child(even) {
-  background: rgba(255,255,255,0.03);
+  background: var(--truth-table-row-alt);
 }
 
 /* ===== Toolbar Buttons ===== */
@@ -157,8 +157,13 @@
 }
 
 .component.selected {
-  outline: 2px solid var(--color-accent);
-  box-shadow: 0 0 8px var(--color-accent);
+  outline: var(--component-selected-outline);
+  box-shadow: var(--component-selected-shadow);
+}
+
+.component-focused {
+  outline: 2px dashed var(--color-accent);
+  outline-offset: 2px;
 }
 
 .selection-rect {
@@ -174,71 +179,4 @@
 /* ===== Toast Notification ===== */
 #toast-container {
   font-family: var(--font-family);
-}
-
-/* ===== Wiring preview dashed line ===== */
-.wire-preview {
-  stroke-dasharray: 6, 4;
-}
-
-/* ===== Header Controls Scroll ===== */
-.header-controls {
-  display: flex;
-  gap: 4px;
-  align-items: center;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-}
-
-#property-dialog {
-  position: fixed;
-  top: 30%;
-  left: 50%;
-  transform: translate(-50%, -30%);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 20px;
-  z-index: var(--z-modal);
-  display: none;
-  color: var(--color-text);
-  font-size: 14px;
-  min-width: 300px;
-}
-
-#property-dialog h3 {
-  margin-top: 0;
-}
-
-#property-dialog label {
-  display: block;
-  margin: 10px 0;
-}
-
-#property-dialog input {
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  color: var(--color-text);
-  padding: 4px;
-  border-radius: 3px;
-  width: 60px;
-}
-
-#property-dialog button {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  color: var(--color-text);
-  padding: 6px 12px;
-  border-radius: var(--border-radius);
-  cursor: pointer;
-}
-
-#property-dialog button:hover {
-  background: var(--color-accent);
-  color: white;
-}
-
-.component-focused {
-  outline: 3px solid var(--color-accent, #007acc);
-  z-index: 10;
 }

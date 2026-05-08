@@ -9,7 +9,7 @@ export class CanvasEvents {
   constructor(
     compManager, dragHandler, wiring, selection, panZoom, core,
     contextMenu, propertyEditor, undoManager, eventBus, positionCache,
-    canvas          // <-- NEW PARAMETER
+    canvas
   ) {
     this.compManager = compManager;
     this.dragHandler = dragHandler;
@@ -22,13 +22,11 @@ export class CanvasEvents {
     this.undoManager = undoManager;
     this.eventBus = eventBus;
     this.positionCache = positionCache;
-    this.canvas = canvas;    // <-- store real Canvas instance
+    this.canvas = canvas;
     this._toaster = null;
 
     this.element = document.getElementById('canvas-container');
     if (!this.element) this.element = core.element;
-
-    console.log('[CanvasEvents] ready, element: ' + this.element.id);
 
     this._focusedComponentIndex = -1;
 
@@ -156,6 +154,11 @@ export class CanvasEvents {
   /* ---------- Keyboard ---------- */
   _bindKeyboard() {
     window.addEventListener('keydown', (e) => {
+      // HP-2 FIX: Skip if user is typing in an input/textarea to avoid
+      // intercepting legitimate text editing keystrokes.
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
       if (this.wiring.wiring) return;
       const step = this.core.gridSize;
       if (e.ctrlKey && e.key === 'z') { e.preventDefault(); this.undoManager.undo(); }

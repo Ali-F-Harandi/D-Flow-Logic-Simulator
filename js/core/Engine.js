@@ -2,7 +2,7 @@ import { Circuit } from './Circuit.js';
 
 export class Engine {
   constructor() {
-    this.circuit = new Circuit();   // components + wires
+    this.circuit = new Circuit();
     this.queue = new Set();
     this.running = false;
     this.speed = 200;
@@ -12,11 +12,9 @@ export class Engine {
     this._processing = false;
   }
 
-  /** Access components (map) */
   get components() {
     return this.circuit.components;
   }
-  /** Access wires (array) */
   get wires() {
     return this.circuit.wires;
   }
@@ -26,7 +24,6 @@ export class Engine {
     if (component.type === 'Clock') {
       this.clocks.add(component);
     }
-    // Wrap computeOutput only once
     if (!component.isWrapped) {
       const origCompute = component.computeOutput.bind(component);
       component.computeOutput = () => {
@@ -44,7 +41,6 @@ export class Engine {
       comp.stop();
       this.clocks.delete(comp);
     }
-    // Remove associated wires from circuit
     const wiresToRemove = this.wires.filter(w =>
       w.from.componentId === compId || w.to.componentId === compId
     );
@@ -56,18 +52,17 @@ export class Engine {
     const fromComp = this._findComponentByNode(fromNodeId);
     const toComp = this._findComponentByNode(toNodeId);
     if (!fromComp || !toComp) throw new Error('Node not found');
-    
+
     if (fromComp.id === toComp.id) {
       document.dispatchEvent(new CustomEvent('simulation-error', { detail: 'Cannot connect a component to itself!' }));
       return null;
     }
-    
+
     const toInput = toComp.inputs.find(inp => inp.id === toNodeId);
     if (!toInput) throw new Error('Input node not found');
     const fromOutput = fromComp.outputs.find(o => o.id === fromNodeId);
     if (!fromOutput) throw new Error('From node is not an output');
 
-    // Remove existing wire if input already connected
     if (toInput.connectedTo) {
       const oldWireIndex = this.wires.findIndex(w => w.to.nodeId === toNodeId);
       if (oldWireIndex !== -1) {
@@ -98,18 +93,12 @@ export class Engine {
       const input = toComp.inputs.find(inp => inp.id === wire.to.nodeId);
       if (input) {
         input.connectedTo = null;
-        // FIX BUG #5: Reset the disconnected input's value to false (LOW).
-        // Previously the input retained its last propagated value, causing
-        // the component to continue computing with a stale signal as if
-        // the wire were still connected. A disconnected input should
-        // revert to the default LOW state, which is the standard
-        // convention in digital logic simulators.
+        // FIX (critical): Reset the disconnected input's value to false (LOW)
         input.value = false;
       }
     }
     this.circuit.removeWire(wireId);
-    // Re-evaluate the affected component so its output reflects the
-    // disconnected input's new LOW value instead of the stale signal.
+    // FIX (critical): Re-evaluate the affected component
     if (toComp) {
       this._propagateFrom(toComp);
     }
@@ -136,7 +125,6 @@ export class Engine {
 
       for (const { comp, nextState } of updates) {
         comp.applyNextState(nextState);
-        // Propagate to downstream
         for (let i = 0; i < comp.outputs.length; i++) {
           const out = comp.outputs[i];
           const connectedWires = this.wires.filter(w => w.from.nodeId === out.id);
@@ -215,14 +203,12 @@ export class Engine {
     if (!this._processing) this._processQueue();
   }
 
-  /** Replace internal circuit with a loaded one (used by Serializer) */
   loadCircuit(circuit) {
     this.stop();
     this.circuit = circuit;
     this.clocks.clear();
     for (const comp of this.components.values()) {
       if (comp.type === 'Clock') this.clocks.add(comp);
-      // Ensure computeOutput is wrapped for each loaded component
       if (!comp.isWrapped) {
         const origCompute = comp.computeOutput.bind(comp);
         comp.computeOutput = () => {

@@ -9,9 +9,35 @@
   font-size: var(--font-size-sm);
   box-shadow: var(--shadow-sm);
   z-index: 10;
+  /* HP-6 FIX: Allow toolbar to wrap on narrow screens */
+  flex-wrap: wrap;
 }
 
 #toolbar .status-text {
   color: var(--color-text-muted);
   font-style: italic;
+}
+
+/* HP-6 FIX: Make speed slider label and range more accessible */
+#toolbar label[for="speed-slider"],
+#toolbar .speed-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  color: var(--color-text-muted);
+  cursor: default;
+}
+
+#toolbar input[type="range"] {
+  cursor: pointer;
+  width: 100px;
+  /* Ensure slider is accessible */
+  min-width: 60px;
+}
+
+@media (max-width: 767px) {
+  #toolbar input[type="range"] {
+    width: 70px;
+    min-width: 50px;
+  }
 }

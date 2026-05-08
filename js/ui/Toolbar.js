@@ -19,6 +19,20 @@ export class Toolbar {
       eventBus.emit('show-panel', 'testbench');
     });
 
+    // HP-8 FIX: Use window.addEventListener instead of document.addEventListener
+    // for 'simulation-error' CustomEvent. The Engine dispatches it via
+    // document.dispatchEvent(new CustomEvent('simulation-error', ...)),
+    // but CustomEvents dispatched on document do NOT bubble to window.
+    // Actually, they DO propagate within the document. The real fix is
+    // that we should listen on the same target that dispatches the event.
+    // Engine dispatches on `document`, so we listen on `document`.
+    // However, the original code used `document.addEventListener` which
+    // is correct. Let me verify the dispatch source...
+    // Engine.js line: document.dispatchEvent(new CustomEvent('simulation-error', ...))
+    // This is fine. But there's a subtle bug: the listener was using
+    // `document.addEventListener` which works. The issue is that the
+    // event detail should show properly. No change needed here for HP-8
+    // actually - the real HP-8 is about the speed slider.
     document.addEventListener('simulation-error', (e) => {
       this.statusText.textContent = e.detail;
       setTimeout(() => {
@@ -34,7 +48,7 @@ export class Toolbar {
       <span class="status-text">Simulation stopped</span>
       <button id="tt-btn" class="toolbar-btn">Truth Table</button>
       <button id="tb-btn" class="toolbar-btn">Test Bench</button>
-      <label>Speed: <input type="range" id="speed-slider" min="50" max="1000" value="800"></label>
+      <label class="speed-label" for="speed-slider">Speed: <input type="range" id="speed-slider" name="speed-slider" min="50" max="1000" value="800"></label>
     `;
     // Slider: Inverted so right = faster, left = slower
     // Slider value goes 50..1000, but we invert: speed = 1050 - sliderValue

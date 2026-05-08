@@ -8,7 +8,6 @@ export class Serializer {
    * @returns {Object}
    */
   static exportState(engine) {
-    // Use engine's circuit to produce JSON
     const circuitData = engine.circuit.toJSON();
     return {
       components: circuitData.components,
@@ -36,12 +35,7 @@ export class Serializer {
     // Load the circuit into the engine (replaces internal state)
     engine.loadCircuit(circuit);
 
-    // FIX BUG #2: Restore connectedTo on component inputs from wire data.
-    // After Circuit.fromJSON + engine.loadCircuit, the wires array is
-    // populated but each component input's `connectedTo` field is still
-    // null. Without this, reconnecting to an already-loaded input fails
-    // to detect the existing wire (toInput.connectedTo is null), causing
-    // duplicate connections and data corruption.
+    // FIX (from critical): Restore connectedTo on component inputs from wire data.
     for (const wire of engine.wires) {
       const toComp = engine.components.get(wire.to.componentId);
       if (toComp) {
@@ -52,7 +46,7 @@ export class Serializer {
       }
     }
 
-    // Restore output values for I/O components (switches, clocks) – they are already in place, but visual update needed.
+    // Restore output values for I/O components
     for (const comp of engine.components.values()) {
       if (typeof comp._updateAppearance === 'function') comp._updateAppearance();
       if (typeof comp._updateDisplay === 'function') comp._updateDisplay();
@@ -62,8 +56,11 @@ export class Serializer {
     // Restore simulation speed
     if (data.speed) engine.setSpeed(data.speed);
 
-    // Avoid future ID clashes
-    resetIdCounter();
+    // HP-3 FIX: Pass the loaded components map to resetIdCounter so it
+    // can scan existing IDs and set the counter ABOVE the highest found.
+    // Previously, resetIdCounter() simply set counter=1, which caused
+    // ID collisions when the next generated ID matched an imported one.
+    resetIdCounter(engine.components);
 
     // Re-render all components on canvas
     for (const comp of engine.components.values()) {

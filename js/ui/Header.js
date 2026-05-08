@@ -10,7 +10,10 @@ export class Header {
     container.appendChild(this.element);
     this._bindButtons();
     this._initTheme();
-    this._bindGlobalShortcuts();
+    // HP-2 FIX: Removed _bindGlobalShortcuts() — the Delete key handler
+    // here was duplicating the one in CanvasEvents._bindKeyboard().
+    // Both listened on window for 'Delete' and could fire double-delete.
+    // CanvasEvents already handles all keyboard shortcuts properly.
   }
 
   build() {
@@ -20,16 +23,16 @@ export class Header {
       <button class="hamburger-btn" title="Toggle sidebar">☰</button>
       <span class="app-title">Logic Gate Simulator</span>
       <div class="header-controls">
-        <button class="header-btn run-btn">▶ Run</button>
-        <button class="header-btn stop-btn">⏹ Stop</button>
-        <button class="header-btn step-btn">⏭ Step</button>
-        <button class="header-btn reset-btn">↺ Reset</button>
+        <button class="header-btn run-btn" title="Run simulation (continuous)">▶ Run</button>
+        <button class="header-btn stop-btn" title="Stop simulation">⏹ Stop</button>
+        <button class="header-btn step-btn" title="Advance one step">⏭ Step</button>
+        <button class="header-btn reset-btn" title="Reset all component states">↺ Reset</button>
         <button class="header-btn zoom-fit-btn" title="Zoom to fit all components">⊞</button>
-        <button class="header-btn save-btn" title="Save to localStorage">💾</button>
-        <button class="header-btn load-btn" title="Restore last saved">📂</button>
-        <button class="header-btn export-btn">📤 Export</button>
-        <button class="header-btn import-btn">📥 Import</button>
-        <button class="header-btn theme-toggle-btn" title="Toggle theme">🌙</button>
+        <button class="header-btn save-btn" title="Save to browser storage">💾</button>
+        <button class="header-btn load-btn" title="Restore last saved project">📂</button>
+        <button class="header-btn export-btn" title="Export circuit as JSON file">📤 Export</button>
+        <button class="header-btn import-btn" title="Import circuit from JSON file">📥 Import</button>
+        <button class="header-btn theme-toggle-btn" title="Toggle theme (dark/light/high-contrast)">🌙</button>
       </div>
     `;
     return header;
@@ -174,16 +177,11 @@ export class Header {
     this.stepBtn.disabled = running;
   }
 
-  _bindGlobalShortcuts() {
-    window.addEventListener('keydown', (e) => {
-      if (e.key === 'Delete' && document.activeElement === document.body) {
-        e.preventDefault();
-        if (this.canvas) {
-          this.canvas.deleteSelectedComponents();
-        }
-      }
-    });
-  }
+  // HP-2 FIX: Removed _bindGlobalShortcuts() entirely.
+  // The Delete key handler here duplicated CanvasEvents._bindKeyboard().
+  // Both listened on `window` for 'keydown' with 'Delete', causing
+  // double-deletion when both fired. CanvasEvents already handles
+  // Delete/Backspace, Ctrl+Z, Ctrl+Y, Ctrl+C, Ctrl+V, arrows, etc.
 
   setFactory(factory) {
     this.factory = factory;

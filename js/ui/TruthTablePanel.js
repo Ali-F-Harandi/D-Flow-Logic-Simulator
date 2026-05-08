@@ -27,7 +27,6 @@ export class TruthTablePanel {
       return;
     }
 
-    // Build input list
     const inputs = [];
     let totalBits = 0;
     for (const comp of inputComponents) {
@@ -40,7 +39,6 @@ export class TruthTablePanel {
       }
     }
 
-    // -------- guard against too many combinations ----------
     if (totalBits > 12) {
       this.content.innerHTML = `<div style="color: var(--color-danger); padding: 10px;">
         Too many input bits (${totalBits}). Maximum allowed is 12 to prevent browser freezing.
@@ -50,7 +48,6 @@ export class TruthTablePanel {
 
     const combos = 1 << totalBits;
 
-    // --- SNAPSHOT: deep copy all component states ---
     const componentSnapshots = new Map();
     for (const comp of this.engine.components.values()) {
       const internal = {};
@@ -76,7 +73,6 @@ export class TruthTablePanel {
     }
     html += `<th>OUT</th></tr>`;
 
-    // Simulate each combination
     for (let c = 0; c < combos; c++) {
       let bitIdx = 0;
       for (const inp of inputs) {
@@ -88,23 +84,19 @@ export class TruthTablePanel {
           bitIdx++;
         }
       }
-      this.engine._processQueue();  // propagate without stepping twice
+      this.engine._processQueue();
       const outComp = this.engine._findComponentByNode(outputNodeId);
       const outVal = outComp?.outputs.find(o => o.id === outputNodeId)?.value;
       html += '<tr>';
       bitIdx = 0;
       for (const inp of inputs) {
-        // FIX BUG #3: For DipSwitch8, display values in MSB->LSB order to
-        // match the header column order. Previously the row iterated
-        // LSB->MSB (bits = [0,1,2,...,7]) while the header was MSB->LSB
-        // (7,6,...,0), causing every truth table with DIP-8 switches to
-        // show the wrong input values per output.
+        // FIX (critical): For DipSwitch8, display values in MSB→LSB order
         if (inp.comp.type === 'DipSwitch8') {
           for (let b = 7; b >= 0; b--) {
             const val = (c >> b) & 1;
             html += `<td>${val}</td>`;
           }
-          bitIdx += 8;  // keep bitIdx in sync with total bits consumed
+          bitIdx += 8;
         } else {
           for (const b of inp.bits) {
             const val = (c >> bitIdx) & 1;
@@ -116,7 +108,6 @@ export class TruthTablePanel {
       html += `<td>${outVal ? '1' : '0'}</td></tr>`;
     }
 
-    // --- RESTORE original state (including internal) ---
     for (const [compId, snap] of componentSnapshots) {
       const comp = this.engine.components.get(compId);
       if (comp) {

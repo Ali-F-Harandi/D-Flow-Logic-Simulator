@@ -24,11 +24,9 @@ export class Wire {
     const { minClearY } = opts;
 
     if (endX >= startX + 20) {
-      // ---- standard forward routing ----
       const midX = startX + (endX - startX) / 2;
       return `M ${startX} ${startY} L ${midX} ${startY} L ${midX} ${endY} L ${endX} ${endY}`;
     } else if (endX >= startX - 10) {
-      // ---- slightly backward – use wider arc ----
       const midX = startX + 30;
       const midX2 = endX - 30;
       if (Math.abs(endY - startY) < 20) {
@@ -37,14 +35,12 @@ export class Wire {
       }
       return `M ${startX} ${startY} L ${midX} ${startY} L ${midX} ${endY} L ${endX} ${endY}`;
     } else {
-      // ---- backward routing (wrap around) ----
       const offset = 40;
-      // Determine a safe Y level for the horizontal bus
       let busLevel = Math.max(startY, endY) + offset;
       if (minClearY !== undefined) {
-        busLevel = Math.max(busLevel, minClearY + 20);   // 20px clearance below components
+        busLevel = Math.max(busLevel, minClearY + 20);
       } else {
-        busLevel += 30;  // fallback (old default)
+        busLevel += 30;
       }
 
       return `M ${startX} ${startY} ` +
@@ -65,12 +61,6 @@ export class Wire {
 
     const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     group.dataset.wireId = this.id;
-    // FIX: Do NOT set pointer-events: none on the group.
-    // The SVG layer already has pointer-events: none to let clicks
-    // pass through to connector dots, but children with their own
-    // pointer-events values can still be interactive.
-    // Previously, group.style.pointerEvents = 'none' prevented
-    // the hit-area path from receiving events, breaking wire selection.
     group.style.pointerEvents = 'auto';
 
     const visualPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
@@ -130,7 +120,13 @@ export class Wire {
 
   updateColor(sourceValue) {
     if (this.element) {
-      const color = sourceValue ? '#00cc66' : '#888';
+      // HP-7 FIX: Use CSS custom property values instead of hardcoded colors.
+      // Previously used hardcoded '#00cc66' / '#888' which broke in light
+      // theme and high-contrast theme. Now reads from theme CSS variables.
+      const style = getComputedStyle(document.documentElement);
+      const highColor = style.getPropertyValue('--wire-high-color').trim() || '#00cc66';
+      const neutralColor = style.getPropertyValue('--wire-neutral-color').trim() || '#888';
+      const color = sourceValue ? highColor : neutralColor;
       this.element.querySelector('.wire-visual').setAttribute('stroke', color);
       const junctionDot = this.element.querySelector('.wire-junction');
       if (junctionDot) {
