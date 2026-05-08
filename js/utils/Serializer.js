@@ -36,6 +36,22 @@ export class Serializer {
     // Load the circuit into the engine (replaces internal state)
     engine.loadCircuit(circuit);
 
+    // FIX BUG #2: Restore connectedTo on component inputs from wire data.
+    // After Circuit.fromJSON + engine.loadCircuit, the wires array is
+    // populated but each component input's `connectedTo` field is still
+    // null. Without this, reconnecting to an already-loaded input fails
+    // to detect the existing wire (toInput.connectedTo is null), causing
+    // duplicate connections and data corruption.
+    for (const wire of engine.wires) {
+      const toComp = engine.components.get(wire.to.componentId);
+      if (toComp) {
+        const input = toComp.inputs.find(inp => inp.id === wire.to.nodeId);
+        if (input) {
+          input.connectedTo = { componentId: wire.from.componentId, nodeId: wire.from.nodeId };
+        }
+      }
+    }
+
     // Restore output values for I/O components (switches, clocks) – they are already in place, but visual update needed.
     for (const comp of engine.components.values()) {
       if (typeof comp._updateAppearance === 'function') comp._updateAppearance();

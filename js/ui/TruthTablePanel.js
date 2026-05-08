@@ -94,10 +94,23 @@ export class TruthTablePanel {
       html += '<tr>';
       bitIdx = 0;
       for (const inp of inputs) {
-        for (const b of inp.bits) {
-          const val = (c >> bitIdx) & 1;
-          html += `<td>${val}</td>`;
-          bitIdx++;
+        // FIX BUG #3: For DipSwitch8, display values in MSB->LSB order to
+        // match the header column order. Previously the row iterated
+        // LSB->MSB (bits = [0,1,2,...,7]) while the header was MSB->LSB
+        // (7,6,...,0), causing every truth table with DIP-8 switches to
+        // show the wrong input values per output.
+        if (inp.comp.type === 'DipSwitch8') {
+          for (let b = 7; b >= 0; b--) {
+            const val = (c >> b) & 1;
+            html += `<td>${val}</td>`;
+          }
+          bitIdx += 8;  // keep bitIdx in sync with total bits consumed
+        } else {
+          for (const b of inp.bits) {
+            const val = (c >> bitIdx) & 1;
+            html += `<td>${val}</td>`;
+            bitIdx++;
+          }
         }
       }
       html += `<td>${outVal ? '1' : '0'}</td></tr>`;

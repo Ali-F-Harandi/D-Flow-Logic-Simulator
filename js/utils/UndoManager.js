@@ -43,6 +43,13 @@ export class AddComponentCommand {
     return true;   // always succeeds
   }
   undo() {
+    // FIX BUG #1: Also remove visual wires connected to this component before deleting
+    const relatedWires = this.engine.wires.filter(w =>
+      w.from.componentId === this.component.id || w.to.componentId === this.component.id
+    );
+    for (const w of relatedWires) {
+      this.canvas._removeVisualWireByEngineId(w.id);
+    }
     this.canvas._deleteComponent(this.component.id);
     this.engine.removeComponent(this.component.id);
   }
@@ -65,6 +72,14 @@ export class DeleteComponentCommand {
       fromNodeId: w.from.nodeId,
       toNodeId: w.to.nodeId
     }));
+    // FIX BUG #1: Remove visual wires BEFORE deleting the component.
+    // Previously, _deleteComponent only removed the component DOM element
+    // and called engine.removeComponent (which disconnects wires in the
+    // data model but does NOT dispatch 'wire-removed' events), leaving
+    // ghost SVG wire elements on the canvas.
+    for (const w of relatedWires) {
+      this.canvas._removeVisualWireByEngineId(w.id);
+    }
     this.canvas._deleteComponent(this.component.id);
     return true;
   }

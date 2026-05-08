@@ -96,9 +96,23 @@ export class Engine {
     const toComp = this.components.get(wire.to.componentId);
     if (toComp) {
       const input = toComp.inputs.find(inp => inp.id === wire.to.nodeId);
-      if (input) input.connectedTo = null;
+      if (input) {
+        input.connectedTo = null;
+        // FIX BUG #5: Reset the disconnected input's value to false (LOW).
+        // Previously the input retained its last propagated value, causing
+        // the component to continue computing with a stale signal as if
+        // the wire were still connected. A disconnected input should
+        // revert to the default LOW state, which is the standard
+        // convention in digital logic simulators.
+        input.value = false;
+      }
     }
     this.circuit.removeWire(wireId);
+    // Re-evaluate the affected component so its output reflects the
+    // disconnected input's new LOW value instead of the stale signal.
+    if (toComp) {
+      this._propagateFrom(toComp);
+    }
     return true;
   }
 

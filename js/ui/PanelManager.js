@@ -32,17 +32,26 @@ export class PanelManager {
       this.testBenchPanel.setOutputNode(nodeId);
     });
 
-    // Close right panel when clicking outside (overlay behavior)
+    // FIX BUG #4: Close right panel when clicking outside.
+    // Previously used capture phase (3rd arg = true) which fired BEFORE
+    // all other click handlers, and only excluded #toolbar button and
+    // .connector. This caused the panel to close on ANY canvas interaction
+    // (toggling switches, starting wires, dragging components, clicking
+    // header buttons). Now uses bubbling phase (false) and adds exclusion
+    // for #canvas-container and #header so normal circuit interaction
+    // does not close the panel.
     document.addEventListener('click', (e) => {
       if (
         this.rightPanelOpen &&
         !this.rightPanel.contains(e.target) &&
         !e.target.closest('#toolbar button') &&
-        !e.target.closest('.connector')
+        !e.target.closest('.connector') &&
+        !e.target.closest('#canvas-container') &&
+        !e.target.closest('#header')
       ) {
         this.toggleRightPanel('0px');
       }
-    }, true);
+    }, false);
   }
 
   createRightPanel() {
