@@ -54,9 +54,15 @@ export class DipSwitch8 extends Component {
     if (this.element) {
       this.element.querySelectorAll('.dip-bit').forEach(sq => {
         const bit = parseInt(sq.dataset.bit);
-        sq.style.background = this.outputs[bit].value
+        const isOn = this.outputs[bit].value;
+        sq.style.background = isOn
           ? 'var(--color-accent)'
-          : 'var(--color-surface)';
+          : 'var(--color-surface-alt)';
+        // Update the sliding knob position
+        const knob = sq.querySelector('.dip-knob');
+        if (knob) {
+          knob.style.left = isOn ? '11px' : '1px';
+        }
       });
     }
   }
@@ -74,7 +80,7 @@ export class DipSwitch8 extends Component {
     el.draggable = false;
 
     const body = document.createElement('div');
-    body.className = 'dip8-body component-body-centered';
+    body.className = 'dip8-body';
     body.textContent = 'DIP8';
     body.style.position = 'absolute';
     body.style.top = '10px';
@@ -82,7 +88,7 @@ export class DipSwitch8 extends Component {
     body.style.transform = 'translateX(-50%)';
     el.appendChild(body);
 
-    // Connectors & toggle squares (bit7 top)
+    // Connectors & toggle switches (bit7 top)
     for (let idx = 0; idx < 8; idx++) {
       const bit = 7 - idx;
       const yCenter = (idx + 1) * this.GRID;
@@ -92,36 +98,55 @@ export class DipSwitch8 extends Component {
         this._createConnectorBlock(this.outputs[bit], false, `O${bit}`, yCenter)
       );
 
-      // Toggle square on the LEFT side
-      const square = document.createElement('div');
-      square.className = 'dip-bit';
-      square.dataset.bit = bit;
-      square.style.position = 'absolute';
-      square.style.left = '10px';
-      square.style.top = `${yCenter - 4}px`;
-      square.style.width = '16px';
-      square.style.height = '8px';
-      square.style.background = this.outputs[bit].value
+      // DIP toggle switch on the LEFT side — looks like a real DIP switch
+      // with a sliding toggle indicator inside a rectangular track
+      const switchTrack = document.createElement('div');
+      switchTrack.className = 'dip-bit';
+      switchTrack.dataset.bit = bit;
+      switchTrack.style.position = 'absolute';
+      switchTrack.style.left = '8px';
+      switchTrack.style.top = `${yCenter - 6}px`;
+      switchTrack.style.width = '20px';
+      switchTrack.style.height = '12px';
+      switchTrack.style.borderRadius = '2px';
+      switchTrack.style.border = '1px solid #666';
+      switchTrack.style.cursor = 'pointer';
+      switchTrack.style.boxSizing = 'border-box';
+      switchTrack.style.overflow = 'hidden';
+      switchTrack.style.transition = 'background 0.15s';
+      switchTrack.style.background = this.outputs[bit].value
         ? 'var(--color-accent)'
-        : 'var(--color-surface)';
-      square.style.border = '1px solid #666';
-      square.style.cursor = 'pointer';
-      // Larger touch target for mobile — invisible padding around the visual square
-      square.style.paddingTop = '6px';
-      square.style.paddingBottom = '6px';
-      square.style.marginTop = '-6px';
-      square.style.boxSizing = 'content-box';
-      square.addEventListener('click', (e) => {
+        : 'var(--color-surface-alt)';
+      // Larger touch target for mobile — invisible padding
+      switchTrack.style.padding = '4px';
+      switchTrack.style.marginTop = '-4px';
+      switchTrack.style.marginLeft = '-2px';
+
+      // Sliding toggle knob inside the track
+      const knob = document.createElement('div');
+      knob.className = 'dip-knob';
+      knob.style.width = '8px';
+      knob.style.height = '8px';
+      knob.style.borderRadius = '1px';
+      knob.style.background = '#fff';
+      knob.style.position = 'absolute';
+      knob.style.top = '1px';
+      knob.style.transition = 'left 0.15s';
+      knob.style.left = this.outputs[bit].value ? '11px' : '1px';
+      knob.style.boxShadow = '0 1px 2px rgba(0,0,0,0.3)';
+      switchTrack.appendChild(knob);
+
+      switchTrack.addEventListener('click', (e) => {
         e.stopPropagation();
-        this.toggleBit(parseInt(square.dataset.bit));
+        this.toggleBit(parseInt(switchTrack.dataset.bit));
       });
       // Touch support for DIP8 bit toggles on mobile
-      square.addEventListener('touchend', (e) => {
+      switchTrack.addEventListener('touchend', (e) => {
         e.stopPropagation();
         e.preventDefault(); // Prevent duplicate click
-        this.toggleBit(parseInt(square.dataset.bit));
+        this.toggleBit(parseInt(switchTrack.dataset.bit));
       });
-      el.appendChild(square);
+      el.appendChild(switchTrack);
     }
 
     container.appendChild(el);

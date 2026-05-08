@@ -119,9 +119,9 @@ export class CanvasTouch {
         const isTapToggleable = comp.type === 'DipSwitch';
 
         if (isTapToggleable && !target.closest('.connector')) {
-          // Don't start drag for tap-toggle components — just set up long press.
-          // Don't call e.preventDefault() so that the component's own touchend
-          // handler can fire for tap-to-toggle functionality.
+          // Prevent default to stop browser from interfering with touch events.
+          // We handle the toggle ourselves in _onTouchEnd.
+          e.preventDefault();
           this.tappedComponent = comp;
           this.longPressFired = false;
           this.longPressTimer = setTimeout(() => {
@@ -283,11 +283,10 @@ export class CanvasTouch {
     clearTimeout(this.longPressTimer);
 
     // Handle toggleable component tap (only if not moved and no long-press)
-    // This is a fallback — most toggle components handle their own touchend now
     if (this.tappedComponent && !this.touchMoved && !this.longPressFired) {
       const comp = this.tappedComponent;
-      if (comp.type === 'Clock' && typeof comp.toggle === 'function') {
-        // Clock doesn't have a toggle, but if we add one in the future...
+      if (comp.type === 'DipSwitch' && typeof comp.toggle === 'function') {
+        comp.toggle();
       }
       this.tappedComponent = null;
     }

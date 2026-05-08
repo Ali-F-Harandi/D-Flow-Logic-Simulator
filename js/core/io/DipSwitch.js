@@ -48,34 +48,66 @@ export class DipSwitch extends Component {
     if (this.element) {
       const isOn = this.outputs[0].value === true;
       this.element.classList.toggle('on', isOn);
-      const body = this.element.querySelector('.switch-body');
-      if (body) {
-        body.style.color = isOn ? '#ffffff' : 'var(--color-text)';
+      // Update switch track background
+      const track = this.element.querySelector('.switch-track');
+      if (track) {
+        track.style.background = isOn
+          ? 'var(--color-accent)'
+          : 'var(--color-surface-alt)';
+      }
+      // Update knob position
+      const knob = this.element.querySelector('.switch-knob');
+      if (knob) {
+        knob.style.left = isOn ? '15px' : '1px';
       }
     }
   }
 
   render(container) {
     const H = 3 * this.GRID; // 60
+    const W = 3 * this.GRID; // 60
     const el = document.createElement('div');
     el.className = 'component dip-switch';
-    el.style.width = `${3 * this.GRID}px`;  // 60
+    el.style.width = `${W}px`;
     el.style.height = `${H}px`;
     el.style.left = `${this.position.x}px`;
     el.style.top = `${this.position.y}px`;
     el.setAttribute('draggable', 'false');
     el.draggable = false;
 
-    const body = document.createElement('div');
-    body.className = 'switch-body';
-    body.textContent = 'SW';
-    body.style.position = 'absolute';
-    body.style.top = '50%';
-    body.style.left = '50%';
-    body.style.transform = 'translate(-50%, -50%)';
-    body.style.fontWeight = 'bold';
-    body.style.transition = 'color 0.2s';
-    el.appendChild(body);
+    // Switch toggle track — looks like a real toggle switch
+    const switchTrack = document.createElement('div');
+    switchTrack.className = 'switch-track';
+    switchTrack.style.position = 'absolute';
+    switchTrack.style.top = '50%';
+    switchTrack.style.left = '50%';
+    switchTrack.style.transform = 'translate(-50%, -50%)';
+    switchTrack.style.width = '28px';
+    switchTrack.style.height = '14px';
+    switchTrack.style.borderRadius = '7px';
+    switchTrack.style.border = '1px solid #666';
+    switchTrack.style.cursor = 'pointer';
+    switchTrack.style.boxSizing = 'border-box';
+    switchTrack.style.transition = 'background 0.2s';
+    switchTrack.style.background = this.outputs[0].value
+      ? 'var(--color-accent)'
+      : 'var(--color-surface-alt)';
+
+    // Sliding toggle knob
+    const knob = document.createElement('div');
+    knob.className = 'switch-knob';
+    knob.style.width = '10px';
+    knob.style.height = '10px';
+    knob.style.borderRadius = '50%';
+    knob.style.background = '#fff';
+    knob.style.position = 'absolute';
+    knob.style.top = '1px';
+    knob.style.transition = 'left 0.2s';
+    knob.style.left = this.outputs[0].value ? '15px' : '1px';
+    knob.style.boxShadow = '0 1px 3px rgba(0,0,0,0.3)';
+    switchTrack.appendChild(knob);
+
+    el.appendChild(switchTrack);
 
     el.appendChild(this._createConnectorBlock(this.outputs[0], false, 'O0', this.GRID));
 
@@ -88,17 +120,10 @@ export class DipSwitch extends Component {
       this.toggle();
     });
 
-    // Touch support: handle tap-to-toggle on mobile
-    // The touch event fires before click, so we handle it here to ensure
-    // immediate response on mobile. The click handler serves as fallback.
-    el.addEventListener('touchend', (e) => {
-      if (e.target.classList.contains('connector') || e.target.closest('.connector')) return;
-      if (document.querySelector('.wire-preview')) return;
-      // Only handle if the touch didn't move (i.e., it's a tap, not a drag)
-      // The CanvasTouch handler sets a flag we can check
-      e.preventDefault(); // Prevent duplicate click event
-      this.toggle();
-    });
+    // Note: Touch toggle is now handled by CanvasTouch._onTouchEnd()
+    // to avoid double-toggle. CanvasTouch calls e.preventDefault() on
+    // touchstart for DipSwitch, then handles toggle in touchend.
+    // The click handler above still serves as fallback for mouse users.
 
     container.appendChild(el);
     this.element = el;
