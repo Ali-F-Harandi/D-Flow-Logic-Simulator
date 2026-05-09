@@ -6,6 +6,7 @@ export class CanvasCore {
     this.panOffset = { x: 0, y: 0 };
     this.minScale = 0.2;
     this.maxScale = 4;
+    this._onTransformChange = null; // Callback for position cache invalidation on zoom/pan
 
     // Create the huge scene
     this.scene = document.createElement('div');
@@ -54,6 +55,8 @@ export class CanvasCore {
   applyTransform() {
     this._updateTransform();
     this._updateGridBackground();
+    // Notify listeners of transform change (e.g., position cache invalidation)
+    if (this._onTransformChange) this._onTransformChange();
   }
 
   /**

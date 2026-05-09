@@ -1,9 +1,15 @@
+import { MoveComponentCommand, CompositeCommand } from '../../utils/UndoManager.js';
+
 export class CanvasDrag {
-  constructor(core, compManager, wiring, selection) {
+  constructor(core, compManager, wiring, selection, undoManager, engine, canvas, positionCache) {
     this.core = core;
     this.compManager = compManager;
     this.wiring = wiring;
     this.selection = selection;
+    this.undoManager = undoManager;
+    this.engine = engine;
+    this.canvas = canvas;
+    this.positionCache = positionCache;
     this.isDragging = false;
     this.dragData = null;
 
@@ -99,6 +105,31 @@ export class CanvasDrag {
 
   endDrag() {
     const draggedComps = this.dragData ? [...this.dragData.components] : [];
+
+    // Create undo commands for component moves
+    if (this.undoManager && draggedComps.length > 0 && this.dragData) {
+      const commands = [];
+      for (const comp of draggedComps) {
+        const oldPos = this.dragData.origins[comp.id];
+        const newPos = { x: comp.position.x, y: comp.position.y };
+        // Only create command if the component actually moved
+        if (oldPos.x !== newPos.x || oldPos.y !== newPos.y) {
+          commands.push(new MoveComponentCommand(
+            this.engine, this.canvas, this.compManager,
+            this.wiring, this.positionCache,
+            comp.id, oldPos, newPos
+          ));
+        }
+      }
+      if (commands.length > 0) {
+        if (commands.length === 1) {
+          this.undoManager.execute(commands[0]);
+        } else {
+          this.undoManager.execute(new CompositeCommand(commands));
+        }
+      }
+    }
+
     if (this.dragData) {
       this.dragData.components.forEach(c => c.element.style.zIndex = '');
       this.dragData = null;

@@ -18,24 +18,30 @@
  */
 
 import { GRID_SIZE } from '../../config.js';
+import { AddWirePointCommand, RemoveWirePointCommand, MoveWirePointCommand } from '../../utils/UndoManager.js';
 
 export class WireEditHandler {
   static _instructionShown = false;
 
-  constructor(wiring, core, positionCache, canvas) {
+  constructor(wiring, core, positionCache, canvas, undoManager) {
     this.wiring        = wiring;
     this.core          = core;
     this.positionCache = positionCache;
     this.canvas        = canvas;
+    this.undoManager   = undoManager;
 
     // Drag state
     this._dragging       = false;
     this._dragWire       = null;
     this._dragPointIndex = -1;
     this._dragStartPos   = null;
+    this._dragOrigPointPos = null; // original point position for undo
 
     // Currently edited wire (with visible control handles)
     this._activeWire = null;
+
+    // Ghost preview for segment insertion
+    this._ghostPreview = null;
   }
 
   get isDragging() { return this._dragging; }
@@ -117,6 +123,8 @@ export class WireEditHandler {
     this._dragWire       = wire;
     this._dragPointIndex = pointIndex;
     this._dragStartPos   = { x: clientX, y: clientY };
+    // Save original point position for undo
+    this._dragOrigPointPos = { ...wire.pathPoints[pointIndex] };
 
     document.body.style.cursor = 'grabbing';
     return true;
@@ -139,10 +147,23 @@ export class WireEditHandler {
   endDrag() {
     if (!this._dragging) return;
 
+    // Create undo command for the drag if the point moved
+    if (this._dragWire && this._dragOrigPointPos && this.undoManager) {
+      const currentPos = { ...this._dragWire.pathPoints[this._dragPointIndex] };
+      if (currentPos.x !== this._dragOrigPointPos.x || currentPos.y !== this._dragOrigPointPos.y) {
+        const cmd = new MoveWirePointCommand(
+          this.wiring, this._dragWire.id,
+          this._dragPointIndex, this._dragOrigPointPos, currentPos
+        );
+        this.undoManager.execute(cmd);
+      }
+    }
+
     this._dragging       = false;
     this._dragWire       = null;
     this._dragPointIndex = -1;
     this._dragStartPos   = null;
+    this._dragOrigPointPos = null;
 
     document.body.style.cursor = '';
 
@@ -162,12 +183,20 @@ export class WireEditHandler {
     const canvasPos = this.core.canvasCoords(clientX, clientY);
     const x = Math.round(canvasPos.x / GRID_SIZE) * GRID_SIZE;
     const y = Math.round(canvasPos.y / GRID_SIZE) * GRID_SIZE;
+    const insertIndex = afterIndex + 1;
+    const point = { x, y };
 
-    wire.addControlPoint(afterIndex + 1, { x, y });
-    wire.refreshControlHandles();
+    // Use undo command
+    if (this.undoManager) {
+      const cmd = new AddWirePointCommand(this.wiring, wireId, insertIndex, point);
+      this.undoManager.execute(cmd);
+    } else {
+      wire.addControlPoint(insertIndex, point);
+      wire.refreshControlHandles();
+    }
 
     // Start dragging the new point
-    this.startDrag(wireId, afterIndex + 1, clientX, clientY);
+    this.startDrag(wireId, insertIndex, clientX, clientY);
   }
 
   /**
@@ -177,8 +206,14 @@ export class WireEditHandler {
     const wire = this.wiring.wires.find(w => w.id === wireId);
     if (!wire) return;
 
-    wire.removeControlPoint(pointIndex);
-    wire.refreshControlHandles();
+    // Use undo command
+    if (this.undoManager) {
+      const cmd = new RemoveWirePointCommand(this.wiring, wireId, pointIndex);
+      this.undoManager.execute(cmd);
+    } else {
+      wire.removeControlPoint(pointIndex);
+      wire.refreshControlHandles();
+    }
     this.wiring.updateWireCrossings();
   }
 
@@ -204,9 +239,60 @@ export class WireEditHandler {
 
     const x = Math.round(canvasPos.x / GRID_SIZE) * GRID_SIZE;
     const y = Math.round(canvasPos.y / GRID_SIZE) * GRID_SIZE;
+    const insertIndex = bestIdx + 1;
+    const point = { x, y };
 
-    wire.addControlPoint(bestIdx + 1, { x, y });
-    wire.refreshControlHandles();
+    // Use undo command
+    if (this.undoManager) {
+      const cmd = new AddWirePointCommand(this.wiring, wire.id, insertIndex, point);
+      this.undoManager.execute(cmd);
+    } else {
+      wire.addControlPoint(insertIndex, point);
+      wire.refreshControlHandles();
+    }
+  }
+
+  /* ─── Ghost Preview (Segment Insertion) ─── */
+
+  /**
+   * Show a ghost wire preview at a segment midpoint.
+   * Called when hovering over an add-point handle.
+   */
+  showPointPreview(wireId, afterIndex) {
+    const wire = this.wiring.wires.find(w => w.id === wireId);
+    if (!wire || afterIndex < 0 || afterIndex >= wire.pathPoints.length - 1) return;
+
+    const p1 = wire.pathPoints[afterIndex];
+    const p2 = wire.pathPoints[afterIndex + 1];
+    const midX = (p1.x + p2.x) / 2;
+    const midY = (p1.y + p2.y) / 2;
+
+    if (!this._ghostPreview) {
+      this._ghostPreview = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      this._ghostPreview.setAttribute('r', '6');
+      this._ghostPreview.setAttribute('fill', 'rgba(78, 201, 176, 0.3)');
+      this._ghostPreview.setAttribute('stroke', '#4ec9b0');
+      this._ghostPreview.setAttribute('stroke-width', '1.5');
+      this._ghostPreview.setAttribute('stroke-dasharray', '3,3');
+      this._ghostPreview.setAttribute('pointer-events', 'none');
+      this._ghostPreview.classList.add('wire-ghost-preview');
+    }
+
+    this._ghostPreview.setAttribute('cx', midX);
+    this._ghostPreview.setAttribute('cy', midY);
+
+    if (wire.element && !this._ghostPreview.parentNode) {
+      wire.element.appendChild(this._ghostPreview);
+    }
+  }
+
+  /**
+   * Hide the ghost wire preview.
+   */
+  hidePointPreview() {
+    if (this._ghostPreview && this._ghostPreview.parentNode) {
+      this._ghostPreview.parentNode.removeChild(this._ghostPreview);
+    }
   }
 
   /* ─── Geometry Helper ─── */

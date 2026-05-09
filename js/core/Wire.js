@@ -40,6 +40,7 @@ export class Wire {
     this.occupiedCells = new Set();           // Legacy compat (no longer critical)
     this._isLocked    = false;
     this._controlHandlesVisible = false;
+    this._lastSourceValue = undefined;        // For signal transition detection
   }
 
   /* ─── Backward Compatibility Aliases ─── */
@@ -476,6 +477,39 @@ export class Wire {
     this._applyPathPointsToSVG();
   }
 
+  /**
+   * Force orthogonal alignment at a control point.
+   * Ensures the previous point shares either X or Y with the current point,
+   * creating proper Manhattan-style 90° bends.
+   * @param {number} index – Index in pathPoints (must be an interior point)
+   */
+  applyOrthogonalConstraint(index) {
+    if (index <= 0 || index >= this.pathPoints.length - 1) return;
+    const prev = this.pathPoints[index - 1];
+    const curr = this.pathPoints[index];
+    const next = this.pathPoints[index + 1];
+
+    // Force orthogonal: previous point shares X or Y with current
+    const dxPrev = Math.abs(prev.x - curr.x);
+    const dyPrev = Math.abs(prev.y - curr.y);
+    if (dxPrev > dyPrev) {
+      prev.y = curr.y;
+    } else {
+      prev.x = curr.x;
+    }
+
+    // Also constrain next point
+    const dxNext = Math.abs(next.x - curr.x);
+    const dyNext = Math.abs(next.y - curr.y);
+    if (dxNext > dyNext) {
+      next.y = curr.y;
+    } else {
+      next.x = curr.x;
+    }
+
+    this._applyPathPointsToSVG();
+  }
+
   /* ================================================================
    *  Control Handle Visualization
    * ================================================================ */
@@ -618,15 +652,33 @@ export class Wire {
     const neutralColor = style.getPropertyValue('--wire-neutral-color').trim() || '#888';
     const zColor       = style.getPropertyValue('--wire-z-color').trim()       || '#ff9800';
 
+    // Detect signal transitions for animation
+    const prevValue = this._lastSourceValue;
+    this._lastSourceValue = sourceValue;
+    const visualPath = this.element.querySelector('.wire-visual');
+
     let color;
     if (sourceValue === true) {
       color = highColor;
+      // Signal transition: LOW→HIGH or Z→HIGH
+      if (visualPath && prevValue !== true) {
+        visualPath.classList.remove('propagating-low');
+        visualPath.classList.add('propagating-high');
+        // Remove animation class after it completes
+        setTimeout(() => visualPath.classList.remove('propagating-high'), 200);
+      }
     } else if (sourceValue === null) {
       color = zColor;
-      this.element.querySelector('.wire-visual')?.setAttribute('stroke-dasharray', '6,4');
+      visualPath?.setAttribute('stroke-dasharray', '6,4');
     } else {
       color = neutralColor;
-      this.element.querySelector('.wire-visual')?.removeAttribute('stroke-dasharray');
+      // Signal transition: HIGH→LOW
+      if (visualPath && prevValue === true) {
+        visualPath.classList.remove('propagating-high');
+        visualPath.classList.add('propagating-low');
+        setTimeout(() => visualPath.classList.remove('propagating-low'), 200);
+      }
+      visualPath?.removeAttribute('stroke-dasharray');
     }
 
     this.element.querySelector('.wire-visual')?.setAttribute('stroke', color);

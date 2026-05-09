@@ -1,12 +1,15 @@
 import { TruthTablePanel } from './TruthTablePanel.js';
 import { TestBenchPanel } from './TestBenchPanel.js';
 import { NetlistPanel } from './NetlistPanel.js';
+import { PropertiesPanel } from './PropertiesPanel.js';
 
 export class PanelManager {
-  constructor(container, eventBus, engine) {
+  constructor(container, eventBus, engine, canvas, undoManager) {
     this.container = container;
     this.eventBus = eventBus;
     this.engine = engine;
+    this.canvas = canvas;
+    this.undoManager = undoManager;
     this.sidebarWidth = 250;
     this.isResizing = false;
     this.rightPanelOpen = false;
@@ -19,6 +22,7 @@ export class PanelManager {
     this.truthPanel = new TruthTablePanel(this.rightPanel, eventBus, engine);
     this.testBenchPanel = new TestBenchPanel(this.rightPanel, eventBus, engine);
     this.netlistPanel = new NetlistPanel(this.rightPanel, eventBus, engine);
+    this.propertiesPanel = new PropertiesPanel(this.rightPanel, eventBus, engine, canvas, undoManager);
 
     this.truthPanel.panel.style.display = 'none';
     this.testBenchPanel.panel.style.display = 'none';
@@ -32,6 +36,26 @@ export class PanelManager {
     });
     this.eventBus.on('set-testbench-output', (nodeId) => {
       this.testBenchPanel.setOutputNode(nodeId);
+    });
+
+    // Listen for selection changes to show Properties panel
+    this.eventBus.on('selection-changed', ({ components, wires }) => {
+      // Only show properties panel if exactly one component or one wire is selected
+      if (components.length === 1 && wires.length === 0) {
+        const comp = this.canvas.compManager.getComponentById(components[0]);
+        if (comp) {
+          this.propertiesPanel.showComponent(comp);
+          this.showPanel('properties');
+        }
+      } else if (wires.length === 1 && components.length === 0) {
+        const wire = this.canvas.wiring.wires.find(w => w.id === wires[0]);
+        if (wire) {
+          this.propertiesPanel.showWire(wire);
+          this.showPanel('properties');
+        }
+      } else if (components.length === 0 && wires.length === 0) {
+        this.propertiesPanel.hide();
+      }
     });
 
     // M-16: Conditional click listener — only active when panel is open
@@ -116,6 +140,7 @@ export class PanelManager {
     this.truthPanel.panel.style.display = 'none';
     this.testBenchPanel.panel.style.display = 'none';
     this.netlistPanel.panel.style.display = 'none';
+    this.propertiesPanel.hide();
     if (type === 'truth') {
       this.truthPanel.panel.style.display = 'block';
     } else if (type === 'testbench') {
@@ -123,6 +148,8 @@ export class PanelManager {
     } else if (type === 'netlist') {
       this.netlistPanel.panel.style.display = 'block';
       this.netlistPanel.refresh();
+    } else if (type === 'properties') {
+      // Properties panel manages its own visibility
     }
     if (!this.rightPanelOpen) {
       this.toggleRightPanel('300px');

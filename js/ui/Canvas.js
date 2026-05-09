@@ -13,6 +13,7 @@ import { CanvasDrag } from './canvas/CanvasDrag.js';
 import { CanvasTouch } from './canvas/CanvasTouch.js';
 import { CanvasEvents } from './canvas/CanvasEvents.js';
 import { WireEditHandler } from './canvas/WireEditHandler.js';
+import { ComponentLayoutPolicy } from '../core/ComponentLayoutPolicy.js';
 
 export class Canvas {
   constructor(container, eventBus, engine, factory, undoManager) {
@@ -23,7 +24,7 @@ export class Canvas {
     this.undoManager = undoManager;
 
     this.contextMenu = new ContextMenu(eventBus);
-    this.propertyEditor = new PropertyEditor(eventBus);
+    this.propertyEditor = new PropertyEditor(eventBus, engine, this, undoManager);
 
     this.element = container.querySelector('#canvas-container');
     if (!this.element) {
@@ -52,7 +53,7 @@ export class Canvas {
     this.wiring._redrawCallback = () => this.wiring.performRedraw(this.compManager.components);
 
     // Wire edit handler — manages control point dragging for manual wire editing
-    this.wireEditHandler = new WireEditHandler(this.wiring, this.core, this.positionCache, this);
+    this.wireEditHandler = new WireEditHandler(this.wiring, this.core, this.positionCache, this, this.undoManager);
     this.wiring.setWireEditHandler(this.wireEditHandler);
 
     this.selection = new CanvasSelection(
@@ -60,7 +61,7 @@ export class Canvas {
       this.toaster, this.core, this.element, this.eventBus, this   // <-- canvas
     );
 
-    this.dragHandler = new CanvasDrag(this.core, this.compManager, this.wiring, this.selection);
+    this.dragHandler = new CanvasDrag(this.core, this.compManager, this.wiring, this.selection, this.undoManager, this.engine, this, this.positionCache);
 
     this.touchHandler = new CanvasTouch(
       this.core, this.compManager, this.dragHandler, this.wiring, this.selection,
@@ -248,9 +249,18 @@ export class Canvas {
   }
 
   _placeComponent(type, scenePos) {
-    // Center the component on the drop point using half of standard gate dimensions
-    const halfW = 2 * GRID_SIZE;   // 40px – half of 4*GRID
-    const halfH = 1.5 * GRID_SIZE; // 30px – half of 3*GRID (typical 2-input gate height)
+    // Center the component on the drop point using ComponentLayoutPolicy
+    const factory = this.factory;
+    const comp = factory ? factory.createComponent(type) : null;
+    let halfW, halfH;
+    if (comp) {
+      const offset = ComponentLayoutPolicy.getCenterOffset(comp.type, comp.inputs.length, comp.outputs.length);
+      halfW = offset.x;
+      halfH = offset.y;
+    } else {
+      halfW = 2 * GRID_SIZE;   // 40px fallback
+      halfH = 1.5 * GRID_SIZE; // 30px fallback
+    }
     let x = this.core.snap(scenePos.x - halfW);
     let y = this.core.snap(scenePos.y - halfH);
     this.eventBus.emit('component-drop', { type, x, y });

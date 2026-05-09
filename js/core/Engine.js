@@ -173,13 +173,17 @@ export class Engine {
       iterations++;
     }
 
-    this._processing = false;
-
     if (iterations >= maxIterations) {
       console.warn('Propagation loop detected – circuit may be unstable.');
       this.queue.clear();
       document.dispatchEvent(new CustomEvent('simulation-error', { detail: 'Infinite Loop Detected! Circuit Unstable.' }));
+      // Set error state on all components involved in the loop
+      for (const comp of this.queue) {
+        comp.setErrorState(true);
+      }
     }
+
+    this._processing = false;
 
     if (this.onUpdate) this.onUpdate();
   }
@@ -212,6 +216,7 @@ export class Engine {
     // _prevClk). Input components override resetState() as a no-op.
     for (const comp of this.components.values()) {
       comp.resetState();
+      comp.setErrorState(false); // Clear error states on reset
     }
     // FIX: Re-propagate from all components to restore consistent state.
     // After reset, input components may still output HIGH but downstream

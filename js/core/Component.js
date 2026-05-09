@@ -17,6 +17,7 @@ export class Component {
     this.container = null;
     this.GRID = GRID_SIZE;
     this.isWrapped = false;
+    this._errorState = false;
   }
 
   getType() { return this.type; }
@@ -94,6 +95,11 @@ export class Component {
 
   _updateBorderState() {
     if (!this.element) return;
+    if (this._errorState) {
+      this.element.classList.add('error-state');
+      return;
+    }
+    this.element.classList.remove('error-state');
     if (this.outputs.length > 0 && this.outputs.some(o => o.value === true)) {
       this.element.style.borderColor = 'var(--gate-highlight-border)';
       this.element.style.boxShadow = 'var(--gate-highlight-shadow)';
@@ -102,6 +108,20 @@ export class Component {
       this.element.style.boxShadow = 'var(--shadow-sm)';
     }
   }
+
+  /**
+   * Set or clear the error state for this component.
+   * @param {boolean} hasError
+   */
+  setErrorState(hasError) {
+    this._errorState = hasError;
+    this._updateBorderState();
+  }
+
+  /**
+   * Check if this component is in error state.
+   */
+  get isError() { return this._errorState; }
 
   rerender() {
     if (this.element && this.container) {

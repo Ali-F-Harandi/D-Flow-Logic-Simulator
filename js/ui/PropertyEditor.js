@@ -1,6 +1,11 @@
+import { SetPropertyCommand } from '../utils/UndoManager.js';
+
 export class PropertyEditor {
-  constructor(eventBus) {
+  constructor(eventBus, engine, canvas, undoManager) {
     this.eventBus = eventBus;
+    this.engine = engine;
+    this.canvas = canvas;
+    this.undoManager = undoManager;
     this.dialog = null;
     this.component = null;
     this._escapeHandler = null;
@@ -78,6 +83,7 @@ export class PropertyEditor {
   _save() {
     const props = this.component.getProperties();
     let changed = false;
+    const commands = [];
     props.forEach(prop => {
       const inputEl = this.dialog.querySelector(`#prop-${prop.name}`);
       if (inputEl) {
@@ -100,12 +106,26 @@ export class PropertyEditor {
         }
 
         if (!isNaN(newValue) && newValue !== prop.value) {
-          this.component.setProperty(prop.name, newValue);
+          // Use SetPropertyCommand for undo/redo support
+          if (this.engine && this.canvas && this.undoManager) {
+            commands.push(new SetPropertyCommand(
+              this.engine, this.canvas,
+              this.component, prop.name, prop.value, newValue
+            ));
+          } else {
+            this.component.setProperty(prop.name, newValue);
+          }
           changed = true;
         }
       }
     });
-    if (changed) {
+    // Execute commands through undo manager
+    if (commands.length > 0 && this.undoManager) {
+      for (const cmd of commands) {
+        this.undoManager.execute(cmd);
+      }
+    }
+    if (changed && commands.length === 0) {
       this.eventBus.emit('component-modified', this.component);
     }
     this.close();

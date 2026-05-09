@@ -1,4 +1,5 @@
 import { DeleteComponentCommand, DisconnectWireCommand, ConnectWireCommand } from '../../utils/UndoManager.js';
+import { ComponentLayoutPolicy } from '../../core/ComponentLayoutPolicy.js';
 
 export class CanvasSelection {
   constructor(engine, undoManager, compManager, wiring, toaster, core, containerElement, eventBus, canvas) {
@@ -25,6 +26,11 @@ export class CanvasSelection {
     });
     this.selectedComponents.clear();
     this._clearWireSelection();
+    // Emit selection change event
+    this.eventBus.emit('selection-changed', {
+      components: Array.from(this.selectedComponents),
+      wires: Array.from(this.selectedWires)
+    });
   }
 
   _clearWireSelection() {
@@ -48,56 +54,81 @@ export class CanvasSelection {
   startSelection(e) {
     const coords = this.core.canvasCoords(e.clientX, e.clientY);
     this.selectionStart = coords;
-    this.selectionRect = document.createElement('div');
-    this.selectionRect.className = 'selection-rect';
-    Object.assign(this.selectionRect.style, {
-      position: 'absolute',
-      border: '1px dashed var(--color-accent)',
-      background: 'rgba(0,122,204,0.1)',
-      pointerEvents: 'none'
-    });
-    this.element.appendChild(this.selectionRect);
+
+    // Create SVG selection rectangle instead of DOM div
+    this.selectionRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    this.selectionRect.setAttribute('x', coords.x);
+    this.selectionRect.setAttribute('y', coords.y);
+    this.selectionRect.setAttribute('width', '0');
+    this.selectionRect.setAttribute('height', '0');
+    this.selectionRect.setAttribute('fill', 'rgba(0,122,204,0.1)');
+    this.selectionRect.setAttribute('stroke', 'var(--color-accent)');
+    this.selectionRect.setAttribute('stroke-width', '1');
+    this.selectionRect.setAttribute('stroke-dasharray', '4,4');
+    this.selectionRect.setAttribute('pointer-events', 'none');
+    this.selectionRect.classList.add('selection-rect-svg');
+
+    // Append to the SVG wire layer
+    this.core.svgLayer.appendChild(this.selectionRect);
   }
 
   updateSelection(e) {
     if (!this.selectionRect) return;
     const curr = this.core.canvasCoords(e.clientX, e.clientY);
-    const sceneRect = this.core.scene.getBoundingClientRect();
-    const s = this.core.scale;
-    const x = Math.min(this.selectionStart.x, curr.x) * s + sceneRect.left;
-    const y = Math.min(this.selectionStart.y, curr.y) * s + sceneRect.top;
-    const w = Math.abs(curr.x - this.selectionStart.x) * s;
-    const h = Math.abs(curr.y - this.selectionStart.y) * s;
-    const canvasRect = this.element.getBoundingClientRect();
-    Object.assign(this.selectionRect.style, {
-      left: (x - canvasRect.left) + 'px',
-      top: (y - canvasRect.top) + 'px',
-      width: w + 'px',
-      height: h + 'px'
-    });
+    const x = Math.min(this.selectionStart.x, curr.x);
+    const y = Math.min(this.selectionStart.y, curr.y);
+    const w = Math.abs(curr.x - this.selectionStart.x);
+    const h = Math.abs(curr.y - this.selectionStart.y);
+
+    this.selectionRect.setAttribute('x', x);
+    this.selectionRect.setAttribute('y', y);
+    this.selectionRect.setAttribute('width', w);
+    this.selectionRect.setAttribute('height', h);
   }
 
   endSelection(e) {
     if (!this.selectionRect) return;
-    const rect = this.selectionRect.getBoundingClientRect();
-    const sceneRect = this.core.scene.getBoundingClientRect();
-    const s = this.core.scale;
-    const minX = (rect.left - sceneRect.left) / s;
-    const minY = (rect.top - sceneRect.top) / s;
-    const maxX = minX + rect.width / s;
-    const maxY = minY + rect.height / s;
+
+    // Get selection bounds in canvas coordinates
+    const x = parseFloat(this.selectionRect.getAttribute('x'));
+    const y = parseFloat(this.selectionRect.getAttribute('y'));
+    const w = parseFloat(this.selectionRect.getAttribute('width'));
+    const h = parseFloat(this.selectionRect.getAttribute('height'));
+    const minX = x;
+    const minY = y;
+    const maxX = x + w;
+    const maxY = y + h;
+
     if (!(e && e.shiftKey)) this.clearSelection();
+
+    // Use bounding-box hit testing instead of hardcoded center offsets
     this.compManager.components.forEach(comp => {
       if (!comp.element) return;
-      const cx = comp.position.x + 40, cy = comp.position.y + 40;
-      if (cx >= minX && cx <= maxX && cy >= minY && cy <= maxY) {
+      const compX = comp.position.x;
+      const compY = comp.position.y;
+      const compW = comp.element.offsetWidth || comp._cachedWidth ||
+                    ComponentLayoutPolicy.computeDimensions(comp.inputs.length, comp.outputs.length, comp.type).width;
+      const compH = comp.element.offsetHeight || comp._cachedHeight ||
+                    ComponentLayoutPolicy.computeDimensions(comp.inputs.length, comp.outputs.length, comp.type).height;
+
+      // Bounding box intersection test
+      if (compX < maxX && compX + compW > minX &&
+          compY < maxY && compY + compH > minY) {
         this.selectedComponents.add(comp.id);
         comp.element.classList.add('selected');
       }
     });
+
+    // Remove SVG selection rect
     this.selectionRect.remove();
     this.selectionRect = null;
     this.selectionStart = null;
+
+    // Emit selection change event
+    this.eventBus.emit('selection-changed', {
+      components: Array.from(this.selectedComponents),
+      wires: Array.from(this.selectedWires)
+    });
   }
 
   deleteSelectedComponents() {

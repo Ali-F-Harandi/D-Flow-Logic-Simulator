@@ -128,8 +128,13 @@ export class Router {
     const sbx = this.snapToGrid(sx + sb);          // step-back X from source
     const tbx = this.snapToGrid(Math.max(tx - sb, gs)); // step-back X into target
 
-    // Choose bus level: bottom or top (pick shorter route)
-    const bottomBusY = opts.busY ?? (Math.max(sy, ty) + sb * 3);
+    // Local bus bar computation: compute Y just below the lowest of the two wire endpoints
+    // with minimum clearance, instead of always going to the global bus bar.
+    const localBusClearance = sb * 2;  // minimum clearance below the lowest endpoint
+    const localBusY = this.snapToGrid(Math.max(sy, ty) + localBusClearance);
+
+    // Choose bus level: local bus bar, global bottom bus, or top bus (pick shorter route)
+    const bottomBusY = opts.busY ?? localBusY;
     const topBusY    = opts.topY ?? (Math.min(sy, ty) - sb * 3);
 
     const bottomDist = Math.abs(sy - bottomBusY) + Math.abs(ty - bottomBusY);
@@ -178,9 +183,9 @@ export class Router {
    * Assign exclusive vertical channel columns to wire sources.
    * Prevents multiple sources from overlapping in the same column.
    *
-   * Sources are sorted top-to-bottom, then left-to-right.
-   * Each source gets a channel at least `channelSpacing` grid cells
-   * away from any other source's channel.
+   * Midpoint-based channel assignment: computes each source's channel
+   * at the midpoint between its source and target, then resolves
+   * conflicts by nudging apart.
    *
    * @param {Array}    wires       – Wire objects
    * @param {Function} getPosition – nodeId → {x,y} | null
@@ -192,32 +197,44 @@ export class Router {
     const usedChannels = new Set();
     const channelSpacing = 2;    // grid cells between adjacent channels
 
-    // Collect unique sources with their positions
+    // Collect unique sources with their positions and midpoint info
     const sourceInfos = new Map();
     for (const wire of wires) {
       const srcId = wire.fromNode.nodeId;
       if (sourceInfos.has(srcId)) continue;
-      const pos = getPosition(srcId);
-      if (!pos) continue;
-      sourceInfos.set(srcId, { x: pos.x, y: pos.y });
+      const srcPos = getPosition(srcId);
+      if (!srcPos) continue;
+
+      // Compute midpoint between source and its first target for better channel placement
+      const tgtPos = getPosition(wire.toNode.nodeId);
+      let midX;
+      if (tgtPos) {
+        midX = (srcPos.x + tgtPos.x) / 2;
+      } else {
+        midX = srcPos.x + 2 * gs;
+      }
+
+      sourceInfos.set(srcId, { x: srcPos.x, y: srcPos.y, midX });
     }
 
-    // Sort top-to-bottom, then left-to-right
+    // Sort by midpoint X (left-to-right) for natural channel assignment
     const sorted = [...sourceInfos.entries()].sort((a, b) => {
-      const dy = a[1].y - b[1].y;
-      return dy !== 0 ? dy : a[1].x - b[1].x;
+      const dx = a[1].midX - b[1].midX;
+      return dx !== 0 ? dx : a[1].y - b[1].y;
     });
 
     for (const [srcId, info] of sorted) {
-      // Preferred channel: 2 grid cells right of source X
-      const preferredCol = Math.round(info.x / gs) + 2;
+      // Preferred channel: midpoint X snapped to grid
+      const preferredCol = Math.round(info.midX / gs);
       let channelCol = preferredCol;
 
-      // Find nearest available column
+      // Find nearest available column (try both directions)
       let offset = 0;
+      let direction = 1;
       while (usedChannels.has(channelCol)) {
         offset++;
-        channelCol = preferredCol + offset * channelSpacing;
+        direction = offset % 2 === 1 ? 1 : -1;
+        channelCol = preferredCol + Math.ceil(offset / 2) * direction * channelSpacing;
       }
 
       channelMap.set(srcId, channelCol * gs);   // store as pixels

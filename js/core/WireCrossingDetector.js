@@ -114,7 +114,8 @@ export class WireCrossingDetector {
 
   /**
    * Apply bridge/jump arcs to wire SVG paths.
-   * Modifies the SVG path of the horizontal wire at each crossing.
+   * Modifies the SVG path of the horizontal wire at each crossing,
+   * and adds gaps on the vertical wire at each crossing.
    * @param {Array} wires - Array of Wire objects
    * @returns {Array} Modified wire IDs
    */
@@ -125,16 +126,25 @@ export class WireCrossingDetector {
     const modifiedWireIds = new Set();
 
     // Group crossings by the horizontal wire
-    const crossingsByWire = {};
+    const crossingsByHWire = {};
+    // Group crossings by the vertical wire
+    const crossingsByVWire = {};
+
     for (const crossing of this._crossings) {
       if (crossing.hasConnection) continue; // Don't bridge junctions
-      const wireId = crossing.horizontalWireId;
-      if (!crossingsByWire[wireId]) crossingsByWire[wireId] = [];
-      crossingsByWire[wireId].push(crossing);
+      const hWireId = crossing.horizontalWireId;
+      // Determine vertical wire ID (the other wire)
+      const vWireId = crossing.wire1Id === hWireId ? crossing.wire2Id : crossing.wire1Id;
+
+      if (!crossingsByHWire[hWireId]) crossingsByHWire[hWireId] = [];
+      crossingsByHWire[hWireId].push(crossing);
+
+      if (!crossingsByVWire[vWireId]) crossingsByVWire[vWireId] = [];
+      crossingsByVWire[vWireId].push(crossing);
     }
 
-    // For each wire with crossings, modify its SVG path
-    for (const [wireId, crossings] of Object.entries(crossingsByWire)) {
+    // For each horizontal wire with crossings, add bridge arcs
+    for (const [wireId, crossings] of Object.entries(crossingsByHWire)) {
       const wire = wires.find(w => w.id === wireId);
       if (!wire || !wire.pathPoints || wire.pathPoints.length < 2) continue;
 
@@ -187,6 +197,67 @@ export class WireCrossingDetector {
         const hitPath = wire.element.querySelector('.wire-hitarea');
         if (visualPath) visualPath.setAttribute('d', d);
         // Keep hit path as simple line (no arcs for hit testing)
+      }
+      modifiedWireIds.add(wireId);
+    }
+
+    // For each vertical wire with crossings, add gaps
+    for (const [wireId, crossings] of Object.entries(crossingsByVWire)) {
+      const wire = wires.find(w => w.id === wireId);
+      if (!wire || !wire.pathPoints || wire.pathPoints.length < 2) continue;
+
+      // Sort crossings by y position (for vertical wires)
+      crossings.sort((a, b) => a.y - b.y);
+
+      // Build modified SVG path with gaps at crossings
+      let d = `M ${wire.pathPoints[0].x} ${wire.pathPoints[0].y}`;
+      const gapSize = this._bridgeOffset + this._bridgeRadius;
+
+      for (let i = 1; i < wire.pathPoints.length; i++) {
+        const prev = wire.pathPoints[i - 1];
+        const curr = wire.pathPoints[i];
+        const isVertical = Math.abs(curr.x - prev.x) < 1;
+
+        if (isVertical) {
+          const segX = prev.x;
+          const segMinY = Math.min(prev.y, curr.y);
+          const segMaxY = Math.max(prev.y, curr.y);
+
+          let y = prev.y;
+          for (const crossing of crossings) {
+            if (crossing.x !== segX) continue;
+            if (crossing.y < segMinY || crossing.y > segMaxY) continue;
+
+            // Gap on vertical wire
+            const gapStart = crossing.y - gapSize;
+            const gapEnd = crossing.y + gapSize;
+
+            if (gapStart > y) {
+              d += ` L ${segX} ${gapStart}`;
+            }
+            // Jump to gap end (skip the gap)
+            d += ` M ${segX} ${gapEnd}`;
+            y = gapEnd;
+          }
+          // Draw remaining segment
+          if (curr.y > y) {
+            d += ` L ${curr.x} ${curr.y}`;
+          } else if (curr.y < y && curr.y < prev.y) {
+            // Going upward
+            d += ` L ${curr.x} ${curr.y}`;
+          }
+        } else {
+          // Horizontal segment — no gap needed
+          d += ` L ${curr.x} ${curr.y}`;
+        }
+      }
+
+      // Apply modified path for vertical wire
+      if (wire.element) {
+        const visualPath = wire.element.querySelector('.wire-visual');
+        if (visualPath && !modifiedWireIds.has(wireId)) {
+          visualPath.setAttribute('d', d);
+        }
       }
       modifiedWireIds.add(wireId);
     }

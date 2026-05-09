@@ -69,6 +69,8 @@
   --probe-low: #f44747;
   --probe-z: #ff9800;
   --wire-z-color: #ff9800;
+  --floating-input-color: #ffc107;
+  --junction-dot-color: #888;
   --truth-table-header-bg: var(--color-surface-alt);
   --truth-table-header-color: var(--color-accent);
   --truth-table-row-alt: rgba(255,255,255,0.03);

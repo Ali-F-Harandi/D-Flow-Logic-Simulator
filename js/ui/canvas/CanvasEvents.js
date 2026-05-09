@@ -4,6 +4,7 @@ import {
   DisconnectWireCommand,
   DeleteComponentCommand
 } from '../../utils/UndoManager.js';
+import { ComponentLayoutPolicy } from '../../core/ComponentLayoutPolicy.js';
 
 export class CanvasEvents {
   constructor(
@@ -425,10 +426,18 @@ export class CanvasEvents {
       const type = e.dataTransfer.getData('text/plain');
       if (!type) return;
       const pos = this.core.canvasCoords(e.clientX, e.clientY);
-      // Use half of standard gate dimensions (4*GRID × 3*GRID) to center the
-      // component on the drop point.  Most components are 80×60 or smaller.
-      const halfW = 2 * 20;   // 40px – half of 4*GRID
-      const halfH = 1.5 * 20; // 30px – half of 3*GRID (typical 2-input gate height)
+      // Use ComponentLayoutPolicy for accurate drop centering
+      const factory = this.canvas?.factory;
+      const comp = factory ? factory.createComponent(type) : null;
+      let halfW, halfH;
+      if (comp) {
+        const offset = ComponentLayoutPolicy.getCenterOffset(comp.type, comp.inputs.length, comp.outputs.length);
+        halfW = offset.x;
+        halfH = offset.y;
+      } else {
+        halfW = 2 * 20;
+        halfH = 1.5 * 20;
+      }
       const x = this.core.snap(pos.x - halfW);
       const y = this.core.snap(pos.y - halfH);
       this.eventBus.emit('component-drop', { type, x, y });

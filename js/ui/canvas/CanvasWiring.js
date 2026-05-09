@@ -55,6 +55,9 @@ export class CanvasWiring {
   /* ─── Color-only update (no path change) ─── */
 
   updateWireColorsOnly() {
+    // Track which components have floating inputs for visual feedback
+    const floatingInputNodes = new Set();
+
     this.wires.forEach(wire => {
       const sourceComp = this.engine._findComponentByNode(wire.fromNode.nodeId);
       if (sourceComp) {
@@ -62,6 +65,29 @@ export class CanvasWiring {
         if (outNode) wire.updateColor(outNode.value);
       }
     });
+
+    // Detect floating inputs (inputs not connected to any wire)
+    for (const comp of this._getComponents()) {
+      for (const inp of comp.inputs) {
+        if (!inp.connectedTo) {
+          floatingInputNodes.add(inp.id);
+        }
+      }
+    }
+
+    // Update floating input connector visual state
+    for (const comp of this._getComponents()) {
+      if (!comp.element) continue;
+      const inputConnectors = comp.element.querySelectorAll('.connector.input');
+      inputConnectors.forEach(dot => {
+        const nodeId = dot.dataset.node;
+        if (floatingInputNodes.has(nodeId)) {
+          dot.classList.add('floating');
+        } else {
+          dot.classList.remove('floating');
+        }
+      });
+    }
   }
 
   /* ─── Properties ─── */
@@ -340,6 +366,104 @@ export class CanvasWiring {
       if (outputFanout[w.fromNode.nodeId] > 1) w.showJunction();
       else w.hideJunction();
     });
+
+    // Also detect T-connections at intermediate path points
+    // A T-connection occurs when an intermediate path point of one wire
+    // lies exactly on a segment of another wire.
+    this._detectIntermediateJunctions();
+  }
+
+  /**
+   * Detect T-connections at intermediate path points.
+   * When an intermediate point of one wire lies on a segment of another wire,
+   * show a junction dot at that point.
+   */
+  _detectIntermediateJunctions() {
+    // Collect all intermediate path points (not endpoints) from all wires
+    const intermediatePoints = [];
+    for (const wire of this.wires) {
+      if (wire.pathPoints.length < 3) continue;
+      for (let i = 1; i < wire.pathPoints.length - 1; i++) {
+        intermediatePoints.push({
+          x: wire.pathPoints[i].x,
+          y: wire.pathPoints[i].y,
+          wireId: wire.id,
+          pointIndex: i
+        });
+      }
+    }
+
+    // For each intermediate point, check if it lies on any other wire's segment
+    for (const pt of intermediatePoints) {
+      for (const wire of this.wires) {
+        if (wire.id === pt.wireId) continue;
+        if (!wire.pathPoints || wire.pathPoints.length < 2) continue;
+
+        for (let i = 0; i < wire.pathPoints.length - 1; i++) {
+          const p1 = wire.pathPoints[i];
+          const p2 = wire.pathPoints[i + 1];
+
+          // Check if the intermediate point lies on this segment
+          const isOnSegment = this._isPointOnSegment(pt.x, pt.y, p1.x, p1.y, p2.x, p2.y);
+          if (isOnSegment) {
+            // Add junction dot at this point
+            this._addJunctionDot(pt.x, pt.y, wire);
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Check if a point lies on a line segment (within tolerance).
+   */
+  _isPointOnSegment(px, py, x1, y1, x2, y2) {
+    const tolerance = 2;
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const lenSq = dx * dx + dy * dy;
+
+    if (lenSq === 0) {
+      return Math.hypot(px - x1, py - y1) < tolerance;
+    }
+
+    let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+    t = Math.max(0, Math.min(1, t));
+
+    const nearX = x1 + t * dx;
+    const nearY = y1 + t * dy;
+
+    return Math.hypot(px - nearX, py - nearY) < tolerance;
+  }
+
+  /**
+   * Add a junction dot SVG element at the given position on a wire.
+   */
+  _addJunctionDot(x, y, wire) {
+    if (!wire.element) return;
+
+    // Check if junction dot already exists at this position
+    const existingDots = wire.element.querySelectorAll('.wire-junction-intermediate');
+    for (const dot of existingDots) {
+      const cx = parseFloat(dot.getAttribute('cx'));
+      const cy = parseFloat(dot.getAttribute('cy'));
+      if (Math.abs(cx - x) < 2 && Math.abs(cy - y) < 2) return;
+    }
+
+    const style = getComputedStyle(document.documentElement);
+    const neutralColor = style.getPropertyValue('--junction-dot-color').trim() ||
+                         style.getPropertyValue('--wire-neutral-color').trim() || '#888';
+
+    const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    dot.setAttribute('cx', x);
+    dot.setAttribute('cy', y);
+    dot.setAttribute('r', '3');
+    dot.setAttribute('fill', neutralColor);
+    dot.setAttribute('pointer-events', 'none');
+    dot.classList.add('wire-junction-intermediate');
+
+    wire.element.appendChild(dot);
   }
 
   /* ─── Wire Crossings ─── */

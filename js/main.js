@@ -40,7 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const toolbar = new Toolbar(appContainer, eventBus);
   const footer = new Footer(appContainer, eventBus);
-  const panelManager = new PanelManager(appContainer, eventBus, engine);
+  const panelManager = new PanelManager(appContainer, eventBus, engine, canvas, undoManager);
 
   // Initialize keyboard shortcut help overlay
   new HelpOverlay();

@@ -34,6 +34,29 @@ export class UndoManager {
   }
 }
 
+/**
+ * CompositeCommand — groups multiple commands into a single undo/redo unit.
+ * Undo is applied in reverse order.
+ */
+export class CompositeCommand {
+  constructor(commands = []) {
+    this.commands = commands;
+  }
+  execute() {
+    let success = false;
+    for (const cmd of this.commands) {
+      if (cmd.execute()) success = true;
+    }
+    return success;
+  }
+  undo() {
+    // Reverse order
+    for (let i = this.commands.length - 1; i >= 0; i--) {
+      this.commands[i].undo();
+    }
+  }
+}
+
 // Command for adding a component
 export class AddComponentCommand {
   constructor(engine, canvas, component) {
@@ -187,5 +210,185 @@ export class MoveWirePointCommand {
       wire.moveControlPoint(this.pointIndex, this.oldPos, false);
       wire.refreshControlHandles();
     }
+  }
+}
+
+/**
+ * Command for moving a component (undo/redo support).
+ */
+export class MoveComponentCommand {
+  constructor(engine, canvas, compManager, wiring, positionCache, componentId, oldPos, newPos) {
+    this.engine = engine;
+    this.canvas = canvas;
+    this.compManager = compManager;
+    this.wiring = wiring;
+    this.positionCache = positionCache;
+    this.componentId = componentId;
+    this.oldPos = { ...oldPos };
+    this.newPos = { ...newPos };
+  }
+  execute() {
+    const comp = this.compManager.getComponentById(this.componentId);
+    if (comp) {
+      comp.updatePosition(this.newPos.x, this.newPos.y);
+      this.wiring.updateWiresForComponent(comp);
+      this.positionCache.invalidate();
+      return true;
+    }
+    return false;
+  }
+  undo() {
+    const comp = this.compManager.getComponentById(this.componentId);
+    if (comp) {
+      comp.updatePosition(this.oldPos.x, this.oldPos.y);
+      this.wiring.updateWiresForComponent(comp);
+      this.positionCache.invalidate();
+      return true;
+    }
+    return false;
+  }
+}
+
+/**
+ * Command for adding a wire control point (undo/redo support).
+ */
+export class AddWirePointCommand {
+  constructor(wiring, wireId, index, point) {
+    this.wiring = wiring;
+    this.wireId = wireId;
+    this.index = index;
+    this.point = { ...point };
+  }
+  execute() {
+    const wire = this.wiring.wires.find(w => w.id === this.wireId);
+    if (wire) {
+      wire.addControlPoint(this.index, this.point);
+      wire.refreshControlHandles();
+      return true;
+    }
+    return false;
+  }
+  undo() {
+    const wire = this.wiring.wires.find(w => w.id === this.wireId);
+    if (wire) {
+      wire.removeControlPoint(this.index);
+      wire.refreshControlHandles();
+      return true;
+    }
+    return false;
+  }
+}
+
+/**
+ * Command for removing a wire control point (undo/redo support).
+ */
+export class RemoveWirePointCommand {
+  constructor(wiring, wireId, index) {
+    this.wiring = wiring;
+    this.wireId = wireId;
+    this.index = index;
+    this.savedPoint = null;
+  }
+  execute() {
+    const wire = this.wiring.wires.find(w => w.id === this.wireId);
+    if (wire && this.index > 0 && this.index < wire.pathPoints.length - 1) {
+      this.savedPoint = { ...wire.pathPoints[this.index] };
+      wire.removeControlPoint(this.index);
+      wire.refreshControlHandles();
+      return true;
+    }
+    return false;
+  }
+  undo() {
+    const wire = this.wiring.wires.find(w => w.id === this.wireId);
+    if (wire && this.savedPoint) {
+      wire.addControlPoint(this.index, this.savedPoint);
+      wire.refreshControlHandles();
+      return true;
+    }
+    return false;
+  }
+}
+
+/**
+ * Command for setting a component property (undo/redo support).
+ * Saves wires that will be disconnected when reducing input count,
+ * and restores them on undo.
+ */
+export class SetPropertyCommand {
+  constructor(engine, canvas, component, propName, oldValue, newValue) {
+    this.engine = engine;
+    this.canvas = canvas;
+    this.component = component;
+    this.propName = propName;
+    this.oldValue = oldValue;
+    this.newValue = newValue;
+    this.savedWires = [];
+  }
+  execute() {
+    // Save wires that will be disconnected when reducing input count
+    if (this.propName === 'inputs' && this.newValue < this.oldValue) {
+      for (let i = this.newValue; i < this.oldValue; i++) {
+        const inp = this.component.inputs[i];
+        if (inp && inp.connectedTo) {
+          const wire = this.engine.wires.find(w => w.to.nodeId === inp.id);
+          if (wire) {
+            this.savedWires.push({ wireId: wire.id, fromNodeId: wire.from.nodeId, toNodeId: wire.to.nodeId });
+          }
+        }
+      }
+    }
+    this.component.setProperty(this.propName, this.newValue);
+    this.canvas._onComponentModified(this.component);
+    return true;
+  }
+  undo() {
+    this.component.setProperty(this.propName, this.oldValue);
+    this.canvas._onComponentModified(this.component);
+    // Restore saved wires
+    for (const w of this.savedWires) {
+      const engineId = this.engine.connect(w.fromNodeId, w.toNodeId, w.wireId);
+      this.canvas._reconnectWire(engineId, w.fromNodeId, w.toNodeId);
+    }
+    this.savedWires = [];
+    return true;
+  }
+}
+
+/**
+ * Command for changing a wire's routing mode (undo/redo support).
+ */
+export class SetRoutingModeCommand {
+  constructor(wiring, wireId, oldMode, oldControlPoints, newMode, newControlPoints) {
+    this.wiring = wiring;
+    this.wireId = wireId;
+    this.oldMode = oldMode;
+    this.oldControlPoints = oldControlPoints ? oldControlPoints.map(p => ({...p})) : [];
+    this.newMode = newMode;
+    this.newControlPoints = newControlPoints ? newControlPoints.map(p => ({...p})) : [];
+  }
+  execute() {
+    const wire = this.wiring.wires.find(w => w.id === this.wireId);
+    if (wire) {
+      wire.routingMode = this.newMode;
+      wire.controlPoints = this.newControlPoints.map(p => ({...p}));
+      wire.pathPoints = []; // Force recompute
+      this.wiring.rerouteWithFanOut();
+      wire.refreshControlHandles();
+      return true;
+    }
+    return false;
+  }
+  undo() {
+    const wire = this.wiring.wires.find(w => w.id === this.wireId);
+    if (wire) {
+      wire.routingMode = this.oldMode;
+      wire.controlPoints = this.oldControlPoints.map(p => ({...p}));
+      wire.pathPoints = [];
+      this.wiring.rerouteWithFanOut();
+      wire.refreshControlHandles();
+      return true;
+    }
+    return false;
   }
 }
