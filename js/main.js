@@ -58,7 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
     panelManager.testBenchPanel.setOutputNode(nodeId);
   });
 
-  footer.setVersion('Beta-5');
+  footer.setVersion('v0.9-pre');
 
   // FIX (Bug #8 Medium): Stop engine and clear clock intervals
   // on page unload to prevent issues with auto-save and pending timers.

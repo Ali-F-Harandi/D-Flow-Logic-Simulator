@@ -152,28 +152,28 @@ export class Component {
   _createConnectorBlock(node, isInput, labelText, dotCenterY) {
     const block = document.createElement('div');
     block.style.position = 'absolute';
-    block.style.top = `${dotCenterY - 6}px`;
+    block.style.top = `${dotCenterY - 4}px`;
     if (isInput) block.style.left = '0px';
     else block.style.right = '0px';
-    block.style.width = '40px';
-    block.style.height = '12px';
+    block.style.width = '36px';
+    block.style.height = '8px';
 
     const dot = document.createElement('div');
     dot.className = `connector ${isInput ? 'input' : 'output'}`;
     dot.dataset.node = node.id;
     dot.style.backgroundColor = this._getStateColor(node.value);
     dot.style.position = 'absolute';
-    dot.style.top = '1px';
-    if (isInput) dot.style.left = '-5px';
-    else dot.style.right = '-5px';
+    dot.style.top = '0px';
+    if (isInput) dot.style.left = '-4px';
+    else dot.style.right = '-4px';
 
     const label = document.createElement('span');
     label.className = 'connector-label';
     label.textContent = labelText;
     label.style.position = 'absolute';
-    label.style.top = '0px';
-    if (isInput) label.style.left = '10px';
-    else label.style.right = '10px';
+    label.style.top = '-1px';
+    if (isInput) label.style.left = '8px';
+    else label.style.right = '8px';
 
     block.appendChild(dot);
     block.appendChild(label);

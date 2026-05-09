@@ -121,17 +121,18 @@ html, body {
 @media (max-width: 767px) {
   #toolbar {
     grid-area: toolbar;
-    padding: var(--space-xs);
+    padding: 6px 8px;
     justify-content: space-around;
     flex-wrap: wrap;
-    gap: var(--space-xs);
+    gap: 6px;
   }
   #footer {
     display: none;
   }
-  /* Removed overflow: auto — canvas panning is handled by JS,
-     overflow auto conflicts with touch-action: none and causes
-     browser scroll instead of canvas pan on mobile */
+  /* Ensure header controls have enough touch space */
+  #header .header-controls {
+    gap: 6px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

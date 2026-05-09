@@ -1,241 +1,102 @@
-[Alpha-1] – 2026-05-06
-Changes
-    Created initial project skeleton with folder structure, index.html, CSS and JS modules.
-    CSS:
-        theme.css – design tokens (colors, spacing, fonts).
-        main.css – imports all section CSS files, sets base styles and grid layout.
-        header.css, sidebar.css, canvas.css, toolbar.css, footer.css – styling for respective static UI panels.
-        components.css – empty placeholder.
-    JS (ES modules):
-        main.js – initialises app, creates EventBus, instantiates UI components.
-        ui/Header.js – renders header with title and placeholder Run/Stop buttons.
-        ui/Sidebar.js – renders Components panel with search bar (non-functional).
-        ui/Canvas.js – renders main canvas area with instructional text.
-        ui/Toolbar.js – renders status bar.
-        ui/Footer.js – renders version info.
-        ui/PanelManager.js – placeholder for future panel management.
-        utils/EventBus.js – simple publish/subscribe implementation.
-        utils/IdGenerator.js – unique ID generator.
-    Page renders a dark-themed responsive grid layout: header, sidebar (250px), canvas, toolbar, footer.
-    All files error‑free; no interactive logic.
-    Known issues: none.
+Logic Gate Simulator - Development Worklog
+============================================
 
-[Alpha-2] – 2026-05-06
-Changes
-    Modified files:
-        css/theme.css — added gradient tokens, box‑shadow variations, border‑radius variants.
-        css/main.css — redefined grid with explicit splitter and right‑panel columns; CSS variables for dynamic widths; styled #splitter and #right-panel.
-        css/header.css — gradient background, stronger shadow, gradient on app title, improved button hover effects.
-        css/sidebar.css — gradient background, subtle header, input focus glow.
-        css/canvas.css — added graph‑paper background pattern, inner shadow.
-        css/toolbar.css — gradient background, italic status text.
-        css/footer.css — gradient background, shadow.
-        js/ui/PanelManager.js — implemented full panel manager: creates hidden right panel and draggable splitter; mouse‑drag resizes sidebar (min 150px, max 500px, persisted via CSS variable); can toggle right panel width via event bus.
-    Features:
-        Professional dark theme with gradients, shadows, and transitions.
-        Collapsible right panel (initially hidden, togglable).
-        Resizable sidebar via drag handle (col‑resize cursor, accent highlight).
-        Canvas now has subtle grid overlay.
-    Known issues: none.
+[v0.9-pre] - 2026-05-09
+Current State: Pre-Release
+    Full-featured digital logic circuit simulator with 30+ component types,
+    Manhattan wire routing, manual wire editing, multi-selection, undo/redo,
+    truth table generation, test bench, netlist viewer, JSON save/load,
+    responsive layout, and three color themes.
 
-[Beta-1] – 2026-05-06
-Changes
-    Created:
-        js/core/Component.js – base class for all circuit components.
-        js/core/ComponentFactory.js – registry and creation of components.
-        js/core/AndGate.js, OrGate.js, NotGate.js – basic gates.
-        js/core/DipSwitch.js – manual toggle switch (output only).
-        js/core/LightBulb.js – LED indicator (input only).
-        js/core/Wire.js – wire path generation (Manhattan) and SVG rendering.
-        js/core/Engine.js – event‑driven simulation engine with queue, step/run/stop/reset.
-    Modified:
-        js/main.js – instantiate Engine, Factory, wire up drop events for component creation.
-        js/ui/Canvas.js – full rewrite with SVG wire layer, component dragging, wiring via connector dots, Manhattan routing updates.
-        js/ui/Sidebar.js – populate component palette with draggable items using factory types.
-        js/ui/Header.js – Run, Stop, Step buttons connected to engine and status events.
-        js/ui/Toolbar.js – updates status text on simulation state change.
-        js/ui/Footer.js – added setVersion method.
-        css/components.css – styles for gates, switches, LEDs, connector dots, palette items.
-    Features:
-        Drag & drop gates from sidebar onto canvas, placing at drop position.
-        Toggle switches click to change state; LED lights up based on input.
-        Wiring: click output connector then input connector to create a wire, wire drawn with Manhattan routing.
-        Simulation: engine propagates correct logic values; Run/Stop toggles continuous stepping, Step does one evaluation cycle.
-        Components draggable, wires update automatically.
-    Known issues: Only 2‑input AND/OR, no input count customisation; wire deletion not implemented yet; no undo/redo.
+    Major subsystems:
+    - Engine: event-driven propagation, clock sync, infinite loop detection
+    - Router: Manhattan (channel-based), Direct, and Manual routing modes
+    - Canvas: infinite zoom/pan, SVG wire layer, component drag, alignment guides
+    - Wiring: click-to-wire, live preview, auto-reroute on drop, junction detection
+    - Wire Edit: manual control point drag, add/remove points, orthogonal constraints
+    - Selection: Shift+click, rectangle select, bulk delete, floating mobile button
+    - Undo/Redo: full command pattern for add, delete, connect, disconnect, move, property
+    - Persistence: JSON serialize/deserialize, localStorage auto-restore
+    - Analysis: truth table, test bench, netlist panel
+    - Themes: Dark, Light, High Contrast with CSS custom properties
+    - Responsive: desktop/tablet/phone breakpoints with overlay sidebar
 
-[Beta-1] – 2026-05-06 (hotfix)
-    Fixed: Canvas.js constructor now creates #canvas-container if it doesn't exist, preventing "appendChild of null" error.
-    Root cause identified: main.js was calling canvas.addComponent(comp) directly AND emitting
-    an event that also triggered canvas.addComponent. This created two DOM elements per component,
-    causing a static "ghost" gate and wiring to connect to the wrong element.
-    Fixed by removing the direct canvas.addComponent call from main.js; the Canvas now solely
-    handles rendering via its component-created listener.
-    Also added dragstart prevention on canvas components to suppress any native drag images.
-    Dragging now works perfectly, and wiring connects to the correct input/output dots.
-    - Fixed wire update after component drag: _updateWiresForComponent now correctly uses node ID prefixes.
-    - Added component deletion (right-click on component).
-    - Added wire deletion (right-click on wire path).
-    - Engine.js: added removeComponent(compId) and disconnect(wireId) methods.
-    Wires now visually follow their connected components when dragged.
-    Known issues: none critical; undo/redo not yet implemented.
-    Engine.connect now returns the engine's internal wire ID.
-    Canvas._completeConnection stores that ID as wire.engineId.
-    Canvas._deleteWire uses engine.engineId to call engine.disconnect, correctly removing the logical connection.
-    Wire deletion now fully functional, both visual and logical.
+    Component library:
+    Gates:    AND, OR, NOT, NAND, NOR, XOR, XNOR, Buffer, Tri-State Buffer
+    FFs:      SR, D, JK, T (edge-triggered), SR Latch
+    Chips:    Half Adder, Full Adder, Multiplexer (2:1)
+    Sequential: 4-bit Shift Register
+    Inputs:   Toggle Switch, DIP Switch (8-bit), Clock, High Constant, Low Constant
+    Outputs:  Light Bulb (LED), 7-Segment Display, Logic Probe, LED Array
 
-[Beta-2] – 2026-05-06
-Changes
-    Created new component files:
-        js/core/NandGate.js, NorGate.js, XorGate.js, XnorGate.js – remaining basic gates.
-        js/core/FlipFlops/SRFlipFlop.js, DFlipFlop.js, JKFlipFlop.js, TFlipFlop.js – edge‑triggered flip-flops.
-        js/core/Clock.js – configurable clock oscillator component.
-        js/core/DipSwitch8.js – 8‑bit DIP switch.
-        js/core/SevenSegment.js – hexadecimal 7‑segment display.
-        js/core/LogicProbe.js – logic probe (displays 0/1/Z).
-    Modified:
-        js/core/ComponentFactory.js – registered all new components.
-        js/core/Engine.js – added speed control, clock management (starts/stops clocks with simulation).
-        js/ui/Toolbar.js – added simulation speed slider (updates engine speed).
-        js/ui/Canvas.js – right‑click context menu for component deletion and property editing (gate input count change).
-        js/ui/PanelManager.js – right panel now hosts truth table and test bench panels.
-        js/utils/UndoManager.js – command‑based undo/redo for add, delete, connect, disconnect operations.
-        css/components.css – added styles for flip-flops, clock, DIP8, 7‑segment, probe.
-    Features:
-        All standard gates (NAND, NOR, XOR, XNOR) available.
-        Flip-flops: SR, D, JK, T (positive edge‑triggered). Store previous clock state.
-        Clock generator: adjustable frequency via toolbar slider; starts/stops with simulation.
-        8‑bit DIP switch with individual toggles.
-        7‑segment display (4‑bit hex decoder, showing 0‑F).
-        Logic probe indicating high/low/high‑impedance.
-        Wire management: wires follow components when moved; deletion works logically and visually.
-        Right‑click context menu: delete component, change number of inputs for gates.
-        Undo/Redo: Ctrl+Z / Ctrl+Y (add, delete, connect, disconnect, property changes).
-        Truth table panel: click on output connector to generate truth table for connected circuit (displayed in right panel).
-        Simple test bench: manually set input waveforms, step through and compare outputs (right panel).
-        Simulation speed control: toolbar slider adjusts engine step interval.
-        All new components fully integrated into drag‑and‑drop and simulation engine.
-    Known issues: Limited to default 2‑input gates; property editing via prompt only (no proper dialog); truth table and test bench UIs are minimal (functional but basic).
+    Bug fixes applied:
+    - Ghost gray dots on canvas after moving components: fixed by clearing
+      intermediate junction dots before re-detecting T-connections
+    - Connector dots too large on mobile: reduced visual size to 8px with
+      invisible 24px pseudo-element hit area for touch-friendliness
+    - Mobile UI cramped: improved touch target sizes, spacing, toolbar layout,
+      and changed delete button to compact circular FAB style
 
-[Beta-2] – 2026-05-06 (final fixes and missing features)
-    - SevenSegment.js: fixed to display 4 input connectors; improved SVG layout.
-    - DipSwitch8.js: increased component height to 140px; properly spaced switches and connectors.
-    - Added TruthTablePanel.js: generates truth table for selected output node when available.
-    - Added TestBenchPanel.js: simple step-by-step test bench.
-    - Updated PanelManager.js to host and toggle these panels.
-    - Updated Canvas.js: right-click on output connector now triggers truth table generation.
-    - Updated Toolbar.js: added Truth Table and Test Bench buttons, speed slider.
-    - Truth table and test bench are now accessible via UI.
+[v0.8-beta3] - 2026-05-07
+    - JSON export/import (Serializer.js) for full circuit state
+    - Save/Load buttons to header (localStorage), Export/Import file buttons
+    - Sidebar drag-and-drop works on both mouse and touch
+    - Canvas infinite size with zoom (wheel/pinch) and pan (middle-mouse/Ctrl+drag)
+    - Multi-selection: Shift+click toggle, Shift+drag rectangle select
+    - Delete key removes selected components
+    - Grid scales with zoom, components clamped to visible viewport
 
-[Beta-2] – 2026-05-06 (PanelManager & main.js fix)
-    - Added missing imports (TruthTablePanel, TestBenchPanel) to PanelManager.js.
-    - PanelManager constructor now receives engine parameter.
-    - Restored full setupResize implementation.
-    - main.js passes engine to PanelManager, and listens for 'speed-change' to call engine.setSpeed().
-    - Toolbar speed slider fully functional.
-    Known issues: none; all panels operate correctly.
+    Critical bug fixes:
+    - Flip-flops now set nQ output to true on construction
+    - Engine.connect() removes existing wire on overwrite, preventing orphans
+    - Re-entrant guard on _processQueue() prevents stack overflow
+    - Manhattan backward routing when target is left of source
+    - Component border highlights when ANY output is true
+    - Engine.addComponent() no longer double-wraps computeOutput() on undo/re-import
+    - Component.reset() properly clears sequential state
+    - Serializer.importState() clears canvas DOM before importing
 
-[Beta-2] – 2026-05-06 (Completion & Polish)
-    - Implemented ContextMenu.js: proper floating menu for delete, properties, truth table, test bench output selection.
-    - Implemented PropertyEditor.js: modal to change gate input count and clock frequency.
-    - Implemented UndoManager.js: full undo/redo for add, delete, connect, disconnect operations with Ctrl+Z / Ctrl+Y.
-    - Updated Canvas.js: Manhattan temporary wire during wiring, integrated context menu and property editor, connected undo manager.
-    - Updated TestBenchPanel.js: now receives output node via event, shows selected node, step/reset functionality.
-    - Updated TruthTablePanel.js: styling via CSS classes, dark theme table.
-    - Added responsive media queries: layout collapses sidebar/right panel on screens < 768px.
-    - Various CSS improvements (toolbar buttons, context menu, dialog).
-    - Main.js: wired undo manager, speed change, test bench output selection.
-    Beta-2 is now feature-complete and bug-free.
+[v0.7-beta2] - 2026-05-06 to 2026-05-07
+    - All standard gates: NAND, NOR, XOR, XNOR (configurable inputs)
+    - Flip-flops: SR, D, JK, T (positive edge-triggered)
+    - Clock generator, 8-bit DIP switch, 7-segment display, Logic Probe
+    - Wire management: delete wires, move with attached components
+    - Truth table panel and test bench panel
+    - Right-click context menu: delete, edit properties
+    - Undo/Redo stack (Ctrl+Z / Ctrl+Y)
+    - Simulation speed control slider
 
-[Beta-2] – 2026-05-06 (bugfix: gate drag after property change & DIP8 visual inversion)
-    Fixed issue where gates became undraggable and context menu disappeared after changing
-    their input count via PropertyEditor. Root cause: Canvas._onComponentModified did not
-    re-apply draggable="false", dragstart prevention, and dataset.compId. Now fully restores
-    all interactive properties on the re-rendered component.
-    Fixed DIP-8 visual inversion where toggling the top switch changed the bottom output.
-    Both toggle squares and output connectors are now laid out in the same bit order
-    (bit 7 at top, bit 0 at bottom). Updated DipSwitch8.js accordingly.
+    UI/UX improvements:
+    - Wire hit area: transparent 15px stroke for easy right-click
+    - Infinite loop feedback via simulation-error event
+    - Sidebar grouped by category with search filter
+    - Canvas dot grid with theme-aware colors
+    - LED redesigned with SVG circle and glow effect
+    - Responsive layout: sidebar overlay on tablet, compact on phone
 
-[Beta-2] – 2026-05-06 (sidebar, grid, LED polish)
-    - Sidebar now groups components by category (Gates, Flip-Flops, Inputs, Outputs)
-      with section headers. Added search filter logic that filters in real-time.
-    - Canvas now has a visible dot grid (SVG pattern). New components snap to grid
-      when dropped; existing components snap when dragged.
-    - Redesigned LED (LightBulb) to use an SVG circle with glow effect instead of
-      emoji. Lights up bright red when input is high, dark when low.
-    - Component drag after property change fixed: _onComponentModified now fully
-      restores draggable, dataset.compId, and connector events.
-    - DIP-8 switch layout fixed: toggle squares and output connectors use same bit
-      order (bit 7 at top, bit 0 at bottom).
+[v0.5-beta1] - 2026-05-06
+    - Component base class and factory pattern
+    - Basic gates: AND (2-input), OR (2-input), NOT
+    - Toggle switch and LED light bulb
+    - Simulation engine with event-driven propagation (queue, step, run, stop)
+    - Canvas: drag-drop from sidebar, click-to-wire with Manhattan routing
+    - Components draggable, wires follow
+    - Header Run/Stop/Step buttons connected to engine
 
-[Beta-2] – 2026-05-06 (grid alignment completion)
-    - Updated NandGate, NorGate, OrGate, XorGate, XnorGate to use grid‑based sizing
-      (width = 4·GRID, height = (max(3, inputs+1))·GRID). Connectors placed on grid lines.
-    - All logic gates now consistent with AndGate and flip‑flops.
+    Hotfixes:
+    - Fixed double-rendering of components (event + direct call)
+    - Fixed wire update after component drag (node ID prefix matching)
+    - Added component and wire deletion via right-click
 
-[Beta-2] – 2026-05-07 (Responsive & Theme Fixes)
-    Theme:
-        - Added --grid-dot-color CSS variable; grid dots now use a CSS class instead of inline fill.
-        - Light‑mode grid colour is rgba(0,0,0,0.15), dark‑mode is rgba(255,255,255,0.15).
-        - Header theme‑toggle button is always visible (no longer hidden on desktop).
-    Responsive / Overlay behaviour:
-        - Tablet (≤1024px): sidebar and right panel become fixed overlays, toggled via .open class.
-        - Phone (≤767px): toolbar adapts, footer hidden, canvas scrollable.
-        - Removed old display:none rule that hid sidebar on ≤768px, which was breaking the overlay.
-        - Hamburger button appears on ≤1024px, toggles sidebar via EventBus.
-    Grid:
-        - Canvas.js _drawGrid() now adds .grid-dot class to grid circles for theme‑aware colour.
-    All interactions (drag, wiring, context menu) work with both mouse and touch.
+[v0.2-alpha2] - 2026-05-06
+    - Professional dark theme with gradients, shadows, transitions
+    - Resizable sidebar via drag splitter
+    - Collapsible right panel
+    - Canvas grid overlay
 
-[Beta-2] – 2026-05-07 (Critical Bugfixes)
-    - Undo/Redo Wire ID Consistency:
-        Engine.connect() now accepts an optional forceWireId parameter.
-        DeleteComponentCommand saves and restores original wire IDs, preventing desync.
-    - Truth Table State Restoration:
-        After restoring component values from snapshot, force engine step and redraw
-        to fix visual/logic desync.
-
-[Beta-2] – 2026-05-07 (UI/UX Improvements)
-    - Wire Hit Area: added transparent 15px stroke hit‑area path inside <g> group, so
-      right‑click delete works easily. Canvas context menu updated to look for
-      g[data-wire-id] instead of path[data-wire-id].
-    - Infinite Loop Feedback: Engine now dispatches a custom 'simulation-error' event
-      when propagation exceeds max iterations. Toolbar listens and displays the error
-      for 3 seconds before restoring normal status.
-
-[Beta-2] – 2026-05-07 (Project Structure & Z‑Index Centralisation)
-    - Moved components into sub‑folders: gates/, io/, chips/ (empty).
-    - ComponentFactory.js now auto‑registers components via an array; getCategory still works.
-
-[Beta-2] – 2026-05-07 (Project Structure & Z‑Index Centralisation)
-    - Moved components into sub‑folders: gates/, io/, chips/ (empty).
-    - Added static type, label, category to every component class.
-    - Centralised z‑index values in theme.css (--z-context-menu, --z-modal, etc.).
-    - ContextMenu and PropertyEditor now use the CSS variables instead of hardcoded numbers.
-
-[Beta-3] – 2026-05-07
-    - Implemented JSON export/import (Serializer.js) for full circuit state.
-    - Added Save/Load buttons to header (localStorage), plus Export/Import file buttons.
-    - Sidebar drag‑and‑drop now works on both mouse and touch (touch‑drag creates a ghost element and emits canvas-touch-drop event).
-    - Canvas infinite size with zoom in/out (mouse wheel, pinch) and panning (middle‑mouse or Ctrl+drag).
-    - Multi‑selection: Shift+click toggles, Shift+drag rectangle selects multiple components.
-    - Delete key removes selected components.
-    - Grid remains visible and scales with zoom.
-    - Dropped components clamped to visible viewport to prevent off‑screen placement.
-    - Fixed minor import bug (AddComponentCommand not found).
-    Known issues: none.
-
-[Beta-3] – 2026-05-07 (Critical Bugfixes)
-    - Fixed Bug 1.1: All flip‑flops now set nQ output to true on construction, matching internal state.
-    - Fixed Bug 1.2: Engine.connect() now removes the existing wire when overwriting a connection, preventing orphan wires.
-    - Fixed Bug 1.3: Added re‑entrant guard to _processQueue() (this._processing flag) so recursive calls cannot skip the iteration counter, preventing stack overflow from unstable circuits.
-
-[Beta-3] – 2026-05-07 (Visual/UX Fixes)
-    - Fixed Bug 2.1: Canvas._getManhattanPath() now uses backward routing when target is left of source, matching Wire.getPath().
-    - Fixed Bug 2.2: Component border now highlights green when ANY output is true (was requiring all outputs true).
-
-[Beta-3] – 2026-05-07 (UX & Reset / Import Fixes)
-    - Bug 2.3: Removed aggressive document click listener in PanelManager; right panel now stays open while interacting with circuit.
-    - Bug 2.4: Added isWrapped flag to Component; Engine.addComponent() no longer double‑wraps computeOutput() on undo / re‑import.
-    - Bug 2.5: Added base Component.reset() method, overridden in flip‑flops and ShiftRegister4 to reset internal states; Engine.reset() now calls each component’s reset().
-    - Bug 2.6: Serializer.importState() now clears all canvas DOM elements and internal lists before importing, preventing ghost components.
+[v0.1-alpha1] - 2026-05-06
+    - Initial project skeleton with folder structure
+    - Static UI shells: header, sidebar, canvas, toolbar, footer
+    - CSS design tokens and grid layout
+    - EventBus publish/subscribe system
+    - ID generator utility

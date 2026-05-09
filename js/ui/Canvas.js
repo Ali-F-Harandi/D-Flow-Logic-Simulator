@@ -129,7 +129,7 @@ export class Canvas {
   _createMobileDeleteButton() {
     const btn = document.createElement('button');
     btn.id = 'mobile-delete-btn';
-    btn.textContent = '🗑 Delete';
+    btn.textContent = '✕';
     btn.title = 'Delete selected components/wires';
     btn.setAttribute('aria-label', 'Delete selected');
     btn.style.display = 'none';

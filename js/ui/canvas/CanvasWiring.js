@@ -374,11 +374,26 @@ export class CanvasWiring {
   }
 
   /**
+   * Remove all intermediate junction dots from all wires.
+   * Called before re-detecting to prevent ghost dots from lingering
+   * after wires are re-routed.
+   */
+  _clearIntermediateJunctions() {
+    for (const wire of this.wires) {
+      if (!wire.element) continue;
+      wire.element.querySelectorAll('.wire-junction-intermediate').forEach(dot => dot.remove());
+    }
+  }
+
+  /**
    * Detect T-connections at intermediate path points.
    * When an intermediate point of one wire lies on a segment of another wire,
    * show a junction dot at that point.
    */
   _detectIntermediateJunctions() {
+    // First, clear any old intermediate junction dots to prevent ghost artifacts
+    this._clearIntermediateJunctions();
+
     // Collect all intermediate path points (not endpoints) from all wires
     const intermediatePoints = [];
     for (const wire of this.wires) {

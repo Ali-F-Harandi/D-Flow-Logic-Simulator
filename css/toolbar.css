@@ -69,8 +69,21 @@
 }
 
 @media (max-width: 767px) {
+  #toolbar {
+    padding: 6px 8px;
+    gap: 6px;
+  }
   #toolbar input[type="range"] {
-    width: 70px;
-    min-width: 50px;
+    width: 80px;
+    min-width: 60px;
+    height: 28px;
+  }
+  .toolbar-btn {
+    padding: 8px 14px;
+    font-size: 12px;
+    min-height: 36px;
+  }
+  .toolbar-separator {
+    display: none;
   }
 }

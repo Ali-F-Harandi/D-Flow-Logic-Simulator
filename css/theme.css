@@ -47,7 +47,7 @@
 
   /* new design tokens for components */
   --connector-border: #999;
-  --connector-size: 10px;
+  --connector-size: 8px;
   --wire-high-color: #00cc66;
   --wire-neutral-color: #888;
   --wire-z-color: #ff9800;

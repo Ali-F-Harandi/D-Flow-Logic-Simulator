@@ -4,7 +4,7 @@ export const WIRE_VISUAL_WIDTH = 2;
 export const WIRE_HIT_WIDTH = 15;
 export const JUNCTION_RADIUS = 3;
 export const COMPONENT_DEFAULT_WIDTH = 4 * GRID_SIZE; // typical gate width
-export const CONNECTOR_SIZE = 10;
+export const CONNECTOR_SIZE = 8;
 export const SNAP_THRESHOLD = 0.5 * GRID_SIZE;
 
 // Z‑index values (matching CSS variables, for reference)

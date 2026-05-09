@@ -31,27 +31,39 @@
 
 /* ===== Connector Dots + Labels ===== */
 .connector {
-  width: 10px;
-  height: 10px;
-  border: 1px solid #999;
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid #999;
   border-radius: 50%;
   position: absolute;
   pointer-events: auto;
   z-index: 2;
   transition: transform 0.1s, box-shadow 0.1s;
 }
-.connector.input  { left: -5px; }
-.connector.output { right: -5px; }
+.connector.input  { left: -4px; }
+.connector.output { right: -4px; }
 
-/* Larger touch target for connectors on touch devices */
+/*
+ * Touch-friendly hit area: on touch devices the visual dot stays small (8px)
+ * but an invisible ::before pseudo-element extends the tap target to 24px.
+ * This keeps components looking clean while remaining easy to tap on phones.
+ */
 @media (hover: none) and (pointer: coarse) {
   .connector {
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
+    /* visual size stays 8px — no change */
   }
-  .connector.input  { left: -11px; }
-  .connector.output { right: -11px; }
+  .connector::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    /* invisible hit area */
+    background: transparent;
+  }
 }
 
 /* Label sits next to the dot */
@@ -256,27 +268,28 @@
 /* ===== Mobile Floating Delete Button ===== */
 #mobile-delete-btn {
   position: fixed;
-  bottom: 80px;
+  bottom: 70px;
   right: 16px;
   z-index: 999;
   background: var(--color-danger);
   color: #fff;
   border: none;
-  border-radius: 28px;
-  padding: 10px 20px;
-  font-size: 14px;
+  border-radius: 50%;
+  width: 48px;
+  height: 48px;
+  font-size: 20px;
   font-weight: 600;
   font-family: var(--font-family);
   cursor: pointer;
   box-shadow: 0 4px 12px rgba(244, 71, 71, 0.5);
   display: none;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
   transition: transform 0.15s, box-shadow 0.15s;
   -webkit-tap-highlight-color: transparent;
 }
 #mobile-delete-btn:active {
-  transform: scale(0.95);
+  transform: scale(0.9);
   box-shadow: 0 2px 6px rgba(244, 71, 71, 0.4);
 }
 
