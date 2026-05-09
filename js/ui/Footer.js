@@ -9,7 +9,7 @@ export class Footer {
   build() {
     const footer = document.createElement('footer');
     footer.id = 'footer';
-    footer.innerHTML = `<span class="version"></span><span>© 2025 Logic Simulator</span>`;
+    footer.innerHTML = `<span class="version"></span><span>© 2026 D-Flow Logic Simulator</span>`;
     this.versionSpan = footer.querySelector('.version');
     return footer;
   }

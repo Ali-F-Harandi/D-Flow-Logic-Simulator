@@ -21,7 +21,7 @@ export class Header {
     header.id = 'header';
     header.innerHTML = `
       <button class="hamburger-btn" title="Toggle sidebar" aria-label="Toggle sidebar">☰</button>
-      <span class="app-title">Logic Gate Simulator</span>
+      <span class="app-title">D-Flow</span>
       <div class="header-controls">
         <button class="header-btn run-btn" title="Run simulation (continuous)" aria-label="Run simulation">▶ Run</button>
         <button class="header-btn stop-btn" title="Stop simulation" aria-label="Stop simulation">⏹ Stop</button>
@@ -94,21 +94,21 @@ export class Header {
       const nextIndex = (order.indexOf(current) + 1) % order.length;
       const next = order[nextIndex];
       root.setAttribute('data-theme', next);
-      localStorage.setItem('logic-sim-theme', next);
+      localStorage.setItem('dflow-theme', next);
       this._updateThemeIcon(next);
     });
 
     // Save
     this.saveBtn.addEventListener('click', () => {
       const state = Serializer.exportState(this.engine);
-      localStorage.setItem('logic-sim-project', JSON.stringify(state));
+      localStorage.setItem('dflow-project', JSON.stringify(state));
       if (this.canvas) this.canvas.showToast('Project saved!', 'success');
       else alert('Project saved to localStorage.');
     });
 
     // Load
     this.loadBtn.addEventListener('click', () => {
-      const saved = localStorage.getItem('logic-sim-project');
+      const saved = localStorage.getItem('dflow-project');
       if (!saved) {
         if (this.canvas) this.canvas.showToast('No saved project found', 'warning');
         else alert('No saved project found.');
@@ -167,7 +167,7 @@ export class Header {
   }
 
   _initTheme() {
-    const saved = localStorage.getItem('logic-sim-theme') || 'dark';
+    const saved = localStorage.getItem('dflow-theme') || 'dark';
     document.documentElement.setAttribute('data-theme', saved);
     this._updateThemeIcon(saved);
   }

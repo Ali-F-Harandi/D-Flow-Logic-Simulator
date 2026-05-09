@@ -1,5 +1,5 @@
-Logic Gate Simulator - Development Worklog
-============================================
+D-Flow Logic Simulator - Development Worklog
+=============================================
 
 [v0.9-pre] - 2026-05-09
 Current State: Pre-Release

@@ -1,4 +1,4 @@
-# Logic Gate Simulator
+# D-Flow Logic Simulator
 
 A high-performance, interactive digital logic circuit simulator built with vanilla ES6+ JavaScript. Designed for students, educators, and hobbyists to design, simulate, and analyze combinational and sequential logic circuits directly in the browser with no dependencies.
 
@@ -87,8 +87,10 @@ A high-performance, interactive digital logic circuit simulator built with vanil
 ## Project Structure
 
 ```
-Logic-Gate-Simulator/
+D-Flow/
 ├── index.html                  # Application entry point
+├── favicon.svg                 # SVG favicon (modern browsers)
+├── favicon.ico                 # ICO favicon (legacy browsers)
 ├── css/
 │   ├── main.css                # Grid layout, responsive breakpoints
 │   ├── theme.css               # Design tokens (Dark/Light/High-Contrast)

@@ -1,5 +1,5 @@
-Logic Gate Simulator - Development Roadmap
-============================================
+D-Flow Logic Simulator - Development Roadmap
+=============================================
 
 Status: PRE-RELEASE (v0.9)
 Last updated: 2026-05-09

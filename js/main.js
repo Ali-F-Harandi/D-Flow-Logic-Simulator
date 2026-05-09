@@ -67,7 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Auto‑restore saved project
-  const saved = localStorage.getItem('logic-sim-project');
+  const saved = localStorage.getItem('dflow-project');
   if (saved) {
     const restore = confirm('A saved project was found. Do you want to restore it?');
     if (restore) {
