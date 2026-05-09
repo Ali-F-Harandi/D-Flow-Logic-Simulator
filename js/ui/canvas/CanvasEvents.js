@@ -9,7 +9,7 @@ export class CanvasEvents {
   constructor(
     compManager, dragHandler, wiring, selection, panZoom, core,
     contextMenu, propertyEditor, undoManager, eventBus, positionCache,
-    canvas          // <-- NEW PARAMETER
+    canvas          // <-- Canvas instance
   ) {
     this.compManager = compManager;
     this.dragHandler = dragHandler;
@@ -28,10 +28,12 @@ export class CanvasEvents {
     this.element = document.getElementById('canvas-container');
     if (!this.element) this.element = core.element;
 
-    // Removed console.log (code smell fix)
-
     this._focusedComponentIndex = -1;
     this._lastMagnetNodeId = null;
+
+    // Track double-click timing for wire editing
+    this._lastClickTime = 0;
+    this._lastClickTarget = null;
 
     this._bindMouse();
     this._bindKeyboard();
@@ -53,6 +55,22 @@ export class CanvasEvents {
       if (this.wiring.wiring) return;
 
       const target = e.target;
+
+      // --- Wire control point drag ---
+      if (this.wiring._wireEditHandler) {
+        const hit = this.wiring._wireEditHandler.hitTestControlPoint(target);
+        if (hit) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (hit.type === 'control') {
+            this.wiring._wireEditHandler.startDrag(hit.wireId, hit.pointIndex, e.clientX, e.clientY);
+          } else if (hit.type === 'add') {
+            this.wiring._wireEditHandler.addPointAtSegment(hit.wireId, hit.afterIndex, e.clientX, e.clientY);
+          }
+          return;
+        }
+      }
+
       const compEl = target.closest('.component');
 
       if (compEl && !target.classList.contains('connector')) {
@@ -89,6 +107,11 @@ export class CanvasEvents {
           wireEl.classList.add('wire-selected');
           const visual = wireEl.querySelector('.wire-visual');
           if (visual) visual.setAttribute('stroke-width', '4');
+
+          // Show control handles for this wire
+          if (this.wiring._wireEditHandler) {
+            this.wiring._wireEditHandler.setActiveWire(wire);
+          }
         }
         return;
       }
@@ -106,11 +129,22 @@ export class CanvasEvents {
 
       if (!target.closest('.connector')) {
         this.selection.startSelection(e);
+        // Hide wire control handles when clicking empty canvas
+        if (this.wiring._wireEditHandler) {
+          this.wiring._wireEditHandler.clearActive();
+        }
       }
     });
 
     window.addEventListener('mousemove', (e) => {
       if (this.panZoom.isPanning) { this.panZoom.movePan(e.clientX, e.clientY); return; }
+
+      // Wire control point drag
+      if (this.wiring._wireEditHandler && this.wiring._wireEditHandler.isDragging) {
+        this.wiring._wireEditHandler.moveDrag(e.clientX, e.clientY);
+        return;
+      }
+
       if (this.dragHandler.isDragging) { this.dragHandler.moveDrag(e.clientX, e.clientY); }
       if (this.wiring.wiring && this.wiring.wiring.tempPath) {
         const fromPos = this.positionCache.getPosition(this.wiring.wiring.fromNodeId);
@@ -145,6 +179,13 @@ export class CanvasEvents {
 
     window.addEventListener('mouseup', (e) => {
       if (this.panZoom.isPanning) { this.panZoom.endPan(); return; }
+
+      // Wire control point drag end
+      if (this.wiring._wireEditHandler && this.wiring._wireEditHandler.isDragging) {
+        this.wiring._wireEditHandler.endDrag();
+        return;
+      }
+
       if (this.dragHandler.isDragging) { this.dragHandler.endDrag(); return; }
 
       if (this.wiring.wiring && this.wiring.wiring.tempPath) {
@@ -196,7 +237,7 @@ export class CanvasEvents {
             }
           }
           if (!success && !connected) {
-            // No error toast for magnet fallback — the wire just didn't land on a compatible connector
+            // No error toast for magnet fallback
           }
         }
 
@@ -210,6 +251,30 @@ export class CanvasEvents {
       }
 
       if (this.selection.selectionRect) { this.selection.endSelection(e); }
+    });
+
+    // Double-click on wire to add a control point
+    this.element.addEventListener('dblclick', (e) => {
+      const wireEl = e.target.closest('g[data-wire-id]');
+      if (!wireEl) return;
+
+      // If double-clicking on a control point, remove it
+      if (this.wiring._wireEditHandler) {
+        const hit = this.wiring._wireEditHandler.hitTestControlPoint(e.target);
+        if (hit && hit.type === 'control') {
+          this.wiring._wireEditHandler.removePoint(hit.wireId, hit.pointIndex);
+          return;
+        }
+      }
+
+      // Otherwise, add a new control point at the click position
+      const wireId = wireEl.dataset.wireId;
+      const wire = this.wiring.wires.find(w => w.id === wireId);
+      if (wire && this.wiring._wireEditHandler) {
+        const canvasPos = this.core.canvasCoords(e.clientX, e.clientY);
+        this.wiring._wireEditHandler.addPointAtPosition(canvasPos, wire);
+        this.wiring._wireEditHandler.setActiveWire(wire);
+      }
     });
   }
 
@@ -265,6 +330,18 @@ export class CanvasEvents {
       e.preventDefault();
       const items = [];
 
+      // Check for wire control point right-click (remove point)
+      if (this.wiring._wireEditHandler) {
+        const hit = this.wiring._wireEditHandler.hitTestControlPoint(e.target);
+        if (hit && hit.type === 'control') {
+          items.push({ label: 'Remove Control Point', action: () => {
+            this.wiring._wireEditHandler.removePoint(hit.wireId, hit.pointIndex);
+          }});
+          this.contextMenu.show(e.clientX, e.clientY, items);
+          return;
+        }
+      }
+
       const compEl = e.target.closest('.component');
       if (compEl && !e.target.classList.contains('connector')) {
         const comp = this.compManager.getComponentById(compEl.dataset.compId);
@@ -287,6 +364,31 @@ export class CanvasEvents {
           items.push({ label: 'Delete Wire', action: () => {
             const cmd = new DisconnectWireCommand(this.engine, this.canvas, wire.engineId);
             this.undoManager.execute(cmd);
+          }});
+          items.push({ label: 'Reroute This Wire', action: () => {
+            const busY = this.core.getBusBarY(this.compManager.components);
+            const router = this.wiring._getRouter();
+            wire.forceReroute(
+              (nodeId) => this.positionCache.getPosition(nodeId),
+              busY,
+              router
+            );
+            wire.refreshControlHandles();
+          }});
+          items.push({ label: 'Add Control Point Here', action: () => {
+            const canvasPos = this.core.canvasCoords(e.clientX, e.clientY);
+            if (this.wiring._wireEditHandler) {
+              this.wiring._wireEditHandler.addPointAtPosition(canvasPos, wire);
+              this.wiring._wireEditHandler.setActiveWire(wire);
+            }
+          }});
+          items.push({ label: wire.isLocked ? 'Unlock Wire' : 'Lock Wire', action: () => {
+            if (wire.isLocked) {
+              wire.unlock();
+            } else {
+              wire.lock();
+              wire.hideControlHandles();
+            }
           }});
           this.contextMenu.show(e.clientX, e.clientY, items);
           return;

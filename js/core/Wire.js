@@ -8,7 +8,23 @@ export class Wire {
     this.toNode = toNode;
     this.element = null;
     this.occupiedCells = new Set();  // Cached grid cells this wire occupies
+
+    // --- Stable wire path storage ---
+    // The wire path is stored as an array of {x, y} points.
+    // Points[0] = source connector, Points[last] = target connector
+    // Intermediate points = control/bend points
+    this.pathPoints = [];            // Full path: [{x,y}, ...]
+    this.manualControlPoints = [];   // User-defined intermediate points
+    this._isManualMode = false;      // True if user has manually edited this wire
+    this._controlHandlesVisible = false;
+    this._isLocked = false;  // Locked wires are not affected by component moves
   }
+
+  /**
+   * Whether this wire has been manually edited by the user.
+   * Manual wires keep their control points when endpoints move.
+   */
+  get isManualMode() { return this._isManualMode; }
 
   /**
    * Compute a Manhattan path using A* routing if a router is provided,
@@ -124,6 +140,57 @@ export class Wire {
     }
   }
 
+  /**
+   * Convert path points array to SVG path data string.
+   * @param {Array} points - Array of {x, y} objects
+   * @returns {string} SVG path data
+   */
+  static pointsToSVGPath(points) {
+    if (!points || points.length < 2) return '';
+    let d = `M ${points[0].x} ${points[0].y}`;
+    for (let i = 1; i < points.length; i++) {
+      d += ` L ${points[i].x} ${points[i].y}`;
+    }
+    return d;
+  }
+
+  /**
+   * Parse SVG path data into an array of {x, y} points.
+   * @param {string} d - SVG path data string
+   * @returns {Array} Array of {x, y} objects
+   */
+  static svgPathToPoints(d) {
+    const points = [];
+    if (!d) return points;
+
+    const commands = d.match(/[ML]\s*[\d.e+-]+/gi);
+    if (!commands) return points;
+
+    for (const cmd of commands) {
+      const type = cmd[0];
+      const nums = cmd.slice(1).trim().split(/[\s,]+/).map(Number);
+      if (nums.length >= 2) {
+        points.push({ x: nums[0], y: nums[1] });
+        for (let i = 2; i + 1 < nums.length; i += 2) {
+          points.push({ x: nums[i], y: nums[i + 1] });
+        }
+      }
+    }
+    return points;
+  }
+
+  /**
+   * Store the current path points from SVG path data.
+   * @param {string} d - SVG path data string
+   */
+  storePathPoints(d) {
+    this.pathPoints = Wire.svgPathToPoints(d);
+  }
+
+  /**
+   * Get the current SVG path data, either from stored points or by computing.
+   * In stable mode, this returns the stored path without re-computing.
+   */
   getPath(fromPos, toPos, opts) {
     return Wire.computePath(fromPos, toPos, opts);
   }
@@ -170,7 +237,8 @@ export class Wire {
     visualPath.setAttribute('d', d);
     hitPath.setAttribute('d', d);
 
-    // Cache occupied cells for fast obstacle grid building
+    // Cache the path points and occupied cells
+    this.storePathPoints(d);
     this.updateOccupiedCells(d);
 
     junctionDot.setAttribute('cx', fromPos.x);
@@ -184,10 +252,21 @@ export class Wire {
     this.element = group;
   }
 
+  /**
+   * Update wire path — full re-route using A* or simple routing.
+   * Used for explicit reroute (button click) or initial creation.
+   */
   updatePath(getNodePosition, busBarY = null, router = null) {
     if (!this.element) return;
     const fromPos = getNodePosition(this.fromNode.nodeId);
     const toPos = getNodePosition(this.toNode.nodeId);
+
+    // If manual mode, just update endpoints while preserving control points
+    if (this._isManualMode && this.pathPoints.length > 2) {
+      this._updateEndpointsOnly(fromPos, toPos);
+      return;
+    }
+
     const d = this.getPath(fromPos, toPos, {
       minClearY: busBarY,
       router,
@@ -197,7 +276,8 @@ export class Wire {
     this.element.querySelector('.wire-visual').setAttribute('d', d);
     this.element.querySelector('.wire-hitarea').setAttribute('d', d);
 
-    // Update cached occupied cells
+    // Cache the path points and occupied cells
+    this.storePathPoints(d);
     this.updateOccupiedCells(d);
 
     const junctionDot = this.element.querySelector('.wire-junction');
@@ -205,6 +285,328 @@ export class Wire {
       junctionDot.setAttribute('cx', fromPos.x);
       junctionDot.setAttribute('cy', fromPos.y);
     }
+  }
+
+  /**
+   * Update only the start and end points of the wire path,
+   * preserving all intermediate control points.
+   * This is the key to STABLE wire behavior — when a component moves,
+   * the wire stretches to the new endpoint without rerouting.
+   *
+   * @param {Object} fromPos - New source connector position {x, y}
+   * @param {Object} toPos - New target connector position {x, y}
+   */
+  _updateEndpointsOnly(fromPos, toPos) {
+    if (this.pathPoints.length < 2) return;
+
+    // Update first and last points
+    const oldFirst = { ...this.pathPoints[0] };
+    const oldLast = { ...this.pathPoints[this.pathPoints.length - 1] };
+
+    this.pathPoints[0] = { x: fromPos.x, y: fromPos.y };
+    this.pathPoints[this.pathPoints.length - 1] = { x: toPos.x, y: toPos.y };
+
+    // If there are control points between the endpoint and the first interior point,
+    // adjust them proportionally to maintain a reasonable shape.
+    // Strategy: the first interior point connects to the start point.
+    // We shift the first interior point by the same delta as the start point.
+    if (this.pathPoints.length > 2) {
+      const startDelta = {
+        x: fromPos.x - oldFirst.x,
+        y: fromPos.y - oldFirst.y
+      };
+      const endDelta = {
+        x: toPos.x - oldLast.x,
+        y: toPos.y - oldLast.y
+      };
+
+      // Shift the first interior point with the start delta
+      this.pathPoints[1] = {
+        x: this.pathPoints[1].x + startDelta.x,
+        y: this.pathPoints[1].y + startDelta.y
+      };
+
+      // Shift the last interior point with the end delta
+      if (this.pathPoints.length > 3) {
+        this.pathPoints[this.pathPoints.length - 2] = {
+          x: this.pathPoints[this.pathPoints.length - 2].x + endDelta.x,
+          y: this.pathPoints[this.pathPoints.length - 2].y + endDelta.y
+        };
+      }
+    }
+
+    this._applyPathPointsToSVG();
+  }
+
+  /**
+   * Stable endpoint update — when auto-routing is off, only adjust
+   * the wire endpoints to match the new connector positions.
+   * The intermediate control points are preserved exactly as-is.
+   *
+   * @param {Object} fromPos - New source connector position {x, y}
+   * @param {Object} toPos - New target connector position {x, y}
+   */
+  updateEndpointsStable(fromPos, toPos) {
+    if (!this.element) return;
+    if (this._isLocked) return;  // Locked wires don't move
+
+    if (this.pathPoints.length < 2) {
+      // No stored path — fall back to simple straight line
+      const d = `M ${fromPos.x} ${fromPos.y} L ${toPos.x} ${toPos.y}`;
+      this.element.querySelector('.wire-visual').setAttribute('d', d);
+      this.element.querySelector('.wire-hitarea').setAttribute('d', d);
+      this.storePathPoints(d);
+      this.updateOccupiedCells(d);
+      return;
+    }
+
+    if (this._isManualMode) {
+      this._updateEndpointsOnly(fromPos, toPos);
+      return;
+    }
+
+    // For auto-routed wires with stored points:
+    // Just update the first and last points, keep intermediates unchanged.
+    // This gives a "stretchy" behavior that is stable and predictable.
+    const oldFirst = { ...this.pathPoints[0] };
+    const oldLast = { ...this.pathPoints[this.pathPoints.length - 1] };
+
+    this.pathPoints[0] = { x: fromPos.x, y: fromPos.y };
+    this.pathPoints[this.pathPoints.length - 1] = { x: toPos.x, y: toPos.y };
+
+    // Shift the first interior point proportionally
+    if (this.pathPoints.length > 2) {
+      const startDelta = {
+        x: fromPos.x - oldFirst.x,
+        y: fromPos.y - oldFirst.y
+      };
+      const endDelta = {
+        x: toPos.x - oldLast.x,
+        y: toPos.y - oldLast.y
+      };
+
+      // Move first interior point with start
+      this.pathPoints[1] = {
+        x: this.pathPoints[1].x + startDelta.x,
+        y: this.pathPoints[1].y + startDelta.y
+      };
+
+      // Move last interior point with end
+      if (this.pathPoints.length > 3) {
+        const lastIdx = this.pathPoints.length - 2;
+        this.pathPoints[lastIdx] = {
+          x: this.pathPoints[lastIdx].x + endDelta.x,
+          y: this.pathPoints[lastIdx].y + endDelta.y
+        };
+      }
+    }
+
+    this._applyPathPointsToSVG();
+  }
+
+  /**
+   * Apply the current pathPoints array to the SVG elements.
+   */
+  _applyPathPointsToSVG() {
+    if (!this.element || this.pathPoints.length < 2) return;
+
+    const d = Wire.pointsToSVGPath(this.pathPoints);
+    this.element.querySelector('.wire-visual').setAttribute('d', d);
+    this.element.querySelector('.wire-hitarea').setAttribute('d', d);
+    this.updateOccupiedCells(d);
+
+    const fromPos = this.pathPoints[0];
+    const junctionDot = this.element.querySelector('.wire-junction');
+    if (junctionDot) {
+      junctionDot.setAttribute('cx', fromPos.x);
+      junctionDot.setAttribute('cy', fromPos.y);
+    }
+  }
+
+  /**
+   * Force a full re-route of this wire, ignoring manual mode.
+   * Used when the user clicks "Reroute All Wires".
+   */
+  forceReroute(getNodePosition, busBarY = null, router = null) {
+    this._isManualMode = false;
+    this.manualControlPoints = [];
+    this.updatePath(getNodePosition, busBarY, router);
+  }
+
+  /**
+   * Add a control point to the wire at a specific index.
+   * @param {number} index - Position in pathPoints to insert (1 to length-1)
+   * @param {Object} point - {x, y} coordinates
+   */
+  addControlPoint(index, point) {
+    if (index < 1 || index >= this.pathPoints.length) return;
+    this.pathPoints.splice(index, 0, { x: point.x, y: point.y });
+    this._isManualMode = true;
+    this._applyPathPointsToSVG();
+  }
+
+  /**
+   * Remove a control point at the given index.
+   * Cannot remove the first or last point (endpoints).
+   * @param {number} index - Index of the point to remove
+   */
+  removeControlPoint(index) {
+    if (index < 1 || index >= this.pathPoints.length - 1) return;
+    this.pathPoints.splice(index, 1);
+    this._applyPathPointsToSVG();
+    if (this.pathPoints.length <= 2) {
+      this._isManualMode = false;
+    }
+  }
+
+  /**
+   * Move a control point to a new position.
+   * Snaps to grid by default.
+   * @param {number} index - Index of the point to move
+   * @param {Object} newPos - {x, y} new coordinates
+   * @param {boolean} snapToGrid - Whether to snap to grid (default: true)
+   */
+  moveControlPoint(index, newPos, snapToGrid = true) {
+    if (index < 0 || index >= this.pathPoints.length) return;
+
+    let x = newPos.x;
+    let y = newPos.y;
+
+    if (snapToGrid) {
+      x = Math.round(x / GRID_SIZE) * GRID_SIZE;
+      y = Math.round(y / GRID_SIZE) * GRID_SIZE;
+    }
+
+    this.pathPoints[index] = { x, y };
+
+    // If moving an intermediate point, mark as manual
+    if (index > 0 && index < this.pathPoints.length - 1) {
+      this._isManualMode = true;
+    }
+
+    this._applyPathPointsToSVG();
+  }
+
+  /**
+   * Show draggable control point handles on this wire.
+   * Creates small circles at each intermediate bend point.
+   */
+  showControlHandles() {
+    if (this._controlHandlesVisible) return;
+    this._controlHandlesVisible = true;
+
+    this._renderControlHandles();
+  }
+
+  /**
+   * Render control handle circles at each intermediate path point.
+   */
+  _renderControlHandles() {
+    if (!this.element) return;
+
+    // Remove existing handles first
+    this._removeControlHandleElements();
+
+    // Create a group for handles
+    const handleGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    handleGroup.classList.add('wire-control-handles');
+
+    // Add handles for intermediate points (not first/last which are endpoints)
+    for (let i = 1; i < this.pathPoints.length - 1; i++) {
+      const pt = this.pathPoints[i];
+      const handle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      handle.setAttribute('cx', pt.x);
+      handle.setAttribute('cy', pt.y);
+      handle.setAttribute('r', '5');
+      handle.setAttribute('fill', '#4ec9b0');
+      handle.setAttribute('stroke', '#fff');
+      handle.setAttribute('stroke-width', '1.5');
+      handle.setAttribute('pointer-events', 'all');
+      handle.setAttribute('cursor', 'grab');
+      handle.classList.add('wire-control-point');
+      handle.dataset.pointIndex = i;
+      handle.dataset.wireId = this.id;
+      handleGroup.appendChild(handle);
+    }
+
+    // Also add small "+" indicators at midpoints of segments for adding new points
+    for (let i = 0; i < this.pathPoints.length - 1; i++) {
+      const p1 = this.pathPoints[i];
+      const p2 = this.pathPoints[i + 1];
+      const midX = (p1.x + p2.x) / 2;
+      const midY = (p1.y + p2.y) / 2;
+
+      const addHandle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      addHandle.setAttribute('cx', midX);
+      addHandle.setAttribute('cy', midY);
+      addHandle.setAttribute('r', '3');
+      addHandle.setAttribute('fill', 'transparent');
+      addHandle.setAttribute('stroke', '#4ec9b0');
+      addHandle.setAttribute('stroke-width', '1');
+      addHandle.setAttribute('stroke-dasharray', '2,2');
+      addHandle.setAttribute('pointer-events', 'all');
+      addHandle.setAttribute('cursor', 'crosshair');
+      addHandle.classList.add('wire-add-point');
+      addHandle.dataset.afterIndex = i;
+      addHandle.dataset.wireId = this.id;
+      handleGroup.appendChild(addHandle);
+    }
+
+    this.element.appendChild(handleGroup);
+  }
+
+  /**
+   * Remove all control handle SVG elements.
+   */
+  _removeControlHandleElements() {
+    if (!this.element) return;
+    const existing = this.element.querySelectorAll('.wire-control-handles');
+    existing.forEach(g => g.remove());
+  }
+
+  /**
+   * Hide control point handles.
+   */
+  hideControlHandles() {
+    this._controlHandlesVisible = false;
+    this._removeControlHandleElements();
+  }
+
+  /**
+   * Refresh control handle positions after a point is moved.
+   */
+  refreshControlHandles() {
+    if (this._controlHandlesVisible) {
+      this._renderControlHandles();
+    }
+  }
+
+  /**
+   * Lock this wire — prevents any automatic changes.
+   */
+  lock() {
+    this._isLocked = true;
+  }
+
+  /**
+   * Unlock this wire — allows automatic changes again.
+   */
+  unlock() {
+    this._isLocked = false;
+  }
+
+  /**
+   * Whether this wire is locked (immune to automatic rerouting).
+   */
+  get isLocked() { return this._isLocked; }
+
+  /**
+   * Get the wire's current state: 'auto', 'manual', or 'locked'
+   */
+  get wireState() {
+    if (this._isLocked) return 'locked';
+    if (this._isManualMode) return 'manual';
+    return 'auto';
   }
 
   updateColor(sourceValue) {

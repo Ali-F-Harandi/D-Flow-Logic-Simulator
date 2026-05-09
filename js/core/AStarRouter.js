@@ -281,7 +281,7 @@ export class AStarRouter {
    * @param {string} sourceNodeId - Source node ID for correct fan-out blocking
    */
   _astar(start, end, sourceNodeId = null) {
-    const maxIterations = 20000;
+    const maxIterations = 30000;
     const closedSet = new Set();
     const gScore = new Map();
     const cameFrom = new Map();
@@ -352,7 +352,7 @@ export class AStarRouter {
         // FIX: pass sourceNodeId to _isBlocked for correct fan-out handling
         if (this._isBlocked(nx, ny, sourceNodeId)) continue;
 
-        // Direction penalty: increased from 0.1 to 1.5 for cleaner L/U-shaped paths
+        // Multi-layer cost function
         let moveCost = 1;
         const parentKey = cameFrom.get(currentKey);
         if (parentKey) {
@@ -360,7 +360,27 @@ export class AStarRouter {
           const prevDx = current.x - px;
           const prevDy = current.y - py;
           if (prevDx !== dir.dx || prevDy !== dir.dy) {
-            moveCost += 1.5;  // Strong bend penalty for straighter, cleaner wires
+            moveCost += 3.0;  // High bend penalty for clean L/U-shaped paths
+          }
+        }
+
+        // Near-obstacle penalty: check if any adjacent cell is a component
+        for (const [adx, ady] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+          const adjKey = `${nx + adx},${ny + ady}`;
+          if (this.blockedCells.get(adjKey) === 'component') {
+            moveCost += 2.0;  // Clearance from components
+            break;
+          }
+        }
+
+        // Wire crossing cost
+        const cellVal = this.blockedCells.get(nKey);
+        if (cellVal instanceof Set) {
+          const hasOtherSource = [...cellVal].some(src => src !== sourceNodeId);
+          if (hasOtherSource) {
+            moveCost += 5.0;  // Discourage crossing other wires
+          } else {
+            moveCost -= 0.5;  // Same-net proximity bonus (bus bundling)
           }
         }
 

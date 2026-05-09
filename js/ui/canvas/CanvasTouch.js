@@ -42,6 +42,9 @@ export class CanvasTouch {
     // Track if a component was tapped (for toggle actions)
     this.tappedComponent = null;
 
+    // Track if we're dragging a wire control point
+    this._draggingControlPoint = false;
+
     this._bindEvents();
   }
 
@@ -56,6 +59,10 @@ export class CanvasTouch {
     clearTimeout(this.longPressTimer);
     this.longPressTimer = null;
     if (this.dragHandler.isDragging) this.dragHandler.endDrag();
+    if (this.wiring._wireEditHandler && this.wiring._wireEditHandler.isDragging) {
+      this.wiring._wireEditHandler.endDrag();
+    }
+    this._draggingControlPoint = false;
     this.touchPanning = false;
     this.touchPanStart = null;
     this.lastTouchDist = null;
@@ -84,6 +91,22 @@ export class CanvasTouch {
     const target = e.target;
     this.touchStartPos = { x: touch.clientX, y: touch.clientY };
     this.touchMoved = false;
+
+    // --- Wire control point drag (touch) ---
+    if (this.wiring._wireEditHandler) {
+      const hit = this.wiring._wireEditHandler.hitTestControlPoint(target);
+      if (hit) {
+        e.preventDefault();
+        if (hit.type === 'control') {
+          this.wiring._wireEditHandler.startDrag(hit.wireId, hit.pointIndex, touch.clientX, touch.clientY);
+          this._draggingControlPoint = true;
+        } else if (hit.type === 'add') {
+          this.wiring._wireEditHandler.addPointAtSegment(hit.wireId, hit.afterIndex, touch.clientX, touch.clientY);
+          this._draggingControlPoint = true;
+        }
+        return;
+      }
+    }
 
     // ---- Check for DIP8 bit toggle squares ----
     const dipBit = target.closest('.dip-bit');
@@ -165,6 +188,11 @@ export class CanvasTouch {
         const visual = wireEl.querySelector('.wire-visual');
         if (visual) visual.setAttribute('stroke-width', '4');
 
+        // Show control handles for this wire
+        if (this.wiring._wireEditHandler) {
+          this.wiring._wireEditHandler.setActiveWire(wire);
+        }
+
         // Long-press on wire shows context menu
         this.longPressFired = false;
         this.longPressTimer = setTimeout(() => {
@@ -235,6 +263,13 @@ export class CanvasTouch {
       }
     }
 
+    // Wire control point drag
+    if (this.wiring._wireEditHandler && this.wiring._wireEditHandler.isDragging) {
+      e.preventDefault();
+      this.wiring._wireEditHandler.moveDrag(touch.clientX, touch.clientY);
+      return;
+    }
+
     if (this.dragHandler.isDragging) {
       e.preventDefault();
       this.dragHandler.moveDrag(touch.clientX, touch.clientY);
@@ -286,6 +321,12 @@ export class CanvasTouch {
         comp.toggle();
       }
       this.tappedComponent = null;
+    }
+
+    // End wire control point drag
+    if (this.wiring._wireEditHandler && this.wiring._wireEditHandler.isDragging) {
+      this.wiring._wireEditHandler.endDrag();
+      this._draggingControlPoint = false;
     }
 
     // End drag if active
@@ -429,6 +470,23 @@ export class CanvasTouch {
         const cmd = new DisconnectWireCommand(this.engine, this.canvas, wire.engineId);
         this.undoManager.execute(cmd);
       }},
+      { label: 'Reroute This Wire', action: () => {
+        const busY = this.core.getBusBarY(this.compManager.components);
+        const router = this.wiring._getRouter();
+        wire.forceReroute(
+          (nodeId) => this.wiring.positionCache.getPosition(nodeId),
+          busY,
+          router
+        );
+        wire.refreshControlHandles();
+      }},
+      { label: 'Add Control Point', action: () => {
+        const canvasPos = this.core.canvasCoords(clientX, clientY);
+        if (this.wiring._wireEditHandler) {
+          this.wiring._wireEditHandler.addPointAtPosition(canvasPos, wire);
+          this.wiring._wireEditHandler.setActiveWire(wire);
+        }
+      }},
       { label: 'Select Wire', action: () => {
         this.selection._clearWireSelection();
         this.selection.clearSelection();
@@ -457,6 +515,9 @@ export class CanvasTouch {
       });
     }});
     items.push({ label: 'Zoom to Fit', action: () => this.canvas.zoomToFit() });
+    items.push({ label: 'Reroute All Wires', action: () => {
+      this.wiring.rerouteAllWires();
+    }});
     this.contextMenu.show(clientX, clientY, items);
   }
 }

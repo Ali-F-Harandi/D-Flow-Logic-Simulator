@@ -12,6 +12,7 @@ import { CanvasSelection } from './canvas/CanvasSelection.js';
 import { CanvasDrag } from './canvas/CanvasDrag.js';
 import { CanvasTouch } from './canvas/CanvasTouch.js';
 import { CanvasEvents } from './canvas/CanvasEvents.js';
+import { WireEditHandler } from './canvas/WireEditHandler.js';
 
 export class Canvas {
   constructor(container, eventBus, engine, factory, undoManager) {
@@ -50,6 +51,10 @@ export class Canvas {
     this.wiring._getComponents = () => this.compManager.components;
     this.wiring._redrawCallback = () => this.wiring.performRedraw(this.compManager.components);
 
+    // Wire edit handler — manages control point dragging for manual wire editing
+    this.wireEditHandler = new WireEditHandler(this.wiring, this.core, this.positionCache, this);
+    this.wiring.setWireEditHandler(this.wireEditHandler);
+
     this.selection = new CanvasSelection(
       this.engine, this.undoManager, this.compManager, this.wiring,
       this.toaster, this.core, this.element, this.eventBus, this   // <-- canvas
@@ -70,7 +75,8 @@ export class Canvas {
     );
     this.events._toaster = this.toaster;
 
-    this.engine.onUpdate = () => this.wiring.scheduleRedraw();
+    // STABLE: Engine updates only change wire colors, NOT paths
+    this.engine.onUpdate = () => this.wiring.updateWireColorsOnly();
 
     // Center the canvas view so (0,0) is at the center of the viewport
     // with equal blank area in all four directions (N, S, E, W).
@@ -83,6 +89,16 @@ export class Canvas {
       // (document-relative) because canvasCoords expects viewport coords.
       const pos = this.core.canvasCoords(clientX, clientY);
       this._placeComponent(type, pos);
+    });
+
+    // Reroute all wires button
+    this.eventBus.on('reroute-all-wires', () => {
+      this.wiring.rerouteAllWires();
+    });
+
+    // Wire crossing style toggle
+    this.eventBus.on('set-crossing-style', (style) => {
+      this.wiring.setCrossingStyle(style);
     });
 
     document.addEventListener('wire-removed', (e) => {
@@ -149,10 +165,11 @@ export class Canvas {
       comp._cachedWidth = comp.element.offsetWidth;
       comp._cachedHeight = comp.element.offsetHeight;
     }
+    // STABLE: Only update wire endpoints, don't reroute
     this.wiring.updateWiresForComponent(comp);
-    this.wiring.scheduleRedraw();
-    // Update obstacle cache after component moves
-    this.wiring.rebuildObstacleCache();
+    // Update wire colors
+    this.wiring.updateWireColorsOnly();
+    // Don't rebuild obstacle cache here — it's rebuilt on drag end and reroute
   }
 
   _deleteComponent(compId) {
@@ -209,13 +226,13 @@ export class Canvas {
     this.core.panOffset.x = canvasRect.width / 2 - centerX * this.core.scale;
     this.core.panOffset.y = canvasRect.height / 2 - centerY * this.core.scale;
     this.core.applyTransform();
-    this.wiring.scheduleRedraw();
   }
 
   clearAll() {
     this.compManager.clear();
     this.selection.clearSelection();
     this.wiring.wires.forEach(wire => {
+      wire.hideControlHandles();
       if (wire.element) wire.element.remove();
     });
     this.wiring.wires = [];

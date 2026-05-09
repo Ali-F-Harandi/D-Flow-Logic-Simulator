@@ -35,8 +35,14 @@ export class CanvasSelection {
         const visual = wire.element.querySelector('.wire-visual');
         if (visual) visual.setAttribute('stroke-width', '2');
       }
+      // Hide control handles when deselecting wire
+      if (wire) wire.hideControlHandles();
     });
     this.selectedWires.clear();
+    // Clear wire edit handler active wire
+    if (this.wiring._wireEditHandler) {
+      this.wiring._wireEditHandler.clearActive();
+    }
   }
 
   startSelection(e) {

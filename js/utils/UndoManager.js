@@ -160,3 +160,32 @@ export class DisconnectWireCommand {
     }
   }
 }
+
+/**
+ * Command for moving a wire control point (undo/redo support).
+ */
+export class MoveWirePointCommand {
+  constructor(wiring, wireId, pointIndex, oldPos, newPos) {
+    this.wiring = wiring;
+    this.wireId = wireId;
+    this.pointIndex = pointIndex;
+    this.oldPos = { ...oldPos };
+    this.newPos = { ...newPos };
+  }
+
+  execute() {
+    const wire = this.wiring.wires.find(w => w.id === this.wireId);
+    if (wire) {
+      wire.moveControlPoint(this.pointIndex, this.newPos, false);
+      wire.refreshControlHandles();
+    }
+  }
+
+  undo() {
+    const wire = this.wiring.wires.find(w => w.id === this.wireId);
+    if (wire) {
+      wire.moveControlPoint(this.pointIndex, this.oldPos, false);
+      wire.refreshControlHandles();
+    }
+  }
+}

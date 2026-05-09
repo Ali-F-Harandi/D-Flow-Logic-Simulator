@@ -22,6 +22,20 @@ export class Toolbar {
       eventBus.emit('show-panel', 'netlist');
     });
 
+    // Wire routing buttons
+    this.element.querySelector('#reroute-btn').addEventListener('click', () => {
+      eventBus.emit('reroute-all-wires');
+    });
+
+    // Wire crossing style toggle
+    this._crossingStyle = 'ansi';
+    this.element.querySelector('#crossing-style-btn').addEventListener('click', () => {
+      this._crossingStyle = this._crossingStyle === 'ansi' ? 'iec' : 'ansi';
+      const btn = this.element.querySelector('#crossing-style-btn');
+      btn.textContent = `Crossing: ${this._crossingStyle.toUpperCase()}`;
+      eventBus.emit('set-crossing-style', this._crossingStyle);
+    });
+
     document.addEventListener('simulation-error', (e) => {
       this.statusText.textContent = e.detail;
       setTimeout(() => {
@@ -38,6 +52,9 @@ export class Toolbar {
       <button id="tt-btn" class="toolbar-btn">Truth Table</button>
       <button id="tb-btn" class="toolbar-btn">Test Bench</button>
       <button id="nl-btn" class="toolbar-btn">Netlist</button>
+      <div class="toolbar-separator"></div>
+      <button id="reroute-btn" class="toolbar-btn toolbar-btn-accent" title="Reroute all wires using A* pathfinding">Reroute Wires</button>
+      <button id="crossing-style-btn" class="toolbar-btn" title="Toggle wire crossing display style (ANSI bridges / IEC junctions)">Crossing: ANSI</button>
       <label class="speed-label" for="speed-slider">Speed: <input type="range" id="speed-slider" name="speed-slider" min="50" max="1000" value="850" step="50"></label>
       <span id="speed-value">200ms</span>
     `;

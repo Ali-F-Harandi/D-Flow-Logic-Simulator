@@ -35,6 +35,26 @@
   min-width: 60px;
 }
 
+/* Toolbar separator */
+.toolbar-separator {
+  width: 1px;
+  height: 20px;
+  background: var(--color-border);
+  margin: 0 var(--space-xs);
+}
+
+/* Accent-style toolbar button (for Reroute Wires) */
+.toolbar-btn-accent {
+  background: var(--color-accent) !important;
+  color: #fff !important;
+  border: none !important;
+  font-weight: 600;
+}
+
+.toolbar-btn-accent:hover {
+  background: var(--color-accent-hover) !important;
+}
+
 @media (max-width: 767px) {
   #toolbar input[type="range"] {
     width: 70px;

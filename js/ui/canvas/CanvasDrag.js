@@ -106,6 +106,8 @@ export class CanvasDrag {
 
     // Rebuild obstacle cache fully after drag ends for consistency
     this.wiring.rebuildObstacleCache();
+    // Update wire crossing bridges after positions change
+    this.wiring.updateWireCrossings();
 
     // Hide alignment indicators
     this._hideAlignIndicators();
