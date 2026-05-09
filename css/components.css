@@ -238,9 +238,7 @@
 }
 
 /* ===== Wire Selection Highlight ===== */
-.wire-selected .wire-visual {
-  filter: drop-shadow(0 0 4px var(--color-accent));
-}
+/* (moved to wire control points section below) */
 
 /* ===== Centered component body (replaces inline centering styles) ===== */
 .component-body-centered {
@@ -511,9 +509,21 @@ kbd {
   r: 7;
 }
 
+/* Outer ring - larger invisible hit target */
+.wire-control-point-outer {
+  /* transparent by default, becomes visible on hover */
+}
+.wire-control-point-outer:hover + .wire-control-point {
+  fill: var(--color-accent) !important;
+  r: 7;
+}
+.wire-control-point-outer:hover {
+  fill: rgba(78, 201, 176, 0.15) !important;
+}
+
 .wire-add-point {
   opacity: 0;
-  transition: opacity 0.2s;
+  transition: opacity 0.2s, r 0.2s;
 }
 .wire-add-point:hover {
   opacity: 1 !important;
@@ -525,10 +535,26 @@ kbd {
 
 /* Show add-point handles when hovering over wire group */
 g[data-wire-id]:hover .wire-add-point {
-  opacity: 0.4;
+  opacity: 0.5;
 }
 
 /* Wire control handles group */
 .wire-control-handles {
   pointer-events: auto;
+}
+
+/* Highlight selected wire more prominently */
+.wire-selected .wire-visual {
+  filter: drop-shadow(0 0 4px var(--color-accent));
+  stroke-width: 3;
+}
+
+/* Show control points with a subtle pulse animation when first displayed */
+@keyframes control-point-appear {
+  0% { r: 0; opacity: 0; }
+  50% { r: 7; opacity: 1; }
+  100% { r: 5; opacity: 1; }
+}
+.wire-control-handles .wire-control-point {
+  animation: control-point-appear 0.3s ease-out;
 }

@@ -98,6 +98,7 @@ export class CanvasDrag {
   }
 
   endDrag() {
+    const draggedComps = this.dragData ? [...this.dragData.components] : [];
     if (this.dragData) {
       this.dragData.components.forEach(c => c.element.style.zIndex = '');
       this.dragData = null;
@@ -106,8 +107,13 @@ export class CanvasDrag {
 
     // Rebuild obstacle cache fully after drag ends for consistency
     this.wiring.rebuildObstacleCache();
-    // Update wire crossing bridges after positions change
-    this.wiring.updateWireCrossings();
+
+    // Auto-reroute ALL wires after component drop (unless disabled).
+    // Using full reroute ensures channel allocation and overlap resolution
+    // across ALL wires, not just the moved component's wires.
+    if (this.wiring.autoRerouteOnDrop && draggedComps.length > 0) {
+      this.wiring.rerouteWithFanOut();
+    }
 
     // Hide alignment indicators
     this._hideAlignIndicators();
@@ -115,14 +121,17 @@ export class CanvasDrag {
 
   /**
    * Move selected components by keyboard arrows (already snaps).
+   * Also triggers auto-reroute if enabled.
    */
   moveSelectedComponents(dx, dy) {
+    const movedComps = [];
     this.selection.selectedComponents.forEach(id => {
       const comp = this.compManager.getComponentById(id);
       if (comp) {
         const nx = this.core.snap(comp.position.x + dx);
         const ny = this.core.snap(comp.position.y + dy);
         comp.updatePosition(nx, ny);
+        movedComps.push(comp);
       }
     });
     this.selection.selectedComponents.forEach(id => {
@@ -130,6 +139,12 @@ export class CanvasDrag {
       if (comp) this.wiring.updateWiresForComponent(comp);
     });
     this.wiring.positionCache.invalidate();
+
+    // Auto-reroute after keyboard move if enabled — use full reroute for overlap prevention
+    if (this.wiring.autoRerouteOnDrop && movedComps.length > 0) {
+      this.wiring.rerouteWithFanOut();
+    }
+
     this.wiring.scheduleRedraw();
   }
 

@@ -76,6 +76,18 @@ export class HelpOverlay {
               <tr><td>Auto-magnet snap</td><td>Wires snap to nearest connector within 30px</td></tr>
             </table>
           </div>
+          <div class="help-section">
+            <h3>Wire Editing (Manual Adjustment)</h3>
+            <table class="shortcut-table">
+              <tr><td>Click on a wire</td><td>Select wire and show control points (green dots)</td></tr>
+              <tr><td>Drag green control point</td><td>Move wire bend point to new position</td></tr>
+              <tr><td>Double-click on wire segment</td><td>Add a new control point at that position</td></tr>
+              <tr><td>Right-click control point</td><td>Remove that control point</td></tr>
+              <tr><td>Click dashed circle on segment</td><td>Add new bend point at segment midpoint</td></tr>
+              <tr><td>Right-click wire</td><td>Context menu: Delete, Reroute, Add Point, Lock</td></tr>
+              <tr><td>Click empty canvas</td><td>Deselect wire and hide control points</td></tr>
+            </table>
+          </div>
         </div>
       </div>
     `;

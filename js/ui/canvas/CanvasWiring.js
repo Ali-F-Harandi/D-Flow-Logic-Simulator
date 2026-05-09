@@ -3,6 +3,7 @@ import { AStarRouter, ObstacleCache } from '../../core/AStarRouter.js';
 import { WireCrossingDetector } from '../../core/WireCrossingDetector.js';
 import { generateId } from '../../utils/IdGenerator.js';
 import { ConnectWireCommand, DisconnectWireCommand } from '../../utils/UndoManager.js';
+import { GRID_SIZE } from '../../config.js';
 
 export class CanvasWiring {
   constructor(engine, eventBus, undoManager, core, positionCache, canvas) {
@@ -26,14 +27,15 @@ export class CanvasWiring {
     this._previewThrottleInterval = 50;
 
     // --- Stable wire routing mode ---
-    // When true, wires keep their paths and only update endpoints when components move.
-    // When false (legacy mode), wires are fully re-routed on every change.
     this._stableMode = true;
 
-    // Wire edit handler — manages control point dragging
+    // --- Auto-reroute on component drop ---
+    this._autoRerouteOnDrop = true;
+
+    // Wire edit handler
     this._wireEditHandler = null;
 
-    // Wire crossing detector — detects and renders wire crossings (bridges/jumps)
+    // Wire crossing detector
     this._crossingDetector = new WireCrossingDetector();
   }
 
@@ -41,7 +43,6 @@ export class CanvasWiring {
 
   /**
    * Update wire colors only — does NOT change wire paths.
-   * Called by engine.onUpdate to reflect signal changes without rerouting.
    */
   updateWireColorsOnly() {
     this.wires.forEach(wire => {
@@ -53,64 +54,47 @@ export class CanvasWiring {
     });
   }
 
-  /**
-   * Whether stable mode is enabled (wires keep their paths).
-   */
   get stableMode() { return this._stableMode; }
-
-  /**
-   * Set stable mode on or off.
-   */
   set stableMode(val) { this._stableMode = val; }
 
-  /**
-   * Get the obstacle cache instance.
-   */
+  get autoRerouteOnDrop() { return this._autoRerouteOnDrop; }
+  set autoRerouteOnDrop(val) { this._autoRerouteOnDrop = val; }
+
   getObstacleCache() { return this._obstacleCache; }
 
-  /**
-   * Set the wire edit handler (for control point dragging).
-   */
   setWireEditHandler(handler) { this._wireEditHandler = handler; }
 
   /**
    * Rebuild the component obstacle cache.
-   * Should be called when components are added, removed, or after drag ends.
    */
   rebuildObstacleCache() {
     const components = this._getComponents();
     this._obstacleCache.rebuildComponentGrid(components);
-    this._router = null;  // Invalidate router so it picks up new cache
+    this._router = null;
   }
 
-  /**
-   * Incremental update: remove old component obstacles, add new ones.
-   * Used during drag for better performance than full rebuild.
-   */
   updateObstacleCacheForComponent(comp, oldPosition) {
-    // Remove old position obstacles
     if (oldPosition) {
       const savedPos = comp.position;
       comp.position = oldPosition;
       this._obstacleCache.removeComponentObstacles(comp);
       comp.position = savedPos;
     }
-    // Add new position obstacles
     this._obstacleCache.addComponentObstacles(comp);
-    this._router = null;  // Invalidate router
+    this._router = null;
   }
 
   /**
-   * Create or get the A* router instance for smart wire routing.
-   * Now uses the obstacle cache for fast grid rebuilding.
+   * Create or get the A* router instance.
+   * @param {Map} [channelMap] - Optional channel assignment map
    */
-  _getRouter() {
-    // Always create a fresh router with the current obstacle cache
+  _getRouter(channelMap = null) {
     this._router = new AStarRouter(
       this._obstacleCache,
       this.wires,
       this.positionCache,
-      this.engine
+      this.engine,
+      channelMap
     );
     return this._router;
   }
@@ -128,7 +112,6 @@ export class CanvasWiring {
   removeVisualWireByEngineId(engineId) {
     const wire = this.wires.find(w => w.engineId === engineId);
     if (wire) {
-      // Hide control handles if visible
       wire.hideControlHandles();
       if (wire.element) wire.element.remove();
       wire.occupiedCells.clear();
@@ -144,17 +127,14 @@ export class CanvasWiring {
 
   /**
    * Update wires connected to a specific component.
-   * In STABLE MODE: Only update endpoints (no full re-route).
-   * In LEGACY MODE: Full re-route of affected wires.
    */
   updateWiresForComponent(comp) {
     const prefix = comp.id + '.';
 
     if (this._stableMode) {
-      // STABLE: Only update endpoints, keep intermediate path points
       this.wires.forEach(wire => {
         if (wire.fromNode.nodeId.startsWith(prefix) || wire.toNode.nodeId.startsWith(prefix)) {
-          if (wire.isLocked) return;  // Skip locked wires
+          if (wire.isLocked) return;
           const fromPos = this.positionCache.getPosition(wire.fromNode.nodeId);
           const toPos = this.positionCache.getPosition(wire.toNode.nodeId);
           if (fromPos && toPos) {
@@ -164,7 +144,6 @@ export class CanvasWiring {
         }
       });
     } else {
-      // LEGACY: Full re-route
       const components = this._getComponents();
       const busY = this.core.getBusBarY(components);
       const router = this._getRouter();
@@ -178,46 +157,27 @@ export class CanvasWiring {
 
   /**
    * Perform a full redraw of all wires.
-   * In STABLE MODE: Only updates wire colors (paths stay the same).
-   * Can be triggered by the "Reroute All" button with forceReroute=true.
    */
   performRedraw(components, forceReroute = false) {
     const busY = this.core.getBusBarY(components);
 
     if (forceReroute) {
-      // Full re-route: rebuild obstacle cache and reroute all wires
-      this._obstacleCache.rebuildComponentGrid(components);
-      const router = this._getRouter();
-      this.wires.forEach(wire => {
-        wire.forceReroute(
-          (nodeId) => this.positionCache.getPosition(nodeId),
-          busY,
-          router
-        );
-        // Update color
-        const sourceComp = this.engine._findComponentByNode(wire.fromNode.nodeId);
-        if (sourceComp) {
-          const outNode = sourceComp.outputs.find(o => o.id === wire.fromNode.nodeId);
-          if (outNode) wire.updateColor(outNode.value);
-        }
-      });
+      this.rerouteWithFanOut();
     } else {
-      // Just update colors only — don't touch wire paths in stable mode
-      this.wires.forEach(wire => {
-        const sourceComp = this.engine._findComponentByNode(wire.fromNode.nodeId);
-        if (sourceComp) {
-          const outNode = sourceComp.outputs.find(o => o.id === wire.fromNode.nodeId);
-          if (outNode) wire.updateColor(outNode.value);
-        }
-      });
+      this.updateWireColorsOnly();
     }
   }
 
   /**
-   * Reroute all wires with fan-out awareness.
-   * Wires from the same source are routed as a group,
-   * with the first wire establishing a trunk path and
-   * subsequent wires getting same-net bonuses for bus bundling.
+   * ═══════════════════════════════════════════════════════════════
+   * CORE ROUTING: Reroute all wires with overlap-free channel allocation.
+   *
+   * Strategy:
+   * 1. Assign unique vertical channels to wires from different sources
+   * 2. Route each wire through its assigned channel using A*
+   * 3. Detect remaining overlaps and iteratively resolve them
+   * 4. Apply wire crossing bridges/jumps
+   * ═══════════════════════════════════════════════════════════════
    */
   rerouteWithFanOut() {
     const components = this._getComponents();
@@ -225,7 +185,12 @@ export class CanvasWiring {
     const busY = this.core.getBusBarY(components);
     const topY = this.core.getTopClearY(components);
 
-    // Group wires by sourceNodeId
+    // ── Phase 1: Channel Allocation ──
+    // Assign unique vertical channels to each source to prevent overlap.
+    const channelMap = this._assignVerticalChannels();
+
+    // ── Phase 2: Route all wires using A* with channel guidance ──
+    // Group wires by sourceNodeId (fan-out bundling)
     const groups = {};
     this.wires.forEach(wire => {
       const srcId = wire.fromNode.nodeId;
@@ -233,10 +198,12 @@ export class CanvasWiring {
       groups[srcId].push(wire);
     });
 
-    // Route each group
-    for (const [srcId, groupWires] of Object.entries(groups)) {
-      // Create a fresh router for each group (picks up updated occupied cells)
-      const router = this._getRouter();
+    // Sort groups: fewer wires first (less likely to block others)
+    const sortedGroups = Object.entries(groups).sort((a, b) => a[1].length - b[1].length);
+
+    for (const [srcId, groupWires] of sortedGroups) {
+      // Create router with channel map for this group
+      const router = this._getRouter(channelMap);
 
       for (const wire of groupWires) {
         wire.forceReroute(
@@ -244,22 +211,212 @@ export class CanvasWiring {
           busY,
           router
         );
-        // Update color
-        const sourceComp = this.engine._findComponentByNode(wire.fromNode.nodeId);
-        if (sourceComp) {
-          const outNode = sourceComp.outputs.find(o => o.id === wire.fromNode.nodeId);
-          if (outNode) wire.updateColor(outNode.value);
-        }
       }
     }
 
-    // Update wire crossing bridges
+    // ── Phase 3: Iterative overlap resolution ──
+    // Check for remaining same-direction overlaps and reroute those wires.
+    const MAX_OVERLAP_ITERATIONS = 5;
+    for (let iteration = 0; iteration < MAX_OVERLAP_ITERATIONS; iteration++) {
+      const overlaps = this._detectOverlaps();
+      if (overlaps.length === 0) break;
+
+      // Collect wires that need rerouting
+      const wiresToReroute = new Set();
+      for (const overlap of overlaps) {
+        wiresToReroute.add(overlap.wireA);
+        wiresToReroute.add(overlap.wireB);
+      }
+
+      // Rebuild obstacle cache and reroute overlapping wires
+      this._obstacleCache.rebuildComponentGrid(components);
+
+      for (const wire of wiresToReroute) {
+        // Clear this wire's path first to remove it from obstacles
+        wire.pathPoints = [];
+        wire.occupiedCells.clear();
+
+        const router = this._getRouter(channelMap);
+        wire.forceReroute(
+          (nodeId) => this.positionCache.getPosition(nodeId),
+          busY,
+          router
+        );
+      }
+    }
+
+    // ── Phase 4: Update colors and crossings ──
+    this.wires.forEach(wire => {
+      const sourceComp = this.engine._findComponentByNode(wire.fromNode.nodeId);
+      if (sourceComp) {
+        const outNode = sourceComp.outputs.find(o => o.id === wire.fromNode.nodeId);
+        if (outNode) wire.updateColor(outNode.value);
+      }
+    });
+
     this.updateWireCrossings();
     this._updateJunctions();
   }
 
   /**
-   * Reroute all wires using A* — called when user clicks "Reroute Wires" button.
+   * ═══════════════════════════════════════════════════════════════
+   * CHANNEL ALLOCATION: Assign unique vertical columns to each source.
+   *
+   * This is the key mechanism for preventing same-direction overlaps.
+   * Each wire source (output connector) gets its own vertical column.
+   * Wires from the same source can share a column (fan-out bundling).
+   * Wires from different sources MUST use different columns.
+   *
+   * The channel assignment ensures that vertical segments from different
+   * sources never share the same X position, eliminating overlap.
+   * ═══════════════════════════════════════════════════════════════
+   */
+  _assignVerticalChannels() {
+    const gs = GRID_SIZE;
+    const channelMap = new Map();   // sourceNodeId → channelX (pixel coordinate)
+    const usedChannels = new Set(); // Set of used channel grid columns
+
+    // Collect all unique sources and their preferred channel positions
+    const sourceInfos = new Map(); // sourceNodeId → { preferredX, minY, maxY }
+
+    for (const wire of this.wires) {
+      const srcId = wire.fromNode.nodeId;
+      const fromPos = this.positionCache.getPosition(wire.fromNode.nodeId);
+      const toPos = this.positionCache.getPosition(wire.toNode.nodeId);
+      if (!fromPos || !toPos) continue;
+
+      if (!sourceInfos.has(srcId)) {
+        sourceInfos.set(srcId, {
+          preferredX: fromPos.x,
+          fromX: fromPos.x,
+          toX: toPos.x,
+          fromY: fromPos.y,
+          toY: toPos.y,
+          wires: []
+        });
+      }
+
+      const info = sourceInfos.get(srcId);
+      info.wires.push(wire);
+
+      // Update preferred X: the midpoint of the routing region
+      const midX = (fromPos.x + toPos.x) / 2;
+      // Use the midpoint between source output and nearest destination input
+      // as the preferred channel position
+      info.preferredX = (info.preferredX + midX) / 2;
+    }
+
+    // Sort sources: leftmost sources get assigned first
+    // This gives them the most natural channel positions
+    const sortedSources = [...sourceInfos.entries()]
+      .sort((a, b) => a[1].fromX - b[1].fromX);
+
+    for (const [srcId, info] of sortedSources) {
+      // Find a free channel near the preferred position
+      let preferredCol = Math.round(info.preferredX / gs);
+      let channelCol = preferredCol;
+      let offset = 0;
+
+      // Search outward from preferred position for a free column
+      while (usedChannels.has(channelCol)) {
+        offset++;
+        // Try right
+        const rightCol = preferredCol + offset;
+        if (!usedChannels.has(rightCol)) {
+          channelCol = rightCol;
+          break;
+        }
+        // Try left
+        const leftCol = preferredCol - offset;
+        if (!usedChannels.has(leftCol)) {
+          channelCol = leftCol;
+          break;
+        }
+      }
+
+      channelMap.set(srcId, channelCol * gs);
+      usedChannels.add(channelCol);
+    }
+
+    return channelMap;
+  }
+
+  /**
+   * ═══════════════════════════════════════════════════════════════
+   * OVERLAP DETECTION: Find same-direction overlaps between wires
+   * from different sources.
+   *
+   * Two wires overlap when they share grid cells with the SAME
+   * direction (both vertical or both horizontal) but come from
+   * different sources. This is the condition the user wants to prevent.
+   * ═══════════════════════════════════════════════════════════════
+   */
+  _detectOverlaps() {
+    const gs = GRID_SIZE;
+    const overlaps = [];
+
+    for (let i = 0; i < this.wires.length; i++) {
+      for (let j = i + 1; j < this.wires.length; j++) {
+        const wireA = this.wires[i];
+        const wireB = this.wires[j];
+
+        // Skip same-source wires (fan-out allowed)
+        if (wireA.fromNode.nodeId === wireB.fromNode.nodeId) continue;
+
+        if (wireA.pathPoints.length < 2 || wireB.pathPoints.length < 2) continue;
+
+        // Build direction-cell maps for both wires
+        const cellsA = this._getWireDirectionCells(wireA);
+        const cellsB = this._getWireDirectionCells(wireB);
+
+        // Check for same-direction overlaps
+        for (const [key, dirA] of cellsA) {
+          const dirB = cellsB.get(key);
+          if (dirB && dirA === dirB) {
+            overlaps.push({ wireA, wireB, cellKey: key, direction: dirA });
+          }
+        }
+      }
+    }
+
+    return overlaps;
+  }
+
+  /**
+   * Get a map of grid cell keys to direction ('h' or 'v') for a wire.
+   */
+  _getWireDirectionCells(wire) {
+    const gs = GRID_SIZE;
+    const cells = new Map();
+
+    for (let i = 0; i < wire.pathPoints.length - 1; i++) {
+      const p1 = wire.pathPoints[i];
+      const p2 = wire.pathPoints[i + 1];
+      const isHorizontal = Math.abs(p2.y - p1.y) < 1;
+      const isVertical = Math.abs(p2.x - p1.x) < 1;
+
+      if (isHorizontal) {
+        const y = Math.round(p1.y / gs);
+        const x1 = Math.round(Math.min(p1.x, p2.x) / gs);
+        const x2 = Math.round(Math.max(p1.x, p2.x) / gs);
+        for (let x = x1; x <= x2; x++) {
+          cells.set(`${x},${y}`, 'h');
+        }
+      } else if (isVertical) {
+        const x = Math.round(p1.x / gs);
+        const y1 = Math.round(Math.min(p1.y, p2.y) / gs);
+        const y2 = Math.round(Math.max(p1.y, p2.y) / gs);
+        for (let y = y1; y <= y2; y++) {
+          cells.set(`${x},${y}`, 'v');
+        }
+      }
+    }
+
+    return cells;
+  }
+
+  /**
+   * Reroute all wires — called when user clicks "Reroute Wires" button.
    */
   rerouteAllWires() {
     this.rerouteWithFanOut();
@@ -294,16 +451,11 @@ export class CanvasWiring {
     this.wiring.tempPath = path;
   }
 
-  /**
-   * Compute a preview path using A* routing with throttling.
-   * Falls back to simple routing if A* is too slow.
-   */
   computePreviewPath(fromPos, toPos) {
     const components = this._getComponents();
     const busY = this.core.getBusBarY(components);
     const topY = this.core.getTopClearY(components);
 
-    // Try A* for preview (with obstacle cache, it should be fast enough)
     try {
       const router = this._getRouter();
       return Wire.computePath(fromPos, toPos, {
@@ -313,17 +465,12 @@ export class CanvasWiring {
         sourceNodeId: this.wiring?.fromNodeId
       });
     } catch (e) {
-      // Fall back to simple routing
       return Wire.computePath(fromPos, toPos, { minClearY: busY, maxClearY: topY });
     }
   }
 
-  /**
-   * Throttled version of preview path computation.
-   * Only computes A* path every 50ms to maintain smooth preview.
-   */
   throttledPreviewUpdate(fromPos, toPos) {
-    if (this._previewThrottleTimer) return;  // Already waiting
+    if (this._previewThrottleTimer) return;
 
     this._previewThrottleTimer = setTimeout(() => {
       this._previewThrottleTimer = null;
@@ -333,7 +480,6 @@ export class CanvasWiring {
       }
     }, this._previewThrottleInterval);
 
-    // Immediate simple preview for responsiveness
     const busY = this.core.getBusBarY(this._getComponents());
     return Wire.computePath(fromPos, toPos, { minClearY: busY });
   }
@@ -355,7 +501,8 @@ export class CanvasWiring {
   }
 
   _renderWire(wire) {
-    const router = this._getRouter();
+    const channelMap = this._assignVerticalChannels();
+    const router = this._getRouter(channelMap);
     wire.render(
       this.core.svgLayer,
       (nodeId) => this.positionCache.getPosition(nodeId),
@@ -373,19 +520,11 @@ export class CanvasWiring {
     });
   }
 
-  /**
-   * Detect and render wire crossings (bridges/jumps).
-   * Should be called after rerouting or when wires change.
-   */
   updateWireCrossings() {
     this._crossingDetector.detectCrossings(this.wires);
     this._crossingDetector.applyBridges(this.wires);
   }
 
-  /**
-   * Set crossing display style.
-   * @param {string} style - 'ansi' for bridge arcs, 'iec' for junction dots only
-   */
   setCrossingStyle(style) {
     this._crossingDetector.setStyle(style);
     this.updateWireCrossings();
@@ -395,14 +534,16 @@ export class CanvasWiring {
 
   /**
    * Reroute only the wires connected to a specific component.
-   * More efficient than rerouting all wires.
    */
   rerouteWiresForComponent(comp) {
     const prefix = comp.id + '.';
     const components = this._getComponents();
     this._obstacleCache.rebuildComponentGrid(components);
     const busY = this.core.getBusBarY(components);
-    const router = this._getRouter();
+
+    // Assign channels for all wires
+    const channelMap = this._assignVerticalChannels();
+    const router = this._getRouter(channelMap);
 
     this.wires.forEach(wire => {
       if (wire.fromNode.nodeId.startsWith(prefix) || wire.toNode.nodeId.startsWith(prefix)) {

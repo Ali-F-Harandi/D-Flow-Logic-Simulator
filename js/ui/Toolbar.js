@@ -36,6 +36,17 @@ export class Toolbar {
       eventBus.emit('set-crossing-style', this._crossingStyle);
     });
 
+    // Auto-reroute on drop toggle
+    this._autoReroute = true;
+    this.element.querySelector('#auto-reroute-btn').addEventListener('click', () => {
+      this._autoReroute = !this._autoReroute;
+      const btn = this.element.querySelector('#auto-reroute-btn');
+      btn.textContent = `Auto-Reroute: ${this._autoReroute ? 'ON' : 'OFF'}`;
+      btn.classList.toggle('toolbar-btn-accent', this._autoReroute);
+      btn.classList.toggle('toolbar-btn-muted', !this._autoReroute);
+      eventBus.emit('toggle-auto-reroute', this._autoReroute);
+    });
+
     document.addEventListener('simulation-error', (e) => {
       this.statusText.textContent = e.detail;
       setTimeout(() => {
@@ -54,6 +65,7 @@ export class Toolbar {
       <button id="nl-btn" class="toolbar-btn">Netlist</button>
       <div class="toolbar-separator"></div>
       <button id="reroute-btn" class="toolbar-btn toolbar-btn-accent" title="Reroute all wires using A* pathfinding">Reroute Wires</button>
+      <button id="auto-reroute-btn" class="toolbar-btn toolbar-btn-accent" title="Toggle automatic wire rerouting after component drop">Auto-Reroute: ON</button>
       <button id="crossing-style-btn" class="toolbar-btn" title="Toggle wire crossing display style (ANSI bridges / IEC junctions)">Crossing: ANSI</button>
       <label class="speed-label" for="speed-slider">Speed: <input type="range" id="speed-slider" name="speed-slider" min="50" max="1000" value="850" step="50"></label>
       <span id="speed-value">200ms</span>

@@ -96,6 +96,14 @@ export class Canvas {
       this.wiring.rerouteAllWires();
     });
 
+    // Auto-reroute on drop toggle
+    this.eventBus.on('toggle-auto-reroute', (enabled) => {
+      this.wiring.autoRerouteOnDrop = enabled;
+      if (this.toaster) {
+        this.toaster.show(`Auto-reroute on drop: ${enabled ? 'ON' : 'OFF'}`, 'info');
+      }
+    });
+
     // Wire crossing style toggle
     this.eventBus.on('set-crossing-style', (style) => {
       this.wiring.setCrossingStyle(style);

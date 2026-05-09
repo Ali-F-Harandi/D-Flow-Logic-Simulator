@@ -500,6 +500,13 @@ export class Wire {
 
   /**
    * Render control handle circles at each intermediate path point.
+   * Uses larger, more visible handles with clear visual affordance.
+   * 
+   * VISUAL DESIGN:
+   * - Outer ring: large invisible hit area for easy grabbing (r=12)
+   * - Middle ring: visible dashed ring for discoverability (r=7)
+   * - Inner circle: solid colored dot (r=5) — the visible handle
+   * - Add-point handles: dashed circles at segment midpoints
    */
   _renderControlHandles() {
     if (!this.element) return;
@@ -514,35 +521,68 @@ export class Wire {
     // Add handles for intermediate points (not first/last which are endpoints)
     for (let i = 1; i < this.pathPoints.length - 1; i++) {
       const pt = this.pathPoints[i];
+      
+      // Layer 1: Outer ring (hover target, very large for easy grabbing)
+      const outerRing = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      outerRing.setAttribute('cx', pt.x);
+      outerRing.setAttribute('cy', pt.y);
+      outerRing.setAttribute('r', '12');
+      outerRing.setAttribute('fill', 'transparent');
+      outerRing.setAttribute('stroke', 'transparent');
+      outerRing.setAttribute('pointer-events', 'all');
+      outerRing.setAttribute('cursor', 'grab');
+      outerRing.classList.add('wire-control-point-outer');
+      outerRing.dataset.pointIndex = i;
+      outerRing.dataset.wireId = this.id;
+      handleGroup.appendChild(outerRing);
+      
+      // Layer 2: Middle ring (visible dashed ring for discoverability)
+      const middleRing = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      middleRing.setAttribute('cx', pt.x);
+      middleRing.setAttribute('cy', pt.y);
+      middleRing.setAttribute('r', '7');
+      middleRing.setAttribute('fill', 'transparent');
+      middleRing.setAttribute('stroke', '#4ec9b0');
+      middleRing.setAttribute('stroke-width', '1');
+      middleRing.setAttribute('stroke-dasharray', '2,2');
+      middleRing.setAttribute('pointer-events', 'none');
+      middleRing.classList.add('wire-control-point-ring');
+      handleGroup.appendChild(middleRing);
+      
+      // Layer 3: Inner circle (visible solid handle)
       const handle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       handle.setAttribute('cx', pt.x);
       handle.setAttribute('cy', pt.y);
       handle.setAttribute('r', '5');
       handle.setAttribute('fill', '#4ec9b0');
       handle.setAttribute('stroke', '#fff');
-      handle.setAttribute('stroke-width', '1.5');
-      handle.setAttribute('pointer-events', 'all');
-      handle.setAttribute('cursor', 'grab');
+      handle.setAttribute('stroke-width', '2');
+      handle.setAttribute('pointer-events', 'none');  // Outer ring handles events
       handle.classList.add('wire-control-point');
       handle.dataset.pointIndex = i;
       handle.dataset.wireId = this.id;
       handleGroup.appendChild(handle);
     }
 
-    // Also add small "+" indicators at midpoints of segments for adding new points
+    // Add "+" indicators at midpoints of segments for adding new points
     for (let i = 0; i < this.pathPoints.length - 1; i++) {
       const p1 = this.pathPoints[i];
       const p2 = this.pathPoints[i + 1];
       const midX = (p1.x + p2.x) / 2;
       const midY = (p1.y + p2.y) / 2;
+      
+      // Only show add-point on segments longer than 2 grid cells
+      const segLen = Math.abs(p2.x - p1.x) + Math.abs(p2.y - p1.y);
+      if (segLen < GRID_SIZE * 2) continue;
 
+      // Add-point handle (dashed circle with + sign)
       const addHandle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       addHandle.setAttribute('cx', midX);
       addHandle.setAttribute('cy', midY);
-      addHandle.setAttribute('r', '3');
-      addHandle.setAttribute('fill', 'transparent');
+      addHandle.setAttribute('r', '5');
+      addHandle.setAttribute('fill', 'rgba(78, 201, 176, 0.15)');
       addHandle.setAttribute('stroke', '#4ec9b0');
-      addHandle.setAttribute('stroke-width', '1');
+      addHandle.setAttribute('stroke-width', '1.5');
       addHandle.setAttribute('stroke-dasharray', '2,2');
       addHandle.setAttribute('pointer-events', 'all');
       addHandle.setAttribute('cursor', 'crosshair');
@@ -550,6 +590,27 @@ export class Wire {
       addHandle.dataset.afterIndex = i;
       addHandle.dataset.wireId = this.id;
       handleGroup.appendChild(addHandle);
+
+      // Plus sign inside the add-point handle
+      const plusH = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      plusH.setAttribute('x1', midX - 3);
+      plusH.setAttribute('y1', midY);
+      plusH.setAttribute('x2', midX + 3);
+      plusH.setAttribute('y2', midY);
+      plusH.setAttribute('stroke', '#4ec9b0');
+      plusH.setAttribute('stroke-width', '1.5');
+      plusH.setAttribute('pointer-events', 'none');
+      handleGroup.appendChild(plusH);
+
+      const plusV = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      plusV.setAttribute('x1', midX);
+      plusV.setAttribute('y1', midY - 3);
+      plusV.setAttribute('x2', midX);
+      plusV.setAttribute('y2', midY + 3);
+      plusV.setAttribute('stroke', '#4ec9b0');
+      plusV.setAttribute('stroke-width', '1.5');
+      plusV.setAttribute('pointer-events', 'none');
+      handleGroup.appendChild(plusV);
     }
 
     this.element.appendChild(handleGroup);

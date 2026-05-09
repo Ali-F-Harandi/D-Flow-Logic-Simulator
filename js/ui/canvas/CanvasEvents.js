@@ -374,6 +374,7 @@ export class CanvasEvents {
               router
             );
             wire.refreshControlHandles();
+            this.wiring.updateWireCrossings();
           }});
           items.push({ label: 'Add Control Point Here', action: () => {
             const canvasPos = this.core.canvasCoords(e.clientX, e.clientY);
@@ -390,6 +391,10 @@ export class CanvasEvents {
               wire.hideControlHandles();
             }
           }});
+          // Show wire state info
+          const stateLabel = wire.wireState === 'auto' ? 'Auto-routed' :
+                            wire.wireState === 'manual' ? 'Manually edited' : 'Locked';
+          items.push({ label: `State: ${stateLabel}`, action: () => {} });
           this.contextMenu.show(e.clientX, e.clientY, items);
           return;
         }

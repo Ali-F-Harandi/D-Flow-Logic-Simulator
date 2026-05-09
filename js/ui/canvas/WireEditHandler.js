@@ -3,11 +3,21 @@ import { GRID_SIZE } from '../../config.js';
 /**
  * WireEditHandler — manages manual wire editing interactions:
  * - Dragging control points on selected wires
- * - Adding new control points (click on segment midpoint)
+ * - Adding new control points (click on segment midpoint or double-click)
  * - Removing control points (right-click or double-click)
  * - Showing/hiding control handles when wires are selected/deselected
+ *
+ * USAGE INSTRUCTIONS (shown to user on first wire selection):
+ * 1. Click a wire to select it → green control points appear
+ * 2. DRAG green points to adjust wire shape
+ * 3. Double-click a wire segment to ADD a new control point
+ * 4. Double-click a control point to REMOVE it
+ * 5. Right-click a control point for context menu options
  */
 export class WireEditHandler {
+  // Track if instruction toast has been shown (once per session)
+  static _instructionShown = false;
+
   constructor(wiring, core, positionCache, canvas) {
     this.wiring = wiring;
     this.core = core;
@@ -28,6 +38,7 @@ export class WireEditHandler {
 
   /**
    * Show control handles for a wire and hide them for others.
+   * Also shows a brief instruction toast for first-time users.
    * @param {Wire} wire - The wire to show handles for, or null to hide all
    */
   setActiveWire(wire) {
@@ -40,6 +51,16 @@ export class WireEditHandler {
 
     if (wire) {
       wire.showControlHandles();
+      // Show instruction toast (only once per session)
+      if (!WireEditHandler._instructionShown && this.wiring.wires.length > 0) {
+        WireEditHandler._instructionShown = true;
+        if (this.canvas?.toaster) {
+          this.canvas.toaster.show(
+            'Wire Edit: Drag green points to adjust. Double-click wire to add point. Double-click point to remove.',
+            'info', 6000
+          );
+        }
+      }
     }
   }
 
@@ -61,7 +82,16 @@ export class WireEditHandler {
   hitTestControlPoint(target) {
     if (!target) return null;
 
-    // Check for control point (draggable)
+    // Check for control point outer ring (larger hit target)
+    if (target.classList.contains('wire-control-point-outer')) {
+      return {
+        wireId: target.dataset.wireId,
+        pointIndex: parseInt(target.dataset.pointIndex),
+        type: 'control'
+      };
+    }
+
+    // Check for control point (visible inner circle)
     if (target.classList.contains('wire-control-point')) {
       return {
         wireId: target.dataset.wireId,
@@ -106,6 +136,7 @@ export class WireEditHandler {
 
   /**
    * Update control point position during drag.
+   * Snaps to grid for clean Manhattan routing.
    * @param {number} clientX - Mouse/touch X
    * @param {number} clientY - Mouse/touch Y
    */
@@ -115,6 +146,7 @@ export class WireEditHandler {
     // Convert screen coordinates to canvas coordinates
     const canvasPos = this.core.canvasCoords(clientX, clientY);
 
+    // Snap to grid for clean Manhattan routing
     this._dragWire.moveControlPoint(this._dragPointIndex, canvasPos, true);
   }
 
