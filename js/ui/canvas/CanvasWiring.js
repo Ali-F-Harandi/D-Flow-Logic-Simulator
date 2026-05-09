@@ -1,5 +1,5 @@
 import { Wire } from '../../core/Wire.js';
-import { AStarRouter } from '../../core/AStarRouter.js';
+import { AStarRouter, ObstacleCache } from '../../core/AStarRouter.js';
 import { generateId } from '../../utils/IdGenerator.js';
 import { ConnectWireCommand, DisconnectWireCommand } from '../../utils/UndoManager.js';
 
@@ -15,18 +15,58 @@ export class CanvasWiring {
     this.wiring = null;
     this._redrawRequested = false;
     this._redrawCallback = null;
-    this._router = null;  // A* router instance
+    this._router = null;
+
+    // Obstacle cache — avoids rebuilding component grid on every wire routing
+    this._obstacleCache = new ObstacleCache(core.gridSize);
+
+    // Throttle for A* preview (50ms interval)
+    this._previewThrottleTimer = null;
+    this._previewThrottleInterval = 50;
   }
 
   getWires() { return this.wires; }
 
   /**
+   * Get the obstacle cache instance.
+   */
+  getObstacleCache() { return this._obstacleCache; }
+
+  /**
+   * Rebuild the component obstacle cache.
+   * Should be called when components are added, removed, or after drag ends.
+   */
+  rebuildObstacleCache() {
+    const components = this._getComponents();
+    this._obstacleCache.rebuildComponentGrid(components);
+    this._router = null;  // Invalidate router so it picks up new cache
+  }
+
+  /**
+   * Incremental update: remove old component obstacles, add new ones.
+   * Used during drag for better performance than full rebuild.
+   */
+  updateObstacleCacheForComponent(comp, oldPosition) {
+    // Remove old position obstacles
+    if (oldPosition) {
+      const savedPos = comp.position;
+      comp.position = oldPosition;
+      this._obstacleCache.removeComponentObstacles(comp);
+      comp.position = savedPos;
+    }
+    // Add new position obstacles
+    this._obstacleCache.addComponentObstacles(comp);
+    this._router = null;  // Invalidate router
+  }
+
+  /**
    * Create or get the A* router instance for smart wire routing.
+   * Now uses the obstacle cache for fast grid rebuilding.
    */
   _getRouter() {
-    const components = this._getComponents();
+    // Always create a fresh router with the current obstacle cache
     this._router = new AStarRouter(
-      components,
+      this._obstacleCache,
       this.wires,
       this.positionCache,
       this.engine
@@ -47,6 +87,7 @@ export class CanvasWiring {
     const wire = this.wires.find(w => w.engineId === engineId);
     if (wire) {
       if (wire.element) wire.element.remove();
+      wire.occupiedCells.clear();
       this.wires = this.wires.filter(w => w.engineId !== engineId);
       this._updateJunctions();
     }
@@ -58,7 +99,9 @@ export class CanvasWiring {
 
   updateWiresForComponent(comp) {
     const prefix = comp.id + '.';
-    const busY = this.core.getBusBarY(this._getComponents());
+    const components = this._getComponents();
+    const busY = this.core.getBusBarY(components);
+    const topY = this.core.getTopClearY(components);
     const router = this._getRouter();
     this.wires.forEach(wire => {
       if (wire.fromNode.nodeId.startsWith(prefix) || wire.toNode.nodeId.startsWith(prefix)) {
@@ -69,7 +112,12 @@ export class CanvasWiring {
 
   performRedraw(components) {
     const busY = this.core.getBusBarY(components);
-    const router = new AStarRouter(components, this.wires, this.positionCache, this.engine);
+    const topY = this.core.getTopClearY(components);
+
+    // Rebuild obstacle cache before redrawing all wires
+    this._obstacleCache.rebuildComponentGrid(components);
+
+    const router = this._getRouter();
     this.wires.forEach(wire => {
       wire.updatePath((nodeId) => this.positionCache.getPosition(nodeId), busY, router);
       const sourceComp = this.engine._findComponentByNode(wire.fromNode.nodeId);
@@ -106,10 +154,58 @@ export class CanvasWiring {
     this.wiring.tempPath = path;
   }
 
+  /**
+   * Compute a preview path using A* routing with throttling.
+   * Falls back to simple routing if A* is too slow.
+   */
+  computePreviewPath(fromPos, toPos) {
+    const components = this._getComponents();
+    const busY = this.core.getBusBarY(components);
+    const topY = this.core.getTopClearY(components);
+
+    // Try A* for preview (with obstacle cache, it should be fast enough)
+    try {
+      const router = this._getRouter();
+      return Wire.computePath(fromPos, toPos, {
+        minClearY: busY,
+        maxClearY: topY,
+        router,
+        sourceNodeId: this.wiring?.fromNodeId
+      });
+    } catch (e) {
+      // Fall back to simple routing
+      return Wire.computePath(fromPos, toPos, { minClearY: busY, maxClearY: topY });
+    }
+  }
+
+  /**
+   * Throttled version of preview path computation.
+   * Only computes A* path every 50ms to maintain smooth preview.
+   */
+  throttledPreviewUpdate(fromPos, toPos) {
+    if (this._previewThrottleTimer) return;  // Already waiting
+
+    this._previewThrottleTimer = setTimeout(() => {
+      this._previewThrottleTimer = null;
+      if (this.wiring && this.wiring.tempPath) {
+        const d = this.computePreviewPath(fromPos, toPos);
+        this.wiring.tempPath.setAttribute('d', d);
+      }
+    }, this._previewThrottleInterval);
+
+    // Immediate simple preview for responsiveness
+    const busY = this.core.getBusBarY(this._getComponents());
+    return Wire.computePath(fromPos, toPos, { minClearY: busY });
+  }
+
   cancelWiring() {
     if (this.wiring) {
       if (this.wiring.tempPath) this.wiring.tempPath.remove();
       this.wiring = null;
+    }
+    if (this._previewThrottleTimer) {
+      clearTimeout(this._previewThrottleTimer);
+      this._previewThrottleTimer = null;
     }
   }
 

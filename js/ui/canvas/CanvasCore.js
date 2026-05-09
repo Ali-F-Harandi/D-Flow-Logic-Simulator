@@ -112,17 +112,37 @@ export class CanvasCore {
 
   /**
    * Calculate a safe Y level for backward routing (below all components).
+   * Uses cached dimensions when available to avoid layout reflow.
    * @param {Array} components – array of component objects with position and element.
    */
   getBusBarY(components) {
     let maxBottom = 0;
     for (const comp of components) {
       if (comp.element) {
-        const bottom = comp.position.y + comp.element.offsetHeight;
+        const h = comp._cachedHeight || comp.element.offsetHeight;
+        const bottom = comp.position.y + h;
         if (bottom > maxBottom) maxBottom = bottom;
       }
     }
     return maxBottom + 40;
+  }
+
+  /**
+   * Calculate a safe Y level for routing above all components.
+   * Returns the minimum Y coordinate that is above all components,
+   * providing an alternative top-side bus bar for fallback routing.
+   * @param {Array} components – array of component objects with position and element.
+   */
+  getTopClearY(components) {
+    let minTop = Infinity;
+    for (const comp of components) {
+      if (comp.element) {
+        if (comp.position.y < minTop) {
+          minTop = comp.position.y;
+        }
+      }
+    }
+    return minTop === Infinity ? 0 : minTop - 40;
   }
 
   /**

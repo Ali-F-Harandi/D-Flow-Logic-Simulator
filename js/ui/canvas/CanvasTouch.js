@@ -262,7 +262,17 @@ export class CanvasTouch {
       this._lastMagnetNodeId = magnetResult?.nodeId || null;
 
       const busY = this.core.getBusBarY(this.compManager.components);
-      this.wiring.wiring.tempPath.setAttribute('d', Wire.computePath(fromPos, toPos, { minClearY: busY }));
+      // Use A* routing for touch preview (fast with obstacle cache)
+      try {
+        const router = this.wiring._getRouter();
+        this.wiring.wiring.tempPath.setAttribute('d', Wire.computePath(fromPos, toPos, {
+          minClearY: busY,
+          router,
+          sourceNodeId: this.wiring.wiring.fromNodeId
+        }));
+      } catch (e) {
+        this.wiring.wiring.tempPath.setAttribute('d', Wire.computePath(fromPos, toPos, { minClearY: busY }));
+      }
     }
   }
 

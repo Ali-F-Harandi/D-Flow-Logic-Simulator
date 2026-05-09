@@ -126,8 +126,19 @@ export class CanvasEvents {
         }
         this._lastMagnetNodeId = magnetResult?.nodeId || null;
         const busY = this.core.getBusBarY(this.compManager.components);
-        // Preview path uses simple routing (no A* for preview — too slow for real-time)
-        this.wiring.wiring.tempPath.setAttribute('d', Wire.computePath(fromPos, toPos, { minClearY: busY }));
+        // Use A* routing for preview (fast enough with obstacle cache)
+        try {
+          const router = this.wiring._getRouter();
+          const previewD = Wire.computePath(fromPos, toPos, {
+            minClearY: busY,
+            router,
+            sourceNodeId: this.wiring.wiring.fromNodeId
+          });
+          this.wiring.wiring.tempPath.setAttribute('d', previewD);
+        } catch (e) {
+          // Fallback to simple routing if A* fails
+          this.wiring.wiring.tempPath.setAttribute('d', Wire.computePath(fromPos, toPos, { minClearY: busY }));
+        }
       }
       if (this.selection.selectionRect) { this.selection.updateSelection(e); }
     });

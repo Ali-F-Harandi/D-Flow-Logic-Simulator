@@ -83,6 +83,16 @@ export class CanvasDrag {
     this.dragData.components.forEach(comp => this.wiring.updateWiresForComponent(comp));
     this.wiring.positionCache.invalidate();
 
+    // Update obstacle cache incrementally during drag for smoother wire routing
+    this.dragData.components.forEach(comp => {
+      if (comp.element) {
+        comp._cachedWidth = comp.element.offsetWidth;
+        comp._cachedHeight = comp.element.offsetHeight;
+      }
+      const orig = this.dragData.origins[comp.id];
+      this.wiring.updateObstacleCacheForComponent(comp, orig);
+    });
+
     // Update alignment indicators
     this._updateAlignIndicators();
   }
@@ -93,6 +103,9 @@ export class CanvasDrag {
       this.dragData = null;
     }
     this.isDragging = false;
+
+    // Rebuild obstacle cache fully after drag ends for consistency
+    this.wiring.rebuildObstacleCache();
 
     // Hide alignment indicators
     this._hideAlignIndicators();

@@ -46,12 +46,12 @@
 /* Larger touch target for connectors on touch devices */
 @media (hover: none) and (pointer: coarse) {
   .connector {
-    width: 18px;
-    height: 18px;
+    width: 22px;
+    height: 22px;
     border-radius: 50%;
   }
-  .connector.input  { left: -9px; }
-  .connector.output { right: -9px; }
+  .connector.input  { left: -11px; }
+  .connector.output { right: -11px; }
 }
 
 /* Label sits next to the dot */

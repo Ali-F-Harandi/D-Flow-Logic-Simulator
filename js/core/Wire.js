@@ -1,4 +1,4 @@
-import { WIRE_VISUAL_WIDTH, WIRE_HIT_WIDTH, JUNCTION_RADIUS } from '../config.js';
+import { WIRE_VISUAL_WIDTH, WIRE_HIT_WIDTH, JUNCTION_RADIUS, GRID_SIZE } from '../config.js';
 import { AStarRouter } from './AStarRouter.js';
 
 export class Wire {
@@ -7,6 +7,7 @@ export class Wire {
     this.fromNode = fromNode;
     this.toNode = toNode;
     this.element = null;
+    this.occupiedCells = new Set();  // Cached grid cells this wire occupies
   }
 
   /**
@@ -16,6 +17,7 @@ export class Wire {
    * @param {Object} toPos   - { x, y }
    * @param {Object} [opts]  - optional parameters
    * @param {number} [opts.minClearY] - a guaranteed safe Y below all components
+   * @param {number} [opts.maxClearY] - a guaranteed safe Y above all components
    * @param {AStarRouter} [opts.router] - A* router instance for smart routing
    * @param {string} [opts.sourceNodeId] - source node ID for overlap checking
    * @returns {string} SVG path data
@@ -28,17 +30,16 @@ export class Wire {
       try {
         return router.computePath(fromPos, toPos, sourceNodeId, opts);
       } catch (e) {
-        // Fall back to simple routing on error
         console.warn('A* routing failed, falling back to simple routing:', e);
       }
     }
 
-    // Simple Manhattan routing fallback
+    // Simple Manhattan routing fallback (with bidirectional bus bar support)
     const startX = fromPos.x;
     const startY = fromPos.y;
     const endX = toPos.x;
     const endY = toPos.y;
-    const { minClearY } = opts;
+    const { minClearY, maxClearY } = opts;
 
     if (endX >= startX + 20) {
       const midX = startX + (endX - startX) / 2;
@@ -66,6 +67,60 @@ export class Wire {
              `L ${endX - offset} ${busLevel} ` +
              `L ${endX - offset} ${endY} ` +
              `L ${endX} ${endY}`;
+    }
+  }
+
+  /**
+   * Update the cached set of grid cells this wire occupies.
+   * Called after the wire path is computed/updated.
+   * @param {string} d - SVG path data string
+   */
+  updateOccupiedCells(d) {
+    this.occupiedCells.clear();
+    if (!d) return;
+
+    const gs = GRID_SIZE;
+    const commands = d.match(/[ML]\s*[\d.e+-]+/gi);
+    if (!commands) return;
+
+    let cx = 0, cy = 0;
+    for (const cmd of commands) {
+      const type = cmd[0];
+      const nums = cmd.slice(1).trim().split(/[\s,]+/).map(Number);
+      if (nums.length >= 2) {
+        const nx = nums[0];
+        const ny = nums[1];
+        if (type === 'L') {
+          // Mark all cells along this segment
+          const isHorizontal = Math.abs(ny - cy) < 1;
+          const isVertical = Math.abs(nx - cx) < 1;
+          if (isHorizontal) {
+            const y = Math.round(cy / gs);
+            const x1 = Math.round(Math.min(cx, nx) / gs);
+            const x2 = Math.round(Math.max(cx, nx) / gs);
+            for (let x = x1; x <= x2; x++) {
+              this.occupiedCells.add(`${x},${y}`);
+            }
+          } else if (isVertical) {
+            const x = Math.round(cx / gs);
+            const y1 = Math.round(Math.min(cy, ny) / gs);
+            const y2 = Math.round(Math.max(cy, ny) / gs);
+            for (let y = y1; y <= y2; y++) {
+              this.occupiedCells.add(`${x},${y}`);
+            }
+          }
+        }
+        cx = nx;
+        cy = ny;
+        for (let i = 2; i + 1 < nums.length; i += 2) {
+          cx = nums[i];
+          cy = nums[i + 1];
+        }
+        if (type === 'M') {
+          cx = nums[0];
+          cy = nums[1];
+        }
+      }
     }
   }
 
@@ -115,6 +170,9 @@ export class Wire {
     visualPath.setAttribute('d', d);
     hitPath.setAttribute('d', d);
 
+    // Cache occupied cells for fast obstacle grid building
+    this.updateOccupiedCells(d);
+
     junctionDot.setAttribute('cx', fromPos.x);
     junctionDot.setAttribute('cy', fromPos.y);
 
@@ -139,6 +197,9 @@ export class Wire {
     this.element.querySelector('.wire-visual').setAttribute('d', d);
     this.element.querySelector('.wire-hitarea').setAttribute('d', d);
 
+    // Update cached occupied cells
+    this.updateOccupiedCells(d);
+
     const junctionDot = this.element.querySelector('.wire-junction');
     if (junctionDot) {
       junctionDot.setAttribute('cx', fromPos.x);
@@ -157,7 +218,6 @@ export class Wire {
       if (sourceValue === true) {
         color = highColor;
       } else if (sourceValue === null) {
-        // Z state (high-impedance) — show in orange with dash pattern
         color = zColor;
         const visualPath = this.element.querySelector('.wire-visual');
         if (visualPath) {
@@ -165,7 +225,6 @@ export class Wire {
         }
       } else {
         color = neutralColor;
-        // Clear any dash pattern for normal wires
         const visualPath = this.element.querySelector('.wire-visual');
         if (visualPath) {
           visualPath.removeAttribute('stroke-dasharray');

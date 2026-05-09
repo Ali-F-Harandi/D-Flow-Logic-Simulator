@@ -133,17 +133,33 @@ export class Canvas {
   addComponent(comp) {
     this.compManager.addComponent(comp);
     this.positionCache.invalidate();
+    // Cache component dimensions to avoid layout reflow in A* router
+    if (comp.element) {
+      comp._cachedWidth = comp.element.offsetWidth;
+      comp._cachedHeight = comp.element.offsetHeight;
+    }
+    // Rebuild obstacle cache when components change
+    this.wiring.rebuildObstacleCache();
   }
 
   _onComponentModified(comp) {
     this.compManager._onComponentModified(comp);
+    // Update cached dimensions after modification
+    if (comp.element) {
+      comp._cachedWidth = comp.element.offsetWidth;
+      comp._cachedHeight = comp.element.offsetHeight;
+    }
     this.wiring.updateWiresForComponent(comp);
     this.wiring.scheduleRedraw();
+    // Update obstacle cache after component moves
+    this.wiring.rebuildObstacleCache();
   }
 
   _deleteComponent(compId) {
     this.compManager._deleteComponent(compId);
     this.positionCache.invalidate();
+    // Rebuild obstacle cache after component deletion
+    this.wiring.rebuildObstacleCache();
   }
 
   _addVisualWire(engineId, fromNodeId, toNodeId) {

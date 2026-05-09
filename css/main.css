@@ -129,9 +129,9 @@ html, body {
   #footer {
     display: none;
   }
-  #canvas-container {
-    overflow: auto;
-  }
+  /* Removed overflow: auto — canvas panning is handled by JS,
+     overflow auto conflicts with touch-action: none and causes
+     browser scroll instead of canvas pan on mobile */
 }
 
 @media (prefers-reduced-motion: reduce) {
