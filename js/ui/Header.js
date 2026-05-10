@@ -11,33 +11,35 @@ export class Header {
     container.appendChild(this.element);
     this._bindButtons();
     this._initTheme();
-    // HP-2 FIX: Removed _bindGlobalShortcuts() — the Delete key handler
-    // here was duplicating the one in CanvasEvents._bindKeyboard().
-    // Both listened on window for 'Delete' and could fire double-delete.
-    // CanvasEvents already handles all keyboard shortcuts properly.
   }
 
   build() {
     const header = document.createElement('header');
     header.id = 'header';
     header.innerHTML = `
-      <button class="hamburger-btn" title="Toggle sidebar" aria-label="Toggle sidebar">☰</button>
+      <button class="hamburger-btn" title="Toggle sidebar" aria-label="Toggle sidebar"><i data-lucide="menu" style="width:18px;height:18px"></i></button>
       <span class="app-title">D-Flow</span>
       <div class="header-controls">
-        <button class="header-btn run-btn" title="Run simulation (continuous)" aria-label="Run simulation">▶ Run</button>
-        <button class="header-btn stop-btn" title="Stop simulation" aria-label="Stop simulation">⏹ Stop</button>
-        <button class="header-btn step-btn" title="Advance one step" aria-label="Step simulation">⏭ Step</button>
-        <button class="header-btn reset-btn" title="Reset all component states" aria-label="Reset simulation">↺ Reset</button>
-        <button class="header-btn zoom-fit-btn" title="Zoom to fit all components" aria-label="Zoom to fit">⊞</button>
-        <button class="header-btn center-btn" title="Center canvas view" aria-label="Center view">⊕</button>
-        <button class="header-btn save-btn" title="Save to browser storage" aria-label="Save project">💾</button>
-        <button class="header-btn load-btn" title="Restore last saved project" aria-label="Load project">📂</button>
-        <button class="header-btn export-btn" title="Export circuit as JSON file" aria-label="Export circuit">📤 Export</button>
-        <button class="header-btn import-btn" title="Import circuit from JSON file" aria-label="Import circuit">📥 Import</button>
-        <button class="header-btn theme-toggle-btn" title="Toggle theme (dark/light/high-contrast)" aria-label="Toggle theme">🌙</button>
-        <button class="header-btn examples-btn" title="Load example circuit" aria-label="Example circuits">📋 Examples</button>
+        <button class="header-btn run-btn" title="Run simulation (continuous)" aria-label="Run simulation"><i data-lucide="play" style="width:14px;height:14px"></i> Run</button>
+        <button class="header-btn stop-btn" title="Stop simulation" aria-label="Stop simulation"><i data-lucide="square" style="width:14px;height:14px"></i> Stop</button>
+        <button class="header-btn step-btn" title="Advance one step" aria-label="Step simulation"><i data-lucide="step-forward" style="width:14px;height:14px"></i> Step</button>
+        <button class="header-btn reset-btn" title="Reset all component states" aria-label="Reset simulation"><i data-lucide="rotate-ccw" style="width:14px;height:14px"></i> Reset</button>
+        <button class="header-btn zoom-fit-btn" title="Zoom to fit all components" aria-label="Zoom to fit"><i data-lucide="maximize" style="width:14px;height:14px"></i></button>
+        <button class="header-btn center-btn" title="Center canvas view" aria-label="Center view"><i data-lucide="crosshair" style="width:14px;height:14px"></i></button>
+        <button class="header-btn save-btn" title="Save to browser storage" aria-label="Save project"><i data-lucide="save" style="width:14px;height:14px"></i></button>
+        <button class="header-btn load-btn" title="Restore last saved project" aria-label="Load project"><i data-lucide="folder-open" style="width:14px;height:14px"></i></button>
+        <button class="header-btn export-btn" title="Export circuit as JSON file" aria-label="Export circuit"><i data-lucide="upload" style="width:14px;height:14px"></i> Export</button>
+        <button class="header-btn import-btn" title="Import circuit from JSON file" aria-label="Import circuit"><i data-lucide="download" style="width:14px;height:14px"></i> Import</button>
+        <button class="header-btn theme-toggle-btn" title="Toggle theme (dark/light/high-contrast)" aria-label="Toggle theme"><i data-lucide="moon" style="width:14px;height:14px"></i></button>
+        <button class="header-btn examples-btn" title="Load example circuit" aria-label="Example circuits"><i data-lucide="book-open" style="width:14px;height:14px"></i> Examples</button>
       </div>
     `;
+
+    // Initialize Lucide icons
+    if (window.lucide) {
+      try { window.lucide.createIcons(); } catch(e) { /* fallback */ }
+    }
+
     return header;
   }
 
@@ -90,7 +92,6 @@ export class Header {
 
     this.hamburgerBtn.addEventListener('click', () => this.eventBus.emit('toggle-sidebar'));
 
-    // Example circuits
     this.examplesBtn.addEventListener('click', () => this._showExamplesDialog());
 
     this.themeToggleBtn.addEventListener('click', () => {
@@ -104,7 +105,6 @@ export class Header {
       this._updateThemeIcon(next);
     });
 
-    // Save
     this.saveBtn.addEventListener('click', () => {
       const state = Serializer.exportState(this.engine);
       localStorage.setItem('dflow-project', JSON.stringify(state));
@@ -112,7 +112,6 @@ export class Header {
       else alert('Project saved to localStorage.');
     });
 
-    // Load
     this.loadBtn.addEventListener('click', () => {
       const saved = localStorage.getItem('dflow-project');
       if (!saved) {
@@ -133,7 +132,6 @@ export class Header {
       }
     });
 
-    // Export JSON
     this.exportBtn.addEventListener('click', () => {
       const state = Serializer.exportState(this.engine);
       const json = JSON.stringify(state, null, 2);
@@ -146,7 +144,6 @@ export class Header {
       URL.revokeObjectURL(url);
     });
 
-    // Import JSON
     this.importBtn.addEventListener('click', () => {
       const input = document.createElement('input');
       input.type = 'file';
@@ -180,18 +177,23 @@ export class Header {
 
   _updateThemeIcon(theme) {
     if (this.themeToggleBtn) {
-      const icons = { dark: '🌙', light: '☀️', 'high-contrast': '⬛' };
-      this.themeToggleBtn.innerHTML = icons[theme] || '🌙';
+      const iconMap = { dark: 'moon', light: 'sun', 'high-contrast': 'contrast' };
+      const iconName = iconMap[theme] || 'moon';
+      // Update the Lucide icon
+      const iconEl = this.themeToggleBtn.querySelector('i[data-lucide]');
+      if (iconEl) {
+        iconEl.setAttribute('data-lucide', iconName);
+        // Re-render the icon
+        if (window.lucide) {
+          try { window.lucide.createIcons({ nodes: [iconEl] }); } catch(e) {}
+        }
+      }
     }
   }
 
-  /**
-   * Show a dialog with example circuits to load.
-   */
   _showExamplesDialog() {
     const examples = ExampleCircuits.getAll();
 
-    // Remove any existing dialog
     const existing = document.getElementById('examples-dialog');
     if (existing) existing.remove();
 
@@ -207,7 +209,7 @@ export class Header {
     const content = document.createElement('div');
     content.style.cssText = `
       background: var(--color-surface); border: 1px solid var(--color-border);
-      border-radius: 8px; padding: 20px; max-width: 500px; width: 90%;
+      border-radius: 8px; padding: 20px; max-width: 550px; width: 90%;
       max-height: 80vh; overflow-y: auto; box-shadow: var(--shadow-lg);
     `;
 
@@ -219,7 +221,7 @@ export class Header {
     header.innerHTML = `<h3 style="margin:0;color:var(--color-accent)">Example Circuits</h3>`;
 
     const closeBtn = document.createElement('button');
-    closeBtn.textContent = '✕';
+    closeBtn.textContent = '\u2715';
     closeBtn.style.cssText = `
       background: var(--color-surface-alt); border: 1px solid var(--color-border);
       color: var(--color-text); width: 28px; height: 28px; border-radius: 50%;
@@ -281,12 +283,6 @@ export class Header {
     this.stepBtn.disabled = running;
     this.element.classList.toggle('sim-running', running);
   }
-
-  // HP-2 FIX: Removed _bindGlobalShortcuts() entirely.
-  // The Delete key handler here duplicated CanvasEvents._bindKeyboard().
-  // Both listened on `window` for 'keydown' with 'Delete', causing
-  // double-deletion when both fired. CanvasEvents already handles
-  // Delete/Backspace, Ctrl+Z, Ctrl+Y, Ctrl+C, Ctrl+V, arrows, etc.
 
   setFactory(factory) {
     this.factory = factory;

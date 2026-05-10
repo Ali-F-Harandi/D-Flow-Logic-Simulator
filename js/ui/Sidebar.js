@@ -60,13 +60,14 @@ export class Sidebar {
     list.innerHTML = '';
 
     const categories = ['Gates', 'Flip-Flops', 'Chips', 'Inputs', 'Outputs', 'Other'];
+    // Lucide icon names for each category
     const categoryIcons = {
-      'Gates': '⚡',
-      'Flip-Flops': '🔄',
-      'Chips': '📦',
-      'Inputs': '🔘',
-      'Outputs': '💡',
-      'Other': '🔧'
+      'Gates': 'zap',
+      'Flip-Flops': 'refresh-cw',
+      'Chips': 'cpu',
+      'Inputs': 'toggle-left',
+      'Outputs': 'lightbulb',
+      'Other': 'wrench'
     };
     const grouped = {};
     categories.forEach(cat => (grouped[cat] = []));
@@ -84,7 +85,8 @@ export class Sidebar {
 
       const header = document.createElement('div');
       header.className = 'group-header';
-      header.textContent = `${categoryIcons[category] || ''} ${category}`;
+      const iconName = categoryIcons[category] || 'box';
+      header.innerHTML = `<i data-lucide="${iconName}" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:4px"></i>${category}`;
       header.style.cursor = 'pointer';
       
       // Collapsible groups
@@ -121,6 +123,11 @@ export class Sidebar {
       groupDiv.appendChild(itemsDiv);
       list.appendChild(groupDiv);
     });
+
+    // Initialize Lucide icons in the sidebar
+    if (window.lucide) {
+      try { window.lucide.createIcons(); } catch(e) { /* fallback */ }
+    }
 
     if (list.children.length === 0) {
       list.innerHTML = '<div class="no-results">No components found</div>';

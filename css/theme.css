@@ -84,6 +84,9 @@
   --toast-warning-bg: #f9a825;
   --toast-warning-color: #1e1e1e;
   --toast-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  --toolbar-accent-text: #fff;
+  --toolbar-active-bg: var(--color-accent);
+  --toolbar-active-text: #fff;
 }
 
 [data-theme="light"] {
@@ -139,6 +142,9 @@
   --toast-warning-bg: #f9a825;
   --toast-warning-color: #1e1e1e;
   --toast-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  --toolbar-accent-text: #fff;
+  --toolbar-active-bg: var(--color-accent);
+  --toolbar-active-text: #fff;
 }
 
 /* High Contrast Theme */
@@ -195,6 +201,9 @@
   --toast-warning-bg: #000;
   --toast-warning-color: #ff0;
   --toast-shadow: 0 0 0 2px #fff;
+  --toolbar-accent-text: #000;
+  --toolbar-active-bg: #ff0;
+  --toolbar-active-text: #000;
 }
 
 .grid-dot {

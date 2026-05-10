@@ -46,13 +46,20 @@
 /* Accent-style toolbar button (for Reroute Wires) */
 .toolbar-btn-accent {
   background: var(--color-accent) !important;
-  color: #fff !important;
+  color: var(--toolbar-accent-text, #fff) !important;
   border: none !important;
   font-weight: 600;
 }
 
 .toolbar-btn-accent:hover {
   background: var(--color-accent-hover) !important;
+}
+
+/* Active/pressed toolbar button state */
+.toolbar-btn:active,
+.toolbar-btn-accent:active {
+  background: var(--toolbar-active-bg, var(--color-accent)) !important;
+  color: var(--toolbar-active-text, #fff) !important;
 }
 
 /* Muted toolbar button (for disabled toggles) */
