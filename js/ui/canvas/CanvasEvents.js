@@ -250,7 +250,7 @@ export class CanvasEvents {
           else if (errorMsg) this.toaster ? this.toaster.show(errorMsg, 'error') : console.warn(errorMsg);
         }
 
-        if (!connected && this._lastMagnetNodeId) {
+        if (!connected && !targetConn && this._lastMagnetNodeId) {
           const magnetComp = this.engine._findComponentByNode(this._lastMagnetNodeId);
           const magnetDot = magnetComp?.element?.querySelector(`.connector[data-node="${this._lastMagnetNodeId}"]`);
           const isMagnetOutput = magnetDot?.classList.contains('output') ?? false;
@@ -360,6 +360,13 @@ export class CanvasEvents {
   /* ---------- Keyboard ---------- */
   _bindKeyboard() {
     window.addEventListener('keydown', (e) => {
+      // Cancel regular wiring with Escape
+      if (this.wiring.wiring && e.key === 'Escape') {
+        e.preventDefault();
+        this.wiring.cancelWiring();
+        return;
+      }
+
       // ─── Manual drawing mode keyboard shortcuts ───
       if (this.wiring.isManualDrawing) {
         if (e.key === 'Escape') {
@@ -645,7 +652,9 @@ export class CanvasEvents {
 
   _findNearestConnector(clientX, clientY) {
     const MAGNET_RADIUS = WIRE_PIN_MAGNET_RADIUS;
-    const fromIsOutput = this.wiring.wiring?.fromIsOutput ?? (this.wiring._manualDrawSourceNodeId ? true : null);
+    const fromIsOutput = this.wiring.wiring?.fromIsOutput
+      ?? this.wiring._manualDrawIsOutput
+      ?? (this.wiring._manualDrawSourceNodeId ? true : null);
     const fromNodeId = this.wiring.wiring?.fromNodeId || this.wiring._manualDrawSourceNodeId;
     let closest = null;
     let closestDist = MAGNET_RADIUS;

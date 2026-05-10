@@ -91,11 +91,11 @@ export class StarRouter {
     const toCol   = this.grid.toCol(toPos.x);
     const toRow   = this.grid.toRow(toPos.y);
 
-    // Quick check: same cell → direct line
+    // Quick check: same cell → direct line (preserve exact pin positions)
     if (fromCol === toCol && fromRow === toRow) {
       return [
-        { x: this.grid.snapToGrid(fromPos.x), y: this.grid.snapToGrid(fromPos.y) },
-        { x: this.grid.snapToGrid(toPos.x),   y: this.grid.snapToGrid(toPos.y)   }
+        { x: fromPos.x, y: fromPos.y },
+        { x: toPos.x,   y: toPos.y   }
       ];
     }
 
@@ -327,9 +327,10 @@ export class StarRouter {
       } else if (i === gridPath.points.length - 1) {
         pixels.push({ x: toPos.x, y: toPos.y });
       } else {
+        // toX(col) = col * gridSize → already on a grid line, no +gridSize/2 offset
         pixels.push({
-          x: this.grid.toX(pt.col) + this.gridSize / 2,
-          y: this.grid.toY(pt.row) + this.gridSize / 2
+          x: this.grid.toX(pt.col),
+          y: this.grid.toY(pt.row)
         });
       }
     }
@@ -345,7 +346,11 @@ export class StarRouter {
   _simplifyPath(points) {
     if (points.length <= 2) return points;
 
-    const simplified = [points[0]];
+    // Preserve exact pin endpoint positions (fromPos / toPos) — never snap them
+    const firstPoint = points[0];
+    const lastPoint  = points[points.length - 1];
+
+    const simplified = [firstPoint];
 
     for (let i = 1; i < points.length - 1; i++) {
       const prev = simplified[simplified.length - 1];
@@ -357,19 +362,19 @@ export class StarRouter {
       const sameY = Math.abs(prev.y - curr.y) < 1 && Math.abs(curr.y - next.y) < 1;
 
       if (!sameX && !sameY) {
-        // Direction change — keep this point
-        simplified.push(curr);
+        // Direction change — keep this point, snap only intermediate bends to grid
+        simplified.push({
+          x: this.grid.snapToGrid(curr.x),
+          y: this.grid.snapToGrid(curr.y)
+        });
       }
       // If collinear, skip the middle point
     }
 
-    simplified.push(points[points.length - 1]);
+    // Append the exact target pin position — no snapToGrid
+    simplified.push(lastPoint);
 
-    // Snap all points to grid
-    return simplified.map(p => ({
-      x: this.grid.snapToGrid(p.x),
-      y: this.grid.snapToGrid(p.y)
-    }));
+    return simplified;
   }
 
   /* ─── Direction Handling ─── */

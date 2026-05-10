@@ -41,11 +41,14 @@ export class NodePositionCache {
 
     const dots = this._canvas.querySelectorAll('.connector[data-node]');
     dots.forEach(dot => {
-      // Skip dots that are not visible (removed from DOM or hidden)
-      if (!dot.offsetParent) return;
-
       const nodeId = dot.dataset.node;
       const dotRect = dot.getBoundingClientRect();
+
+      // Use area check instead of offsetParent — more reliable across CSS contexts.
+      // offsetParent is null for position:fixed elements and during certain layout
+      // states (display:none transitions, first render before paint), causing valid
+      // connectors to be silently skipped and their wires routed to (0, 0).
+      if (dotRect.width === 0 && dotRect.height === 0) return;
       let x, y;
       if (sceneRect) {
         // Direct conversion using scene's viewport position.

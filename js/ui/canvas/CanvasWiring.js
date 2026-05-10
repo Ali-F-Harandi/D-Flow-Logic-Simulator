@@ -511,6 +511,7 @@ export class CanvasWiring {
 
     this._manualDrawing = true;
     this._manualDrawSourceNodeId = sourceNodeId;
+    this._manualDrawIsOutput = isOutput;
     this._manualDrawPoints = [{
       x: Math.round(startPos.x / GRID_SIZE) * GRID_SIZE,
       y: Math.round(startPos.y / GRID_SIZE) * GRID_SIZE

@@ -14,7 +14,7 @@ export const ASTAR_MAX_ITERATIONS  = 50000; // Maximum A* search iterations
 export const ASTAR_STEP_BACK       = 1;    // Grid cells for step-back from pins
 
 // ─── Wire Nudging Constants ───
-export const WIRE_NUDGE_SPACING    = GRID_SIZE * 0.6; // Space between parallel wires
+export const WIRE_NUDGE_SPACING    = GRID_SIZE;       // Space between parallel wires (on-grid)
 export const WIRE_NUDGE_MAX        = GRID_SIZE * 2;    // Maximum nudge offset
 
 // ─── Wire Drawing Constants ───

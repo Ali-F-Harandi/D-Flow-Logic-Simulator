@@ -169,13 +169,12 @@ export class Wire {
     }
 
     if (tx >= sx - GRID_SIZE) {
-      const mx1 = sx + 30;
-      const mx2 = tx - 30;
-      if (Math.abs(ty - sy) < GRID_SIZE) {
-        const arcY = Math.min(sy, ty) - 40;
-        return `M ${sx} ${sy} L ${mx1} ${sy} L ${mx1} ${arcY} L ${mx2} ${arcY} L ${mx2} ${ty} L ${tx} ${ty}`;
-      }
-      return `M ${sx} ${sy} L ${mx1} ${sy} L ${mx1} ${ty} L ${tx} ${ty}`;
+      // Nearby horizontal pins: step out vertically instead of creating loop-back
+      const step = 40;
+      const midY = (Math.abs(ty - sy) < GRID_SIZE)
+        ? Math.min(sy, ty) - step
+        : (sy + ty) / 2;
+      return `M ${sx} ${sy} L ${sx} ${midY} L ${tx} ${midY} L ${tx} ${ty}`;
     }
 
     // Backward routing
@@ -209,15 +208,13 @@ export class Wire {
   static svgPathToPoints(d) {
     const points = [];
     if (!d) return points;
-    const commands = d.match(/[ML]\s*[\d.e+-]+/gi);
+    // Match M or L followed by one or more coordinate pairs (x y or x,y)
+    const commands = d.match(/[ML]\s+(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?[\s,]+-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?(?:[\s,]+-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)*)/gi);
     if (!commands) return points;
     for (const cmd of commands) {
-      const nums = cmd.slice(1).trim().split(/[\s,]+/).map(Number);
-      if (nums.length >= 2) {
-        points.push({ x: nums[0], y: nums[1] });
-        for (let i = 2; i + 1 < nums.length; i += 2) {
-          points.push({ x: nums[i], y: nums[i + 1] });
-        }
+      const nums = cmd.slice(1).trim().split(/[\s,]+/).map(Number).filter(n => !isNaN(n));
+      for (let i = 0; i + 1 < nums.length; i += 2) {
+        points.push({ x: nums[i], y: nums[i + 1] });
       }
     }
     return points;
@@ -974,12 +971,13 @@ export class Wire {
     this.occupiedCells.clear();
     if (!d) return;
     const gs = GRID_SIZE;
-    const commands = d.match(/[ML]\s*[\d.e+-]+/gi);
+    // Match M or L followed by one or more coordinate pairs
+    const commands = d.match(/[ML]\s+(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?[\s,]+-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?(?:[\s,]+-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)*)/gi);
     if (!commands) return;
     let cx = 0, cy = 0;
     for (const cmd of commands) {
       const type = cmd[0];
-      const nums = cmd.slice(1).trim().split(/[\s,]+/).map(Number);
+      const nums = cmd.slice(1).trim().split(/[\s,]+/).map(Number).filter(n => !isNaN(n));
       if (nums.length >= 2) {
         const nx = nums[0], ny = nums[1];
         if (type === 'L') {

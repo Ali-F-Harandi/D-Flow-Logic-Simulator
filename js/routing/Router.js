@@ -139,6 +139,19 @@ export class Router {
 
     /* ── Case 1: Source LEFT of target (normal direction) ── */
     if (sx < tx) {
+      // Proximity escape: if pins are too close horizontally for a clean channel,
+      // step out vertically first to avoid loop-back paths
+      const hGap = tx - sx;
+      if (hGap < sb * 2.5) {
+        const stepY = sy < ty ? -sb * 2 : sb * 2;
+        return [
+          { x: sx, y: sy },
+          { x: sx, y: sy + stepY },
+          { x: tx, y: sy + stepY },
+          { x: tx, y: ty }
+        ];
+      }
+
       let channelX;
       if (opts.channelX !== undefined) {
         channelX = opts.channelX;

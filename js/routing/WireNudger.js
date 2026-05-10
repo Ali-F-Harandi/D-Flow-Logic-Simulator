@@ -25,12 +25,12 @@ export class WireNudger {
   /**
    * @param {Object} [config]
    * @param {number} [config.gridSize]     - Grid cell size (default: GRID_SIZE)
-   * @param {number} [config.wireSpacing]  - Spacing between parallel wires (default: GRID_SIZE * 0.6)
+   * @param {number} [config.wireSpacing]  - Spacing between parallel wires (default: GRID_SIZE)
    * @param {number} [config.maxNudge]     - Maximum nudge offset (default: GRID_SIZE * 2)
    */
   constructor(config = {}) {
     this.gridSize    = config.gridSize    || GRID_SIZE;
-    this.wireSpacing = config.wireSpacing || GRID_SIZE * 0.6;
+    this.wireSpacing = config.wireSpacing || GRID_SIZE;
     this.maxNudge    = config.maxNudge    || GRID_SIZE * 2;
   }
 
@@ -76,6 +76,9 @@ export class WireNudger {
     for (let wi = 0; wi < autoWires.length; wi++) {
       const wire = autoWires[wi];
       for (let si = 0; si < wire.pathPoints.length - 1; si++) {
+        // Never touch segments that connect directly to a pin (first & last segments)
+        if (si === 0 || si === wire.pathPoints.length - 2) continue;
+
         const p1 = wire.pathPoints[si];
         const p2 = wire.pathPoints[si + 1];
 
@@ -162,6 +165,9 @@ export class WireNudger {
     for (let wi = 0; wi < autoWires.length; wi++) {
       const wire = autoWires[wi];
       for (let si = 0; si < wire.pathPoints.length - 1; si++) {
+        // Never touch segments that connect directly to a pin (first & last segments)
+        if (si === 0 || si === wire.pathPoints.length - 2) continue;
+
         const p1 = wire.pathPoints[si];
         const p2 = wire.pathPoints[si + 1];
 
@@ -302,24 +308,12 @@ export class WireNudger {
     pts[segIndex].y += offset;
     pts[segIndex + 1].y += offset;
 
-    // If the point before this segment is not part of another
-    // horizontal segment at the same Y, we need to insert a
-    // small vertical adjustment segment
+    // Re-align adjacent vertical segments so they don't become diagonal
     if (segIndex > 0) {
-      const prevPt = pts[segIndex - 1];
-      const currPt = pts[segIndex];
-      // If prev point doesn't share Y with current, add adjustment
-      if (Math.abs(prevPt.y - currPt.y) > 1) {
-        // The bend point naturally handles this — no insertion needed
-      }
+      pts[segIndex].x = pts[segIndex - 1].x; // vertical segment above must share X
     }
-
     if (segIndex + 2 < pts.length) {
-      const nextPt = pts[segIndex + 2];
-      const currPt = pts[segIndex + 1];
-      if (Math.abs(nextPt.y - currPt.y) > 1) {
-        // Bend naturally handles this
-      }
+      pts[segIndex + 1].x = pts[segIndex + 2].x; // vertical segment below must share X
     }
   }
 
@@ -331,5 +325,13 @@ export class WireNudger {
 
     pts[segIndex].x += offset;
     pts[segIndex + 1].x += offset;
+
+    // Re-align adjacent horizontal segments
+    if (segIndex > 0) {
+      pts[segIndex].y = pts[segIndex - 1].y;
+    }
+    if (segIndex + 2 < pts.length) {
+      pts[segIndex + 1].y = pts[segIndex + 2].y;
+    }
   }
 }
