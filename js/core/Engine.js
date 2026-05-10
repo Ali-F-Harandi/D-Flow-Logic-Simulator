@@ -11,6 +11,10 @@ export class Engine {
     this.clocks = new Set();
     this._processing = false;
     this._nodeIndex = new Map();
+    this._stepCount = 0;
+    this._oscillationDetected = false;
+    this._lastStateHash = null;
+    this._repeatCount = 0;
   }
 
   get components() {
@@ -176,10 +180,13 @@ export class Engine {
     if (iterations >= maxIterations) {
       console.warn('Propagation loop detected – circuit may be unstable.');
       this.queue.clear();
+      this._oscillationDetected = true;
       document.dispatchEvent(new CustomEvent('simulation-error', { detail: 'Infinite Loop Detected! Circuit Unstable.' }));
       // Set error state on all components involved in the loop
-      for (const comp of this.queue) {
-        comp.setErrorState(true);
+      for (const comp of this.components.values()) {
+        if (this._isInOscillation(comp)) {
+          comp.setErrorState(true);
+        }
       }
     }
 
@@ -189,12 +196,40 @@ export class Engine {
   }
 
   step() {
+    this._stepCount++;
     this._processQueue();
+  }
+
+  /**
+   * Check if a component is likely involved in an oscillation loop
+   * by checking if it has both inputs and outputs connected to
+   * components that also changed state in recent iterations.
+   */
+  _isInOscillation(comp) {
+    const hasConnectedInput = comp.inputs.some(inp => inp.connectedTo);
+    const hasConnectedOutput = comp.outputs.some(out => {
+      return this.wires.some(w => w.from.nodeId === out.id);
+    });
+    return hasConnectedInput && hasConnectedOutput;
+  }
+
+  /**
+   * Get simulation statistics for the footer display.
+   */
+  getStats() {
+    return {
+      componentCount: this.components.size,
+      wireCount: this.wires.length,
+      stepCount: this._stepCount,
+      isRunning: this.running,
+      oscillationDetected: this._oscillationDetected
+    };
   }
 
   run() {
     if (this.running) return;
     this.running = true;
+    this._oscillationDetected = false;
     for (const clk of this.clocks) clk.start();
     this.intervalId = setInterval(() => this.step(), this.speed);
   }
@@ -210,6 +245,8 @@ export class Engine {
   reset() {
     this.stop();
     this.queue.clear();
+    this._stepCount = 0;
+    this._oscillationDetected = false;
     // FIX (Bug #5 Medium): Use resetState() which preserves user-set
     // input values (DipSwitch positions, Clock states) while still
     // resetting sequential component internal state (flip-flop _state,

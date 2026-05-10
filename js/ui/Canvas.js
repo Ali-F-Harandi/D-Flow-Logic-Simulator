@@ -14,6 +14,7 @@ import { CanvasTouch } from './canvas/CanvasTouch.js';
 import { CanvasEvents } from './canvas/CanvasEvents.js';
 import { WireEditHandler } from './canvas/WireEditHandler.js';
 import { ComponentLayoutPolicy } from '../core/ComponentLayoutPolicy.js';
+import { MiniMap } from './canvas/MiniMap.js';
 
 export class Canvas {
   constructor(container, eventBus, engine, factory, undoManager) {
@@ -120,6 +121,9 @@ export class Canvas {
 
     // Floating mobile delete button — appears when selection is active
     this._createMobileDeleteButton();
+
+    // MiniMap — circuit overview in the corner
+    this.miniMap = new MiniMap(this, this.core, this.compManager);
   }
 
   /**
@@ -165,6 +169,8 @@ export class Canvas {
     }
     // Rebuild obstacle cache when components change
     this.wiring.rebuildObstacleCache();
+    // Update minimap
+    if (this.miniMap) this.miniMap.scheduleUpdate();
   }
 
   _onComponentModified(comp) {
@@ -186,6 +192,8 @@ export class Canvas {
     this.positionCache.invalidate();
     // Rebuild obstacle cache after component deletion
     this.wiring.rebuildObstacleCache();
+    // Update minimap
+    if (this.miniMap) this.miniMap.scheduleUpdate();
   }
 
   _addVisualWire(engineId, fromNodeId, toNodeId) {

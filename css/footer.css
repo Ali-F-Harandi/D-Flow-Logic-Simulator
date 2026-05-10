@@ -10,3 +10,21 @@
   gap: var(--space-sm);
   box-shadow: var(--shadow-sm);
 }
+
+#footer .footer-stats {
+  margin-left: auto;
+  color: var(--color-text-muted);
+}
+
+#footer .footer-zoom {
+  background: var(--color-surface-alt);
+  padding: 1px 6px;
+  border-radius: var(--border-radius-sm);
+  font-family: monospace;
+  font-size: 11px;
+}
+
+#footer .footer-step {
+  font-family: monospace;
+  font-size: 11px;
+}

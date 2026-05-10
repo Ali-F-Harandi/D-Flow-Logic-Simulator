@@ -1,4 +1,5 @@
 import { Serializer } from '../utils/Serializer.js';
+import { ExampleCircuits } from '../utils/ExampleCircuits.js';
 
 export class Header {
   constructor(container, eventBus, engine, canvas) {
@@ -34,6 +35,7 @@ export class Header {
         <button class="header-btn export-btn" title="Export circuit as JSON file" aria-label="Export circuit">📤 Export</button>
         <button class="header-btn import-btn" title="Import circuit from JSON file" aria-label="Import circuit">📥 Import</button>
         <button class="header-btn theme-toggle-btn" title="Toggle theme (dark/light/high-contrast)" aria-label="Toggle theme">🌙</button>
+        <button class="header-btn examples-btn" title="Load example circuit" aria-label="Example circuits">📋 Examples</button>
       </div>
     `;
     return header;
@@ -52,6 +54,7 @@ export class Header {
     this.importBtn = this.element.querySelector('.import-btn');
     this.zoomFitBtn = this.element.querySelector('.zoom-fit-btn');
     this.centerBtn = this.element.querySelector('.center-btn');
+    this.examplesBtn = this.element.querySelector('.examples-btn');
 
     this.runBtn.addEventListener('click', () => {
       this.engine.run();
@@ -86,6 +89,9 @@ export class Header {
     this._updateButtons('stopped');
 
     this.hamburgerBtn.addEventListener('click', () => this.eventBus.emit('toggle-sidebar'));
+
+    // Example circuits
+    this.examplesBtn.addEventListener('click', () => this._showExamplesDialog());
 
     this.themeToggleBtn.addEventListener('click', () => {
       const root = document.documentElement;
@@ -177,6 +183,95 @@ export class Header {
       const icons = { dark: '🌙', light: '☀️', 'high-contrast': '⬛' };
       this.themeToggleBtn.innerHTML = icons[theme] || '🌙';
     }
+  }
+
+  /**
+   * Show a dialog with example circuits to load.
+   */
+  _showExamplesDialog() {
+    const examples = ExampleCircuits.getAll();
+
+    // Remove any existing dialog
+    const existing = document.getElementById('examples-dialog');
+    if (existing) existing.remove();
+
+    const dialog = document.createElement('div');
+    dialog.id = 'examples-dialog';
+    dialog.style.cssText = `
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.5); z-index: 2000;
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--font-family);
+    `;
+
+    const content = document.createElement('div');
+    content.style.cssText = `
+      background: var(--color-surface); border: 1px solid var(--color-border);
+      border-radius: 8px; padding: 20px; max-width: 500px; width: 90%;
+      max-height: 80vh; overflow-y: auto; box-shadow: var(--shadow-lg);
+    `;
+
+    const header = document.createElement('div');
+    header.style.cssText = `
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--color-border);
+    `;
+    header.innerHTML = `<h3 style="margin:0;color:var(--color-accent)">Example Circuits</h3>`;
+
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '✕';
+    closeBtn.style.cssText = `
+      background: var(--color-surface-alt); border: 1px solid var(--color-border);
+      color: var(--color-text); width: 28px; height: 28px; border-radius: 50%;
+      cursor: pointer; font-size: 14px; display: flex; align-items: center;
+      justify-content: center;
+    `;
+    closeBtn.addEventListener('click', () => dialog.remove());
+    header.appendChild(closeBtn);
+    content.appendChild(header);
+
+    for (const ex of examples) {
+      const item = document.createElement('div');
+      item.style.cssText = `
+        padding: 12px; margin-bottom: 8px; background: var(--color-surface-alt);
+        border: 1px solid var(--color-border); border-radius: 6px;
+        cursor: pointer; transition: border-color 0.2s;
+      `;
+      item.addEventListener('mouseenter', () => { item.style.borderColor = 'var(--color-accent)'; });
+      item.addEventListener('mouseleave', () => { item.style.borderColor = 'var(--color-border)'; });
+
+      const name = document.createElement('div');
+      name.style.cssText = 'font-weight: 600; color: var(--color-accent); margin-bottom: 4px;';
+      name.textContent = ex.name;
+
+      const desc = document.createElement('div');
+      desc.style.cssText = 'font-size: 12px; color: var(--color-text-muted);';
+      desc.textContent = ex.description;
+
+      item.appendChild(name);
+      item.appendChild(desc);
+
+      item.addEventListener('click', () => {
+        if (this.engine.components.size > 0) {
+          if (!confirm('Loading this example will replace your current circuit. Continue?')) return;
+        }
+        try {
+          const data = ex.data();
+          Serializer.importState(data, this.engine, this.canvas, this.factory);
+          if (this.canvas) this.canvas.showToast(`Loaded: ${ex.name}`, 'success');
+        } catch (err) {
+          console.error('Failed to load example:', err);
+          if (this.canvas) this.canvas.showToast('Failed to load example', 'error');
+        }
+        dialog.remove();
+      });
+
+      content.appendChild(item);
+    }
+
+    dialog.appendChild(content);
+    dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.remove(); });
+    document.body.appendChild(dialog);
   }
 
   _updateButtons(status) {

@@ -1,8 +1,8 @@
 D-Flow Logic Simulator - Development Roadmap
 =============================================
 
-Status: PRE-RELEASE (v0.9)
-Last updated: 2026-05-09
+Status: PRE-RELEASE (v0.9.1)
+Last updated: 2026-05-10
 
 Completed Milestones
 --------------------
@@ -51,6 +51,25 @@ Completed Milestones
     - Half Adder, Full Adder, Multiplexer, Shift Register
     - LED Array, High/Low Constant components
 
+[x] v0.9.1 Improvements
+    - Enhanced oscillation detection with targeted error marking
+    - Step counter and simulation statistics (footer display)
+    - Zoom percentage display in footer
+    - Circuit minimap with click-to-navigate
+    - Example circuits (Half Adder, Full Adder, SR Latch, D Latch, MUX, Counter)
+    - Circuit validation (floating inputs, unreachable components)
+    - Clear All button with confirmation
+    - Collapsible sidebar component groups with icons
+    - Component tooltips in sidebar
+    - Gate type accent bars (color-coded left border)
+    - Component hover highlight effect
+    - Wire hover glow effect
+    - Wire preview pulse animation
+    - Smart Manhattan routing (horizontal alignment, compact C-shape)
+    - Refactored zoom with _applyZoom() helper
+    - Extended keyboard shortcuts (Ctrl+A, Ctrl+/-, Ctrl+0, Home, F5)
+    - Updated help overlay with new shortcuts
+
 Remaining for v1.0 Release
 ---------------------------
 
@@ -74,15 +93,12 @@ Remaining for v1.0 Release
 
 [ ] Documentation & Examples
     - In-app tutorial / guided walkthrough for new users
-    - Example circuits (half adder, full adder, counter, state machine)
     - API documentation for extending components
 
 [ ] Final Polish
     - Consistent error handling and user feedback
-    - Tooltip on all toolbar buttons
-    - Circuit validation before export
-    - Smooth zoom animation
     - Wire label / net name display
+    - Smooth zoom animation
 
 Future Considerations (v2.0+)
 ------------------------------

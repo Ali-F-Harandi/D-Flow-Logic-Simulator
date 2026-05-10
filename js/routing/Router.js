@@ -115,6 +115,15 @@ export class Router {
       // Re-snap after clamping
       channelX = this.snapToGrid(channelX);
 
+      // Smart routing: if source and target are nearly at the same Y,
+      // just do a simple horizontal line with step-backs
+      if (Math.abs(sy - ty) < gs * 0.5) {
+        return [
+          { x: sx, y: sy },
+          { x: tx, y: ty }
+        ];
+      }
+
       return [
         { x: sx,       y: sy },       // source
         { x: channelX, y: sy },       // → horizontal to channel
@@ -143,6 +152,22 @@ export class Router {
       : Infinity;
 
     const routeY = (topDist < bottomDist && topBusY > gs) ? topBusY : bottomBusY;
+
+    // Smart backward routing: if source and target are very close horizontally
+    // but offset vertically, use a simpler C-shape instead of full U-shape
+    const horizontalGap = sx - tx;
+    if (horizontalGap < sb * 4 && Math.abs(sy - ty) >= gs) {
+      // Compact C-shape for nearby backward routing
+      const midY = this.snapToGrid((sy + ty) / 2);
+      return [
+        { x: sx,  y: sy },
+        { x: sbx, y: sy },
+        { x: sbx, y: midY },
+        { x: tbx, y: midY },
+        { x: tbx, y: ty },
+        { x: tx,  y: ty }
+      ];
+    }
 
     return [
       { x: sx,  y: sy },            // source

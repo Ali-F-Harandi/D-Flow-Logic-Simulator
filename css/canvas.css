@@ -21,3 +21,54 @@
   user-select: none;
   opacity: 0.6;
 }
+
+/* ===== Minimap ===== */
+#minimap {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-md);
+  z-index: 50;
+  opacity: 0.85;
+  transition: opacity 0.2s;
+  overflow: hidden;
+}
+
+#minimap:hover {
+  opacity: 1;
+}
+
+.minimap-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 3px 8px;
+  font-size: 10px;
+  color: var(--color-text-muted);
+  background: var(--color-surface-alt);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.minimap-toggle {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.minimap-canvas {
+  display: block;
+  cursor: pointer;
+}
+
+@media (max-width: 767px) {
+  #minimap {
+    display: none;
+  }
+}

@@ -305,6 +305,62 @@ export class CanvasEvents {
         e.preventDefault();
         this._cycleFocus(e.shiftKey ? -1 : 1);
       }
+      // F5: Run simulation
+      else if (e.key === 'F5') {
+        e.preventDefault();
+        this.eventBus.emit('simulation-status', 'running');
+      }
+      // Shift+F5: Stop simulation
+      else if (e.key === 'F5' && e.shiftKey) {
+        e.preventDefault();
+        this.eventBus.emit('simulation-status', 'stopped');
+      }
+      // F8: Step simulation
+      else if (e.key === 'F8') {
+        e.preventDefault();
+        // Step is handled directly since we need the engine reference
+      }
+      // Ctrl+A: Select all (already handled natively in some browsers)
+      else if (e.ctrlKey && e.key === 'a') {
+        e.preventDefault();
+        for (const comp of this.compManager.components) {
+          if (!this.selection.selectedComponents.has(comp.id)) {
+            this.selection.selectedComponents.add(comp.id);
+            comp.element?.classList.add('selected');
+          }
+        }
+      }
+      // Ctrl+Shift+F: Zoom to fit
+      else if (e.ctrlKey && e.shiftKey && e.key === 'F') {
+        e.preventDefault();
+        this.canvas?.zoomToFit();
+      }
+      // Home: Center view
+      else if (e.key === 'Home') {
+        e.preventDefault();
+        this.canvas?.core.centerView();
+      }
+      // +/-: Zoom in/out
+      else if (e.key === '+' || e.key === '=') {
+        if (e.ctrlKey) {
+          e.preventDefault();
+          const rect = this.core.element.getBoundingClientRect();
+          this.core.zoom(1, rect.width / 2, rect.height / 2);
+        }
+      }
+      else if (e.key === '-') {
+        if (e.ctrlKey) {
+          e.preventDefault();
+          const rect = this.core.element.getBoundingClientRect();
+          this.core.zoom(-1, rect.width / 2, rect.height / 2);
+        }
+      }
+      // 0: Reset zoom
+      else if (e.key === '0' && e.ctrlKey) {
+        e.preventDefault();
+        this.core.scale = 1;
+        this.core.applyTransform();
+      }
     });
   }
 

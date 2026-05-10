@@ -10,6 +10,7 @@ import { Engine } from './core/Engine.js';
 import { UndoManager, AddComponentCommand } from './utils/UndoManager.js';
 import { Serializer } from './utils/Serializer.js';
 import { HelpOverlay } from './ui/HelpOverlay.js';
+import { CircuitValidator } from './utils/CircuitValidator.js';
 
 // --------------------------------------------------
 // GLOBAL ERROR HANDLER – shows any import/parse error
@@ -58,7 +59,51 @@ document.addEventListener('DOMContentLoaded', () => {
     panelManager.testBenchPanel.setOutputNode(nodeId);
   });
 
+  // Circuit validation
+  eventBus.on('validate-circuit', () => {
+    const validator = new CircuitValidator(engine);
+    const result = validator.validate();
+    if (result.valid && result.warnings.length === 0) {
+      canvas.showToast('Circuit validation passed!', 'success');
+    } else if (result.valid) {
+      const msg = result.warnings.map(w => w.message).join('\\n');
+      canvas.showToast(`Warnings: ${result.warnings.length}`, 'warning');
+      console.log('Validation warnings:', result.warnings);
+    } else {
+      const msg = result.errors.map(e => e.message).join('\\n');
+      canvas.showToast(`Errors: ${result.errors.length}`, 'error');
+      console.log('Validation errors:', result.errors);
+    }
+  });
+
+  // Clear all
+  eventBus.on('clear-all', () => {
+    if (engine.components.size > 0) {
+      if (!confirm('Clear all components and wires? This cannot be undone.')) return;
+    }
+    engine.stop();
+    canvas.clearAll();
+    engine.circuit.clear();
+    engine.clocks.clear();
+    engine.queue.clear();
+    engine._nodeIndex.clear();
+    engine._stepCount = 0;
+    canvas.showToast('Canvas cleared', 'info');
+  });
+
   footer.setVersion('v0.9-pre');
+
+  // Update footer stats periodically
+  const updateFooterStats = () => {
+    footer.updateStats(engine.getStats(), canvas.core.scale);
+  };
+  setInterval(updateFooterStats, 500);
+
+  // Also update on zoom/pan changes
+  canvas.core._onTransformChange = () => {
+    canvas.positionCache.setTransform(canvas.core.panOffset, canvas.core.scale);
+    footer.updateStats(engine.getStats(), canvas.core.scale);
+  };
 
   // FIX (Bug #8 Medium): Stop engine and clear clock intervals
   // on page unload to prevent issues with auto-save and pending timers.

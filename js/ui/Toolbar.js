@@ -53,6 +53,16 @@ export class Toolbar {
         this.statusText.textContent = this.lastStatus;
       }, 3000);
     });
+
+    // Validate button
+    this.element.querySelector('#validate-btn').addEventListener('click', () => {
+      eventBus.emit('validate-circuit');
+    });
+
+    // Clear all button
+    this.element.querySelector('#clear-all-btn').addEventListener('click', () => {
+      eventBus.emit('clear-all');
+    });
   }
 
   build() {
@@ -67,6 +77,8 @@ export class Toolbar {
       <button id="reroute-btn" class="toolbar-btn toolbar-btn-accent" title="Reroute all wires using A* pathfinding">Reroute Wires</button>
       <button id="auto-reroute-btn" class="toolbar-btn toolbar-btn-accent" title="Toggle automatic wire rerouting after component drop">Auto-Reroute: ON</button>
       <button id="crossing-style-btn" class="toolbar-btn" title="Toggle wire crossing display style (ANSI bridges / IEC junctions)">Crossing: ANSI</button>
+      <button id="validate-btn" class="toolbar-btn" title="Validate circuit for common issues">Validate</button>
+      <button id="clear-all-btn" class="toolbar-btn" title="Clear all components and wires from the canvas">Clear All</button>
       <label class="speed-label" for="speed-slider">Speed: <input type="range" id="speed-slider" name="speed-slider" min="50" max="1000" value="850" step="50"></label>
       <span id="speed-value">200ms</span>
     `;

@@ -60,6 +60,14 @@ export class Sidebar {
     list.innerHTML = '';
 
     const categories = ['Gates', 'Flip-Flops', 'Chips', 'Inputs', 'Outputs', 'Other'];
+    const categoryIcons = {
+      'Gates': '⚡',
+      'Flip-Flops': '🔄',
+      'Chips': '📦',
+      'Inputs': '🔘',
+      'Outputs': '💡',
+      'Other': '🔧'
+    };
     const grouped = {};
     categories.forEach(cat => (grouped[cat] = []));
 
@@ -76,11 +84,18 @@ export class Sidebar {
 
       const header = document.createElement('div');
       header.className = 'group-header';
-      header.textContent = category;
-      groupDiv.appendChild(header);
-
+      header.textContent = `${categoryIcons[category] || ''} ${category}`;
+      header.style.cursor = 'pointer';
+      
+      // Collapsible groups
       const itemsDiv = document.createElement('div');
       itemsDiv.className = 'group-items';
+      let collapsed = false;
+      header.addEventListener('click', () => {
+        collapsed = !collapsed;
+        itemsDiv.style.display = collapsed ? 'none' : '';
+        header.classList.toggle('collapsed', collapsed);
+      });
 
       items.forEach(({ type, label }) => {
         const item = document.createElement('div');
@@ -88,6 +103,7 @@ export class Sidebar {
         item.textContent = label;
         item.draggable = true;
         item.dataset.type = type;
+        item.title = `Drag to canvas to add ${label}`;
 
         item.addEventListener('dragstart', (e) => {
           e.dataTransfer.setData('text/plain', type);
@@ -101,6 +117,7 @@ export class Sidebar {
         itemsDiv.appendChild(item);
       });
 
+      groupDiv.appendChild(header);
       groupDiv.appendChild(itemsDiv);
       list.appendChild(groupDiv);
     });

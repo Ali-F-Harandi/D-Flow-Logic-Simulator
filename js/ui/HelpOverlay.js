@@ -31,8 +31,10 @@ export class HelpOverlay {
               <tr><td><kbd>Ctrl</kbd>+<kbd>Y</kbd></td><td>Redo</td></tr>
               <tr><td><kbd>Ctrl</kbd>+<kbd>C</kbd></td><td>Copy selected</td></tr>
               <tr><td><kbd>Ctrl</kbd>+<kbd>V</kbd></td><td>Paste copied</td></tr>
+              <tr><td><kbd>Ctrl</kbd>+<kbd>A</kbd></td><td>Select all components</td></tr>
               <tr><td><kbd>Delete</kbd> / <kbd>Backspace</kbd></td><td>Delete selected</td></tr>
               <tr><td><kbd>Escape</kbd></td><td>Clear selection / Cancel wiring</td></tr>
+              <tr><td><kbd>F5</kbd></td><td>Run simulation</td></tr>
             </table>
           </div>
           <div class="help-section">
@@ -43,6 +45,10 @@ export class HelpOverlay {
               <tr><td><kbd>Ctrl</kbd>+<kbd>Click</kbd> + drag</td><td>Pan canvas</td></tr>
               <tr><td><kbd>Middle Mouse</kbd> + drag</td><td>Pan canvas</td></tr>
               <tr><td><kbd>Scroll Wheel</kbd></td><td>Zoom in/out</td></tr>
+              <tr><td><kbd>Ctrl</kbd>+<kbd>+</kbd> / <kbd>Ctrl</kbd>+<kbd>-</kbd></td><td>Zoom in/out (centered)</td></tr>
+              <tr><td><kbd>Ctrl</kbd>+<kbd>0</kbd></td><td>Reset zoom to 100%</td></tr>
+              <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd></td><td>Zoom to fit all components</td></tr>
+              <tr><td><kbd>Home</kbd></td><td>Center canvas view</td></tr>
             </table>
           </div>
           <div class="help-section">

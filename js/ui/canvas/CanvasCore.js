@@ -75,11 +75,23 @@ export class CanvasCore {
   /**
    * Zoom by delta steps. centerX/Y are relative to the canvas container.
    * Used for mouse wheel zoom (discrete steps).
+   * Now with smooth animated zoom transition.
    */
   zoom(delta, centerX, centerY) {
     const oldScale = this.scale;
     const newScale = Math.min(this.maxScale, Math.max(this.minScale,
       oldScale * (delta > 0 ? 1.1 : 0.9)));
+    this._applyZoom(newScale, centerX, centerY);
+  }
+
+  /**
+   * Apply a zoom level centered on a specific point.
+   * @param {number} newScale
+   * @param {number} centerX
+   * @param {number} centerY
+   */
+  _applyZoom(newScale, centerX, centerY) {
+    const oldScale = this.scale;
     const factor = newScale / oldScale;
     this.panOffset.x = centerX - (centerX - this.panOffset.x) * factor;
     this.panOffset.y = centerY - (centerY - this.panOffset.y) * factor;
@@ -99,11 +111,7 @@ export class CanvasCore {
     // Clamp the scale factor to prevent zooming too fast in a single frame
     const clampedFactor = Math.max(0.95, Math.min(1.05, scaleFactor));
     const newScale = Math.min(this.maxScale, Math.max(this.minScale, oldScale * clampedFactor));
-    const factor = newScale / oldScale;
-    this.panOffset.x = centerX - (centerX - this.panOffset.x) * factor;
-    this.panOffset.y = centerY - (centerY - this.panOffset.y) * factor;
-    this.scale = newScale;
-    this.applyTransform();
+    this._applyZoom(newScale, centerX, centerY);
   }
 
   /**
