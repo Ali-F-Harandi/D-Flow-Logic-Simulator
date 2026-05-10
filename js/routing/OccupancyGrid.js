@@ -48,7 +48,8 @@ export class OccupancyGrid {
     this.data = new Uint8Array(this.cols * this.rows);
 
     // Wire margin: how many extra grid cells to block around components
-    this.wireMargin = config.wireMargin ?? 1;
+    // Increased from 1 to 2 to prevent wires from routing too close to components
+    this.wireMargin = config.wireMargin ?? 2;
 
     // Sparse set of blocked cells for fast iteration
     this._blockedCells = new Set();

@@ -141,6 +141,19 @@ export class CanvasEvents {
         return;
       }
 
+      // Magnet fallback: if clicking near a connector but not directly on it,
+      // start wiring from the nearest connector (improves UX for small connectors)
+      if (!target.closest('.component') && !target.closest('g[data-wire-id]')) {
+        const nearestConn = this._findNearestConnector(e.clientX, e.clientY);
+        if (nearestConn && !this.wiring.wiring) {
+          const connComp = this.engine._findComponentByNode(nearestConn.nodeId);
+          if (connComp) {
+            this.wiring.startWiring(connComp, nearestConn.nodeId, nearestConn.isOutput);
+            return;
+          }
+        }
+      }
+
       if (!target.closest('.connector')) {
         this.selection.startSelection(e);
         // Hide wire control handles when clicking empty canvas

@@ -108,8 +108,18 @@ export class StarRouter {
     // Determine initial search direction
     const initialDir = this._getInitialDirection(fromPos, toPos, opts.sourceDirection);
 
-    // Run A* search
-    const path = this._astar(fromCol, fromRow, toCol, toRow, initialDir, passablePins, opts);
+    // Run A* search — try multiple starting directions for loop-back support
+    let path = this._astar(fromCol, fromRow, toCol, toRow, initialDir, passablePins, opts);
+
+    // If the initial direction failed and we're doing a loop-back (target left of source),
+    // try all 4 directions as starting directions
+    if (!path && toPos.x < fromPos.x) {
+      for (let altDir = 0; altDir < 4; altDir++) {
+        if (altDir === initialDir) continue;
+        path = this._astar(fromCol, fromRow, toCol, toRow, altDir, passablePins, opts);
+        if (path) break;
+      }
+    }
 
     if (path) {
       // Convert grid path to pixel coordinates
@@ -128,7 +138,7 @@ export class StarRouter {
       return simplified;
     }
 
-    // Fallback: heuristic Manhattan routing
+    // Fallback: heuristic Manhattan routing (with component avoidance)
     const fallbackPath = this._fallbackRoute(fromPos, toPos, opts);
 
     this._lastRouteStats = {
@@ -381,7 +391,10 @@ export class StarRouter {
 
   /**
    * Determine the initial search direction from source.
-   * Output pins typically exit right, input pins enter from left.
+   * For loop-back wires (output→input where target is to the left or above),
+   * we allow the router to explore in the direction of the target.
+   * We also try ALL four directions when the target is not straightforwardly
+   * to the right.
    */
   _getInitialDirection(fromPos, toPos, sourceDirection) {
     if (sourceDirection === 'right') return DIR_E;
@@ -389,19 +402,51 @@ export class StarRouter {
     if (sourceDirection === 'up')    return DIR_N;
     if (sourceDirection === 'down')  return DIR_S;
 
-    // Default: assume output pin exits right
+    // Default: output pin exits right
     if (toPos.x >= fromPos.x) return DIR_E;
 
-    // If target is to the left, we still start going right (step-back)
-    // then the router will find a way around
+    // Loop-back: target is to the left — start going right (step-back)
+    // The router will find a path around the source component
     return DIR_E;
+  }
+
+  /**
+   * Check if a straight-line path between two points crosses any component body.
+   * Used by the Manhattan fallback to avoid routing through components.
+   * @param {number} x1
+   * @param {number} y1
+   * @param {number} x2
+   * @param {number} y2
+   * @returns {boolean} True if the segment intersects a component
+   */
+  _segmentCrossesComponent(x1, y1, x2, y2) {
+    // Check all cells along the segment
+    if (Math.abs(y2 - y1) < 1) {
+      // Horizontal segment
+      const row = this.grid.toRow(y1);
+      const startCol = this.grid.toCol(Math.min(x1, x2));
+      const endCol = this.grid.toCol(Math.max(x1, x2));
+      for (let col = startCol; col <= endCol; col++) {
+        if (this.grid.getCell(col, row) === 1) return true; // CELL_BLOCKED_COMP
+      }
+    } else if (Math.abs(x2 - x1) < 1) {
+      // Vertical segment
+      const col = this.grid.toCol(x1);
+      const startRow = this.grid.toRow(Math.min(y1, y2));
+      const endRow = this.grid.toRow(Math.max(y1, y2));
+      for (let row = startRow; row <= endRow; row++) {
+        if (this.grid.getCell(col, row) === 1) return true;
+      }
+    }
+    return false;
   }
 
   /* ─── Fallback Routing ─── */
 
   /**
    * Heuristic Manhattan routing when A* fails.
-   * Uses the same logic as the original Router.js.
+   * Now includes component obstacle avoidance — checks each segment against
+   * the occupancy grid and reroutes around blocked cells.
    */
   _fallbackRoute(fromPos, toPos, opts = {}) {
     const gs = this.gridSize;
@@ -412,16 +457,39 @@ export class StarRouter {
 
     // Same column → straight vertical
     if (Math.abs(sx - tx) < gs * 0.5) {
+      // Check if vertical path crosses a component
+      if (!this._segmentCrossesComponent(sx, sy, tx, ty)) {
+        return [
+          { x: sx, y: sy },
+          { x: tx, y: ty }
+        ];
+      }
+      // Path blocked — offset horizontally to go around
+      const offsetX = gs * 2;
+      const bypassX = sx + offsetX;
       return [
         { x: sx, y: sy },
+        { x: bypassX, y: sy },
+        { x: bypassX, y: ty },
         { x: tx, y: ty }
       ];
     }
 
     // Same row → straight horizontal
     if (Math.abs(sy - ty) < gs * 0.5) {
+      if (!this._segmentCrossesComponent(sx, sy, tx, ty)) {
+        return [
+          { x: sx, y: sy },
+          { x: tx, y: ty }
+        ];
+      }
+      // Path blocked — offset vertically
+      const offsetY = gs * 2;
+      const bypassY = sy + offsetY;
       return [
         { x: sx, y: sy },
+        { x: sx, y: bypassY },
+        { x: tx, y: bypassY },
         { x: tx, y: ty }
       ];
     }
@@ -433,15 +501,52 @@ export class StarRouter {
         Math.max(sx + sb, Math.min(tx - sb, channelX))
       );
 
+      // Check if the Z-shape path crosses components
+      const hBlocked = this._segmentCrossesComponent(sx, sy, clampedX, sy);
+      const vBlocked = this._segmentCrossesComponent(clampedX, sy, clampedX, ty);
+
+      if (!hBlocked && !vBlocked) {
+        return [
+          { x: sx,       y: sy },
+          { x: clampedX, y: sy },
+          { x: clampedX, y: ty },
+          { x: tx,       y: ty }
+        ];
+      }
+
+      // Try alternate channels to avoid components
+      for (let offset = 1; offset <= 5; offset++) {
+        for (const dir of [1, -1]) {
+          const altX = this.grid.snapToGrid(clampedX + offset * gs * dir);
+          const altClamped = Math.max(sx + sb, Math.min(tx - sb, altX));
+          if (!this._segmentCrossesComponent(sx, sy, altClamped, sy) &&
+              !this._segmentCrossesComponent(altClamped, sy, altClamped, ty)) {
+            return [
+              { x: sx,         y: sy },
+              { x: altClamped, y: sy },
+              { x: altClamped, y: ty },
+              { x: tx,         y: ty }
+            ];
+          }
+        }
+      }
+
+      // All alternatives blocked — go around (below or above)
+      const goBelow = sy < ty;
+      const bypassY = goBelow
+        ? this.grid.snapToGrid(Math.max(sy, ty) + gs * 3)
+        : this.grid.snapToGrid(Math.min(sy, ty) - gs * 3);
       return [
         { x: sx,       y: sy },
         { x: clampedX, y: sy },
-        { x: clampedX, y: ty },
+        { x: clampedX, y: bypassY },
+        { x: tx - sb,  y: bypassY },
+        { x: tx - sb,  y: ty },
         { x: tx,       y: ty }
       ];
     }
 
-    // Source RIGHT of target: U-shape
+    // Source RIGHT of target: U-shape (loop-back)
     const sbx = this.grid.snapToGrid(sx + sb);
     const tbx = this.grid.snapToGrid(Math.max(tx - sb, gs));
 
@@ -462,7 +567,7 @@ export class StarRouter {
     const horizontalGap = sx - tx;
     if (horizontalGap < sb * 4 && Math.abs(sy - ty) >= gs) {
       const midY = this.grid.snapToGrid((sy + ty) / 2);
-      return [
+      const path = [
         { x: sx,  y: sy },
         { x: sbx, y: sy },
         { x: sbx, y: midY },
@@ -470,9 +575,11 @@ export class StarRouter {
         { x: tbx, y: ty },
         { x: tx,  y: ty }
       ];
+      // Check for component collisions
+      if (!this._pathCrossesComponent(path)) return path;
     }
 
-    return [
+    const path = [
       { x: sx,  y: sy },
       { x: sbx, y: sy },
       { x: sbx, y: routeY },
@@ -480,6 +587,40 @@ export class StarRouter {
       { x: tbx, y: ty },
       { x: tx,  y: ty }
     ];
+
+    // Check for component collisions and try alternate bus levels
+    if (!this._pathCrossesComponent(path)) return path;
+
+    // Try alternate bus levels
+    for (let offset = 1; offset <= 5; offset++) {
+      for (const dir of [1, -1]) {
+        const altY = this.grid.snapToGrid(routeY + offset * gs * 2 * dir);
+        const altPath = [
+          { x: sx,  y: sy },
+          { x: sbx, y: sy },
+          { x: sbx, y: altY },
+          { x: tbx, y: altY },
+          { x: tbx, y: ty },
+          { x: tx,  y: ty }
+        ];
+        if (!this._pathCrossesComponent(altPath)) return altPath;
+      }
+    }
+
+    return path;
+  }
+
+  /**
+   * Check if an entire path (array of segments) crosses any component.
+   */
+  _pathCrossesComponent(points) {
+    for (let i = 0; i < points.length - 1; i++) {
+      if (this._segmentCrossesComponent(
+        points[i].x, points[i].y,
+        points[i + 1].x, points[i + 1].y
+      )) return true;
+    }
+    return false;
   }
 
   /**

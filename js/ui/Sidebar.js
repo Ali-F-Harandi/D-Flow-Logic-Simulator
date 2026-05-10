@@ -60,14 +60,13 @@ export class Sidebar {
     list.innerHTML = '';
 
     const categories = ['Gates', 'Flip-Flops', 'Chips', 'Inputs', 'Outputs', 'Other'];
-    // Lucide icon names for each category
     const categoryIcons = {
-      'Gates': 'zap',
-      'Flip-Flops': 'refresh-cw',
-      'Chips': 'cpu',
-      'Inputs': 'toggle-left',
-      'Outputs': 'lightbulb',
-      'Other': 'wrench'
+      'Gates': '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 3h5a4 4 0 0 1 0 8H1"/><line x1="9" y1="5" x2="13" y2="5"/><line x1="9" y1="9" x2="13" y2="9"/><line x1="7" y1="7" x2="13" y2="7"/></svg>',
+      'Flip-Flops': '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="10" height="10" rx="1"/><path d="M5 5v4M9 5v4"/><polyline points="4,6 5,7 6,6"/></svg>',
+      'Chips': '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="8" height="8" rx="1"/><line x1="0" y1="5" x2="3" y2="5"/><line x1="0" y1="9" x2="3" y2="9"/><line x1="11" y1="5" x2="14" y2="5"/><line x1="11" y1="9" x2="14" y2="9"/><line x1="5" y1="0" x2="5" y2="3"/><line x1="9" y1="0" x2="9" y2="3"/></svg>',
+      'Inputs': '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/><circle cx="7" cy="7" r="2" fill="currentColor"/></svg>',
+      'Outputs': '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/><circle cx="7" cy="7" r="2.5" fill="currentColor"/></svg>',
+      'Other': '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="2"/><path d="M7 1v2M7 11v2M1 7h2M11 7h2M3.05 3.05l1.41 1.41M9.54 9.54l1.41 1.41M3.05 10.95l1.41-1.41M9.54 4.46l1.41-1.41"/></svg>'
     };
     const grouped = {};
     categories.forEach(cat => (grouped[cat] = []));
@@ -85,8 +84,7 @@ export class Sidebar {
 
       const header = document.createElement('div');
       header.className = 'group-header';
-      const iconName = categoryIcons[category] || 'box';
-      header.innerHTML = `<i data-lucide="${iconName}" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:4px"></i>${category}`;
+      header.innerHTML = `${categoryIcons[category] || ''} ${category}`;
       header.style.cursor = 'pointer';
       
       // Collapsible groups
@@ -123,11 +121,6 @@ export class Sidebar {
       groupDiv.appendChild(itemsDiv);
       list.appendChild(groupDiv);
     });
-
-    // Initialize Lucide icons in the sidebar
-    if (window.lucide) {
-      try { window.lucide.createIcons(); } catch(e) { /* fallback */ }
-    }
 
     if (list.children.length === 0) {
       list.innerHTML = '<div class="no-results">No components found</div>';

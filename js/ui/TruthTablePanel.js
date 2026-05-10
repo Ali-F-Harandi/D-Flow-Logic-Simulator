@@ -8,81 +8,53 @@ export class TruthTablePanel {
     this.panel.style.padding = '10px';
     this.panel.style.color = 'var(--color-text)';
     this.panel.style.fontSize = '12px';
-    this.panel.innerHTML = `
-      <h4 style="margin:0 0 8px 0;color:var(--color-accent)">Truth Table</h4>
-      <div class="tt-instructions" style="margin-bottom:10px;padding:8px;background:var(--color-surface-alt);border:1px solid var(--color-border);border-radius:4px;font-size:11px;color:var(--color-text-muted);display:none;">
-        <div style="margin-bottom:4px;font-weight:600;color:var(--color-accent);">How to use:</div>
-        <div>1. Add Toggle Switches as inputs</div>
-        <div>2. Add Light Bulbs or Logic Probes as outputs</div>
-        <div>3. The truth table will auto-generate when opened</div>
-        <div style="margin-top:4px;">Tip: You can also right-click an output pin and select "Generate Truth Table" for a specific output.</div>
-      </div>
-      <div class="tt-content"></div>
-    `;
+    this.panel.innerHTML = '<h4>Truth Table</h4><div class="tt-content"><p style="color: var(--color-text-muted);">Right-click an output connector and select "Generate Truth Table", or click the button below to auto-detect outputs.</p></div>';
     container.appendChild(this.panel);
 
     this.content = this.panel.querySelector('.tt-content');
-    this.instructions = this.panel.querySelector('.tt-instructions');
     this.eventBus.on('generate-truth-table', (outputNodeId) => this.generate(outputNodeId));
 
-    // Auto-generate when panel is shown
-    this.eventBus.on('show-panel', (type) => {
-      if (type === 'truth') {
-        this.autoGenerate();
-      }
-    });
+    // Add auto-generate button
+    const autoBtn = document.createElement('button');
+    autoBtn.textContent = 'Auto-Generate';
+    autoBtn.style.cssText = `
+      margin-top: 8px; padding: 6px 12px;
+      background: var(--color-accent); color: #fff;
+      border: none; border-radius: 4px; cursor: pointer;
+      font-size: 12px;
+    `;
+    autoBtn.addEventListener('click', () => this.autoGenerate());
+    this.panel.appendChild(autoBtn);
   }
 
   /**
-   * Auto-generate truth table for all outputs in the circuit.
-   * Called when the truth table panel is opened.
+   * Auto-detect output nodes and generate truth table for the first one found.
    */
   autoGenerate() {
-    // Check if there are any components
-    if (this.engine.components.size === 0) {
-      this.content.innerHTML = '<div style="color:var(--color-text-muted);padding:8px;">No components in the circuit. Add some gates and switches first.</div>';
-      this.instructions.style.display = 'block';
-      return;
-    }
-
-    // Find all input switches
-    const inputComponents = [];
+    // Find the first LightBulb or LogicProbe output
     for (const comp of this.engine.components.values()) {
-      if (comp.type === 'ToggleSwitch' || comp.type === 'DipSwitch') {
-        inputComponents.push(comp);
+      if (comp.type === 'LightBulb' || comp.type === 'LogicProbe') {
+        if (comp.inputs.length > 0) {
+          this.generate(comp.inputs[0].id);
+          return;
+        }
       }
     }
-
-    if (inputComponents.length === 0) {
-      this.content.innerHTML = '<div style="color:var(--color-text-muted);padding:8px;">No input switches found. Add Toggle Switches or DIP Switches to provide inputs.</div>';
-      this.instructions.style.display = 'block';
-      return;
-    }
-
-    // Find all output components (LightBulb, LogicProbe, SevenSegment, LedArray)
-    const outputComponents = [];
+    // Fallback: find any output connector
     for (const comp of this.engine.components.values()) {
-      if (comp.type === 'LightBulb' || comp.type === 'LogicProbe' ||
-          comp.type === 'SevenSegment' || comp.type === 'LedArray') {
-        outputComponents.push(comp);
+      for (const out of comp.outputs) {
+        this.generate(out.id);
+        return;
       }
     }
-
-    if (outputComponents.length === 0) {
-      this.content.innerHTML = '<div style="color:var(--color-text-muted);padding:8px;">No output components found. Add Light Bulbs or Logic Probes to see outputs.</div>';
-      this.instructions.style.display = 'block';
-      return;
-    }
-
-    this.instructions.style.display = 'none';
-
-    // Generate for all outputs
-    this.generate(null);
+    this.content.innerHTML = '<p style="color: var(--color-danger);">No output components found. Add a Light Bulb or connect outputs.</p>';
   }
 
   /**
    * Deep-snapshot all component state so we can restore it perfectly after
-   * enumeration.
+   * enumeration.  The previous implementation only shallow-copied _state
+   * and _prevClk, which could leave sequential components in an incorrect
+   * internal state after truth-table generation.
    */
   _snapshotAllComponents() {
     const snapshot = new Map();
@@ -137,12 +109,6 @@ export class TruthTablePanel {
     }
   }
 
-  /**
-   * Generate the truth table.
-   *
-   * @param {string|null} outputNodeId - If provided, generate for a single output.
-   *   If null, auto-detect all output components and generate a multi-output table.
-   */
   generate(outputNodeId) {
     const inputComponents = [];
     for (const comp of this.engine.components.values()) {
@@ -151,8 +117,7 @@ export class TruthTablePanel {
       }
     }
     if (inputComponents.length === 0) {
-      this.content.innerHTML = '<div style="color:var(--color-text-muted);padding:8px;">No input switches found. Add Toggle Switches or DIP Switches.</div>';
-      this.instructions.style.display = 'block';
+      this.content.innerHTML = 'No input switches found.';
       return;
     }
 
@@ -178,71 +143,13 @@ export class TruthTablePanel {
       return;
     }
 
-    // Determine outputs
-    let outputNodes = [];
-
-    if (outputNodeId) {
-      // Single output mode (from right-click)
-      const outComp = this.engine._findComponentByNode(outputNodeId);
-      if (outComp) {
-        const outNode = outComp.outputs.find(o => o.id === outputNodeId);
-        if (outNode) {
-          outputNodes.push({ comp: outComp, nodeId: outputNodeId, label: outComp.id });
-        }
-      }
-    }
-
-    // If no specific output or no outputs found, auto-detect all output components
-    if (outputNodes.length === 0) {
-      for (const comp of this.engine.components.values()) {
-        if (comp.type === 'LightBulb' || comp.type === 'LogicProbe') {
-          // For single-output components, use the input value (it reflects the connected signal)
-          if (comp.inputs.length > 0) {
-            outputNodes.push({
-              comp,
-              nodeId: comp.inputs[0].id,
-              label: comp.id,
-              isInputBased: true
-            });
-          }
-        } else if (comp.type === 'SevenSegment' || comp.type === 'LedArray') {
-          // Multi-input output components - show each input
-          for (let i = 0; i < comp.inputs.length; i++) {
-            outputNodes.push({
-              comp,
-              nodeId: comp.inputs[i].id,
-              label: `${comp.id}.${i}`,
-              isInputBased: true
-            });
-          }
-        } else if (comp.outputs.length > 0 && comp.inputs.length > 0) {
-          // Generic component with both inputs and outputs - show outputs
-          for (const out of comp.outputs) {
-            outputNodes.push({
-              comp,
-              nodeId: out.id,
-              label: `${comp.id}`,
-              isInputBased: false
-            });
-          }
-        }
-      }
-    }
-
-    if (outputNodes.length === 0) {
-      this.content.innerHTML = '<div style="color:var(--color-text-muted);padding:8px;">No output components found. Add Light Bulbs or Logic Probes to see outputs.</div>';
-      this.instructions.style.display = 'block';
-      return;
-    }
-
-    this.instructions.style.display = 'none';
-
     const combos = 1 << totalBits;
 
-    // Deep-snapshot ALL component state before enumeration
+    // FIX (Bug #1 Critical): Deep-snapshot ALL component state before enumeration
     const snapshot = this._snapshotAllComponents();
 
-    // Reset all sequential component state
+    // Reset all sequential component state so truth table enumeration
+    // starts from a clean slate for each combination.
     for (const comp of this.engine.components.values()) {
       if (comp._prevClk !== undefined) comp._prevClk = false;
       if (comp._state !== undefined) {
@@ -251,8 +158,8 @@ export class TruthTablePanel {
       }
     }
 
-    let html = '<table class="tt-table"><thead><tr>';
-    // Input column headers
+    let html = '<table class="tt-table">';
+    html += '<tr>';
     for (const inp of inputs) {
       if (inp.comp.type === 'DipSwitch') {
         const n = inp.comp._switchCount || 8;
@@ -261,15 +168,10 @@ export class TruthTablePanel {
         html += `<th>${inp.comp.id}</th>`;
       }
     }
-    // Output column headers
-    for (const out of outputNodes) {
-      html += `<th style="color:var(--color-success)">${out.label}</th>`;
-    }
-    html += '</tr></thead><tbody>';
+    html += `<th>OUT</th></tr>`;
 
     for (let c = 0; c < combos; c++) {
       let bitIdx = 0;
-      // Set input values
       for (const inp of inputs) {
         for (const b of inp.bits) {
           const val = (c >> bitIdx) & 1;
@@ -279,8 +181,8 @@ export class TruthTablePanel {
           bitIdx++;
         }
       }
-
-      // Reset sequential state before each evaluation
+      // Reset sequential state before each evaluation so flip-flops
+      // don't accumulate state across truth table rows.
       for (const comp of this.engine.components.values()) {
         if (comp._prevClk !== undefined) comp._prevClk = false;
         if (comp._state !== undefined) {
@@ -289,22 +191,39 @@ export class TruthTablePanel {
         }
       }
 
-      // Evaluate the circuit
       this.engine._processQueue();
 
-      // Build the row
+      // Find the output value - try multiple approaches
+      let outVal = false;
+      const outComp = this.engine._findComponentByNode(outputNodeId);
+      if (outComp) {
+        // First try: direct output node lookup
+        const outNode = outComp.outputs.find(o => o.id === outputNodeId);
+        if (outNode !== undefined) {
+          outVal = !!outNode.value;
+        } else {
+          // Second try: if outputNodeId is an input node (e.g., LightBulb input)
+          const inNode = outComp.inputs.find(i => i.id === outputNodeId);
+          if (inNode !== undefined) {
+            outVal = !!inNode.value;
+          } else {
+            // Third try: for output components, check the first output
+            if (outComp.outputs.length > 0) {
+              outVal = !!outComp.outputs[0].value;
+            }
+          }
+        }
+      }
       html += '<tr>';
       bitIdx = 0;
-
-      // Input values
       for (const inp of inputs) {
         if (inp.comp.type === 'DipSwitch') {
           const n = inp.comp._switchCount || 8;
           for (let b = n - 1; b >= 0; b--) {
-            const val = (c >> bitIdx) & 1;
+            const val = (c >> b) & 1;
             html += `<td>${val}</td>`;
-            bitIdx++;
           }
+          bitIdx += n;
         } else {
           for (const b of inp.bits) {
             const val = (c >> bitIdx) & 1;
@@ -313,36 +232,15 @@ export class TruthTablePanel {
           }
         }
       }
-
-      // Output values
-      for (const out of outputNodes) {
-        let outVal;
-        if (out.isInputBased) {
-          // For output components (LightBulb, LogicProbe), read the input value
-          const inputNode = out.comp.inputs.find(i => i.id === out.nodeId);
-          outVal = inputNode ? inputNode.value : false;
-        } else {
-          // For generic components, read the output value
-          const outNode = out.comp.outputs.find(o => o.id === out.nodeId);
-          outVal = outNode ? outNode.value : false;
-        }
-        const valStr = outVal === null ? 'Z' : (outVal ? '1' : '0');
-        const valColor = outVal === true ? 'var(--color-success)' :
-                         outVal === null ? '#ff9800' : 'var(--color-text-muted)';
-        html += `<td style="color:${valColor};font-weight:600">${valStr}</td>`;
-      }
-
-      html += '</tr>';
+      html += `<td>${outVal ? '1' : '0'}</td></tr>`;
     }
 
-    html += '</tbody></table>';
-
-    // Restore ALL component state from the deep snapshot
+    // FIX (Bug #1 Critical): Restore ALL component state from the deep snapshot
     this._restoreAllComponents(snapshot);
 
     this.engine._processQueue();
     if (this.engine.onUpdate) this.engine.onUpdate();
 
-    this.content.innerHTML = html;
+    this.content.innerHTML = html + '</table>';
   }
 }

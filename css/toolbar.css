@@ -55,13 +55,6 @@
   background: var(--color-accent-hover) !important;
 }
 
-/* Active/pressed toolbar button state */
-.toolbar-btn:active,
-.toolbar-btn-accent:active {
-  background: var(--toolbar-active-bg, var(--color-accent)) !important;
-  color: var(--toolbar-active-text, #fff) !important;
-}
-
 /* Muted toolbar button (for disabled toggles) */
 .toolbar-btn-muted {
   background: var(--color-surface-alt) !important;

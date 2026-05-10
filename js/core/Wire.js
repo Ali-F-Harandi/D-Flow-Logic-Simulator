@@ -168,8 +168,8 @@ export class Wire {
       return `M ${sx} ${sy} L ${mx} ${sy} L ${mx} ${ty} L ${tx} ${ty}`;
     }
 
+    // Fix: Handle nearby horizontal pins to avoid loop-back paths
     if (tx >= sx - GRID_SIZE) {
-      // Nearby horizontal pins: step out vertically instead of creating loop-back
       const step = 40;
       const midY = (Math.abs(ty - sy) < GRID_SIZE)
         ? Math.min(sy, ty) - step
@@ -177,12 +177,19 @@ export class Wire {
       return `M ${sx} ${sy} L ${sx} ${midY} L ${tx} ${midY} L ${tx} ${ty}`;
     }
 
-    // Backward routing
+    // Fix: Backward routing — avoid creating loops when source and target
+    // are close together. Use a step-out path that goes around.
     const offset = 40;
-    const busLevel = Math.max(
-      Math.max(sy, ty) + offset,
-      minClearY != null ? minClearY + 20 : Math.max(sy, ty) + 70
-    );
+    const minClear = minClearY != null ? minClearY + 20 : Math.max(sy, ty) + 70;
+    const busLevel = Math.max(Math.max(sy, ty) + offset, minClear);
+
+    // Check if we need to route below or above based on available space
+    if (maxClearY != null && busLevel > maxClearY) {
+      // Route above instead of below
+      const topLevel = Math.min(Math.min(sy, ty) - offset, maxClearY);
+      return `M ${sx} ${sy} L ${sx + offset} ${sy} L ${sx + offset} ${topLevel} L ${tx - offset} ${topLevel} L ${tx - offset} ${ty} L ${tx} ${ty}`;
+    }
+
     return `M ${sx} ${sy} L ${sx + offset} ${sy} L ${sx + offset} ${busLevel} L ${tx - offset} ${busLevel} L ${tx - offset} ${ty} L ${tx} ${ty}`;
   }
 
@@ -204,11 +211,14 @@ export class Wire {
 
   /**
    * Parse an SVG "d" attribute into an array of {x,y} points.
+   * Fixed regex: original /[ML]\s*[\d.e+-]+/gi lost Y-coordinates.
+   * New regex correctly captures all coordinate pairs per command.
    */
   static svgPathToPoints(d) {
     const points = [];
     if (!d) return points;
     // Match M or L followed by one or more coordinate pairs (x y or x,y)
+    // Each command can have multiple coordinate pairs
     const commands = d.match(/[ML]\s+(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?[\s,]+-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?(?:[\s,]+-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)*)/gi);
     if (!commands) return points;
     for (const cmd of commands) {

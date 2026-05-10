@@ -1,20 +1,12 @@
 /**
  * WireCrossingDetector — detects crossings between orthogonal wire segments
  * and generates SVG arc segments for bridge/jump visualization.
- *
- * ANSI style: The horizontal wire gets a semicircular "bridge" arc that
- * appears to jump over the vertical wire. The vertical wire is drawn fully
- * (no gap), and a background-colored cover strip is placed behind the arc
- * to visually separate the crossing. This ensures the vertical wire remains
- * visible on both sides of the bridge.
- *
- * IEC style: Junction dots only (no bridges).
  */
 export class WireCrossingDetector {
   constructor() {
     this._crossings = [];
     this._bridgeRadius = 4;   // Radius of jump arc
-    this._bridgeOffset = 2;   // Gap before/after arc
+    this._bridgeOffset = 1;   // Gap before/after arc (reduced from 2 for better visibility)
     this._style = 'ansi';     // 'ansi' = bridge/jump arcs, 'iec' = junction dots only
   }
 
@@ -107,9 +99,12 @@ export class WireCrossingDetector {
       return null; // Both same orientation — no crossing possible
     }
 
+    // Horizontal segment: y is constant, x varies
+    // Vertical segment: x is constant, y varies
     const crossX = vSeg.x1; // vSeg.x1 === vSeg.x2
     const crossY = hSeg.y1; // hSeg.y1 === hSeg.y2
 
+    // Check if crossing point is within both segments
     if (crossX >= hSeg.x1 && crossX <= hSeg.x2 &&
         crossY >= vSeg.y1 && crossY <= vSeg.y2) {
       return { x: crossX, y: crossY };
@@ -119,14 +114,8 @@ export class WireCrossingDetector {
 
   /**
    * Apply bridge/jump arcs to wire SVG paths.
-   *
-   * For ANSI style:
-   *   - Horizontal wires get bridge arcs at crossings
-   *   - Background-colored cover strips are placed behind arcs to visually
-   *     separate the bridge from the vertical wire beneath
-   *   - Vertical wires are drawn fully (no gaps), ensuring they remain
-   *     visible on both sides of every bridge
-   *
+   * Modifies the SVG path of the horizontal wire at each crossing,
+   * and adds gaps on the vertical wire at each crossing.
    * @param {Array} wires - Array of Wire objects
    * @returns {Array} Modified wire IDs
    */
@@ -136,13 +125,6 @@ export class WireCrossingDetector {
 
     const modifiedWireIds = new Set();
 
-    // Remove any previous bridge cover elements
-    for (const wire of wires) {
-      if (wire.element) {
-        wire.element.querySelectorAll('.bridge-cover').forEach(el => el.remove());
-      }
-    }
-
     // Group crossings by the horizontal wire
     const crossingsByHWire = {};
     // Group crossings by the vertical wire
@@ -151,6 +133,7 @@ export class WireCrossingDetector {
     for (const crossing of this._crossings) {
       if (crossing.hasConnection) continue; // Don't bridge junctions
       const hWireId = crossing.horizontalWireId;
+      // Determine vertical wire ID (the other wire)
       const vWireId = crossing.wire1Id === hWireId ? crossing.wire2Id : crossing.wire1Id;
 
       if (!crossingsByHWire[hWireId]) crossingsByHWire[hWireId] = [];
@@ -160,10 +143,7 @@ export class WireCrossingDetector {
       crossingsByVWire[vWireId].push(crossing);
     }
 
-    // Determine the background color from the current theme
-    const bgColor = this._getBackgroundColor();
-
-    // For each horizontal wire with crossings, add bridge arcs and cover strips
+    // For each horizontal wire with crossings, add bridge arcs
     for (const [wireId, crossings] of Object.entries(crossingsByHWire)) {
       const wire = wires.find(w => w.id === wireId);
       if (!wire || !wire.pathPoints || wire.pathPoints.length < 2) continue;
@@ -204,6 +184,8 @@ export class WireCrossingDetector {
             const bridgeStart = crossing.x - this._bridgeOffset - this._bridgeRadius;
             const bridgeEnd = crossing.x + this._bridgeOffset + this._bridgeRadius;
 
+            // Near side = bridge boundary closer to current drawing position
+            // Far side  = bridge boundary closer to the segment end
             const nearSide = goingRight ? bridgeStart : bridgeEnd;
             const farSide  = goingRight ? bridgeEnd : bridgeStart;
 
@@ -212,16 +194,9 @@ export class WireCrossingDetector {
             if (shouldDraw) {
               d += ` L ${nearSide} ${segY}`;
             }
-
-            // Add a background-colored cover strip behind the arc.
-            // This covers the vertical wire beneath the bridge, making the
-            // crossing visually clean while keeping the vertical wire visible
-            // on both sides of the bridge.
-            if (wire.element) {
-              this._addBridgeCover(wire, crossing, bgColor);
-            }
-
-            // Draw arc over crossing
+            // Draw arc over crossing.
+            // sweep-flag: 1 (clockwise) when going right, 0 (counter-clockwise) when going left.
+            // Both produce an upward bump that looks like a bridge.
             const sweepFlag = goingRight ? 1 : 0;
             d += ` A ${this._bridgeRadius} ${this._bridgeRadius} 0 0 ${sweepFlag} ${farSide} ${segY}`;
             x = farSide;
@@ -237,26 +212,92 @@ export class WireCrossingDetector {
       // Apply modified path
       if (wire.element) {
         const visualPath = wire.element.querySelector('.wire-visual');
+        const hitPath = wire.element.querySelector('.wire-hitarea');
         if (visualPath) visualPath.setAttribute('d', d);
+        // Keep hit path as simple line (no arcs for hit testing)
       }
       modifiedWireIds.add(wireId);
     }
 
-    // For vertical wires: draw them fully (no gaps).
-    // The bridge cover strips on horizontal wires visually separate the crossing.
-    // We only need to process vertical wires if they also have horizontal crossings
-    // on the same wire (different segments), in which case we build a combined path.
+    // For each vertical wire with crossings, add gaps with thin pass-through lines
     for (const [wireId, crossings] of Object.entries(crossingsByVWire)) {
       const wire = wires.find(w => w.id === wireId);
       if (!wire || !wire.pathPoints || wire.pathPoints.length < 2) continue;
 
-      if (modifiedWireIds.has(wireId)) {
-        // This wire has BOTH horizontal and vertical crossings (different segments).
-        // Build a combined path: bridges on horizontal segments, full draw on vertical segments.
-        this._applyCombinedPath(wire, crossings, bgColor);
+      // Build modified SVG path with gaps at crossings
+      // Instead of completely hiding the vertical wire, we draw a thin line
+      // through the gap to show the wire passing under the bridge
+      let d = `M ${wire.pathPoints[0].x} ${wire.pathPoints[0].y}`;
+      const gapSize = this._bridgeOffset + this._bridgeRadius;
+
+      for (let i = 1; i < wire.pathPoints.length; i++) {
+        const prev = wire.pathPoints[i - 1];
+        const curr = wire.pathPoints[i];
+        const isVertical = Math.abs(curr.x - prev.x) < 1;
+
+        if (isVertical) {
+          const segX = prev.x;
+          const segMinY = Math.min(prev.y, curr.y);
+          const segMaxY = Math.max(prev.y, curr.y);
+          const goingDown = curr.y > prev.y;
+
+          // Filter crossings that belong to this segment
+          const segCrossings = crossings.filter(c =>
+            c.x === segX && c.y >= segMinY && c.y <= segMaxY
+          );
+
+          if (segCrossings.length === 0) {
+            // No crossings on this segment — draw straight through
+            d += ` L ${curr.x} ${curr.y}`;
+            continue;
+          }
+
+          // Sort crossings in order of travel along the segment
+          if (goingDown) {
+            segCrossings.sort((a, b) => a.y - b.y);
+          } else {
+            segCrossings.sort((a, b) => b.y - a.y);
+          }
+
+          let y = prev.y;
+          for (const crossing of segCrossings) {
+            const gapNearSide = goingDown ? (crossing.y - gapSize) : (crossing.y + gapSize);
+            const gapFarSide  = goingDown ? (crossing.y + gapSize) : (crossing.y - gapSize);
+
+            // Draw line from current position to the near side of the gap
+            const shouldDraw = goingDown
+              ? (gapNearSide > y)
+              : (gapNearSide < y);
+            if (shouldDraw) {
+              d += ` L ${segX} ${gapNearSide}`;
+            }
+            // Draw a thin dashed line through the gap to show the wire passing under
+            // This makes the wire visible under the bridge while maintaining the ANSI convention
+            d += ` L ${segX} ${crossing.y - 1}`;
+            d += ` M ${segX} ${crossing.y + 1}`;
+            // Jump to far side of gap
+            d += ` M ${segX} ${gapFarSide}`;
+            y = gapFarSide;
+          }
+          // Draw remaining segment to curr.y
+          d += ` L ${curr.x} ${curr.y}`;
+        } else {
+          // Horizontal segment — no gap needed
+          d += ` L ${curr.x} ${curr.y}`;
+        }
       }
-      // If the wire only has vertical crossings, it stays fully drawn (no gap needed).
-      // The bridge covers on the horizontal wires handle the visual separation.
+
+      // Apply modified path for vertical wire.
+      if (wire.element) {
+        const visualPath = wire.element.querySelector('.wire-visual');
+        if (visualPath) {
+          if (modifiedWireIds.has(wireId)) {
+            this._applyVerticalGapsToExistingPath(wire, crossings, gapSize);
+          } else {
+            visualPath.setAttribute('d', d);
+          }
+        }
+      }
       modifiedWireIds.add(wireId);
     }
 
@@ -268,80 +309,25 @@ export class WireCrossingDetector {
    */
   getCrossings() { return this._crossings; }
 
-  /* ─── Internal: Background Color Detection ─── */
+  /* ─── Internal: Combined Bridge + Gap Application ─── */
 
   /**
-   * Determine the canvas background color from the current theme.
-   * Used for bridge cover strips that visually separate the crossing.
-   */
-  _getBackgroundColor() {
-    const style = getComputedStyle(document.documentElement);
-    return style.getPropertyValue('--color-bg').trim() || '#1e1e1e';
-  }
-
-  /* ─── Internal: Bridge Cover Strip ─── */
-
-  /**
-   * Add a background-colored rectangle/strip behind a bridge arc.
-   * This covers the vertical wire at the crossing point, making the
-   * bridge arc appear to cleanly jump over the vertical wire while
-   * keeping the vertical wire visible above and below the bridge.
-   *
-   * @param {Wire} wire - The horizontal wire element
-   * @param {Object} crossing - Crossing location {x, y}
-   * @param {string} bgColor - Background color for the cover
-   */
-  _addBridgeCover(wire, crossing, bgColor) {
-    if (!wire.element) return;
-
-    // Avoid duplicate covers
-    const existing = wire.element.querySelectorAll('.bridge-cover');
-    for (const el of existing) {
-      const ex = parseFloat(el.getAttribute('x'));
-      const ey = parseFloat(el.getAttribute('y'));
-      if (Math.abs(ex - crossing.x) < 2 && Math.abs(ey - crossing.y) < 2) return;
-    }
-
-    const coverWidth = (this._bridgeOffset + this._bridgeRadius) * 2 + 2;
-    const coverHeight = this._bridgeRadius * 2 + 2;
-
-    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    rect.setAttribute('x', crossing.x - coverWidth / 2);
-    rect.setAttribute('y', crossing.y - coverHeight / 2 - 1);
-    rect.setAttribute('width', coverWidth);
-    rect.setAttribute('height', coverHeight);
-    rect.setAttribute('fill', bgColor);
-    rect.setAttribute('stroke', 'none');
-    rect.setAttribute('pointer-events', 'none');
-    rect.classList.add('bridge-cover');
-
-    // Insert before the visual path so the cover is behind the arc
-    const visualPath = wire.element.querySelector('.wire-visual');
-    if (visualPath) {
-      wire.element.insertBefore(rect, visualPath);
-    } else {
-      wire.element.appendChild(rect);
-    }
-  }
-
-  /* ─── Internal: Combined Bridge + Full-Draw Path ─── */
-
-  /**
-   * Build a combined path for a wire that has both horizontal crossings
-   * (needing bridge arcs) and vertical crossings (drawn fully, no gaps).
-   * Bridge covers are added for horizontal crossing points.
+   * Apply vertical gaps to a wire that already has horizontal bridge arcs.
+   * Builds a combined path from pathPoints that includes both modifications.
+   * This is needed when a single wire has crossings where it is horizontal
+   * AND crossings where it is vertical (different segments of the same wire).
    *
    * @param {Wire} wire
    * @param {Array} verticalCrossings - Crossings where this wire is vertical
-   * @param {string} bgColor - Background color for bridge covers
+   * @param {number} gapSize
    */
-  _applyCombinedPath(wire, verticalCrossings, bgColor) {
+  _applyVerticalGapsToExistingPath(wire, verticalCrossings, gapSize) {
     if (!wire.element || !wire.pathPoints || wire.pathPoints.length < 2) return;
 
     const visualPath = wire.element.querySelector('.wire-visual');
     if (!visualPath) return;
 
-    // Get horizontal crossings for this wire
+    // Get horizontal crossings for this wire (already applied as bridges)
     const hWireId = wire.id;
     const hCrossings = this._crossings.filter(c =>
       c.horizontalWireId === hWireId && !c.hasConnection
@@ -356,7 +342,7 @@ export class WireCrossingDetector {
       const isVertical = Math.abs(curr.x - prev.x) < 1;
 
       if (isHorizontal) {
-        // Apply bridge arcs with cover strips
+        // Apply bridge arcs (same logic as the horizontal loop above)
         const segMinX = Math.min(prev.x, curr.x);
         const segMaxX = Math.max(prev.x, curr.x);
         const segY = prev.y;
@@ -381,13 +367,10 @@ export class WireCrossingDetector {
         for (const crossing of segHCrossings) {
           const bridgeStart = crossing.x - this._bridgeOffset - this._bridgeRadius;
           const bridgeEnd = crossing.x + this._bridgeOffset + this._bridgeRadius;
-
-          // Add background cover
-          this._addBridgeCover(wire, crossing, bgColor);
-
           if (goingRight ? (bridgeStart > x) : (bridgeStart < x)) {
             d += ` L ${bridgeStart} ${segY}`;
           }
+          // Fix: Use direction-aware sweep flag (was always 1, causing wrong arc for left-going wires)
           const sweepFlag = goingRight ? 1 : 0;
           d += ` A ${this._bridgeRadius} ${this._bridgeRadius} 0 0 ${sweepFlag} ${bridgeEnd} ${segY}`;
           x = bridgeEnd;
@@ -397,8 +380,41 @@ export class WireCrossingDetector {
         }
 
       } else if (isVertical) {
-        // Vertical segment: draw fully (no gaps).
-        // The bridge covers on horizontal wires handle the visual separation.
+        // Apply gaps (direction-aware logic)
+        const segX = prev.x;
+        const segMinY = Math.min(prev.y, curr.y);
+        const segMaxY = Math.max(prev.y, curr.y);
+        const goingDown = curr.y > prev.y;
+
+        const segVCrossings = verticalCrossings.filter(c =>
+          c.x === segX && c.y >= segMinY && c.y <= segMaxY
+        );
+
+        if (segVCrossings.length === 0) {
+          d += ` L ${curr.x} ${curr.y}`;
+          continue;
+        }
+
+        if (goingDown) {
+          segVCrossings.sort((a, b) => a.y - b.y);
+        } else {
+          segVCrossings.sort((a, b) => b.y - a.y);
+        }
+
+        let y = prev.y;
+        for (const crossing of segVCrossings) {
+          const gapNearSide = goingDown ? (crossing.y - gapSize) : (crossing.y + gapSize);
+          const gapFarSide  = goingDown ? (crossing.y + gapSize) : (crossing.y - gapSize);
+          const shouldDraw = goingDown ? (gapNearSide > y) : (gapNearSide < y);
+          if (shouldDraw) {
+            d += ` L ${segX} ${gapNearSide}`;
+          }
+          // Draw thin line through the gap to show wire passing under bridge
+          d += ` L ${segX} ${crossing.y - 1}`;
+          d += ` M ${segX} ${crossing.y + 1}`;
+          d += ` M ${segX} ${gapFarSide}`;
+          y = gapFarSide;
+        }
         d += ` L ${curr.x} ${curr.y}`;
 
       } else {

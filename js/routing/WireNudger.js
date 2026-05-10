@@ -299,38 +299,47 @@ export class WireNudger {
   /**
    * Nudge a horizontal segment's Y coordinate.
    * Updates both endpoints of the segment and the connected points
-   * of adjacent segments.
+   * of adjacent segments. Then re-orthogonalizes adjacent segments.
    */
   _nudgeSegmentY(wire, segIndex, offset) {
     const pts = wire.pathPoints;
 
-    // Update the two points of this segment
+    // Update the two points of this horizontal segment
     pts[segIndex].y += offset;
     pts[segIndex + 1].y += offset;
 
-    // Re-align adjacent vertical segments so they don't become diagonal
+    // Re-orthogonalize: ensure adjacent vertical segments stay vertical
+    // by keeping their X coordinates aligned with the horizontal endpoints
     if (segIndex > 0) {
-      pts[segIndex].x = pts[segIndex - 1].x; // vertical segment above must share X
+      // The segment before this one should be vertical — ensure shared X
+      pts[segIndex].x = pts[segIndex - 1].x;
     }
     if (segIndex + 2 < pts.length) {
-      pts[segIndex + 1].x = pts[segIndex + 2].x; // vertical segment below must share X
+      // The segment after this one should be vertical — ensure shared X
+      pts[segIndex + 1].x = pts[segIndex + 2].x;
     }
   }
 
   /**
    * Nudge a vertical segment's X coordinate.
+   * Updates both endpoints of the segment and the connected points
+   * of adjacent segments. Then re-orthogonalizes adjacent segments.
    */
   _nudgeSegmentX(wire, segIndex, offset) {
     const pts = wire.pathPoints;
 
+    // Update the two points of this vertical segment
     pts[segIndex].x += offset;
     pts[segIndex + 1].x += offset;
 
-    // Re-align adjacent horizontal segments
+    // Re-orthogonalize: ensure adjacent horizontal segments stay horizontal
+    // by keeping their Y coordinates aligned with the vertical endpoints
     if (segIndex > 0) {
+      // The segment before this one should be horizontal — ensure shared Y
       pts[segIndex].y = pts[segIndex - 1].y;
     }
     if (segIndex + 2 < pts.length) {
+      // The segment after this one should be horizontal — ensure shared Y
       pts[segIndex + 1].y = pts[segIndex + 2].y;
     }
   }

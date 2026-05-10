@@ -11,35 +11,59 @@ export class Header {
     container.appendChild(this.element);
     this._bindButtons();
     this._initTheme();
+    // HP-2 FIX: Removed _bindGlobalShortcuts() — the Delete key handler
+    // here was duplicating the one in CanvasEvents._bindKeyboard().
+    // Both listened on window for 'Delete' and could fire double-delete.
+    // CanvasEvents already handles all keyboard shortcuts properly.
   }
 
   build() {
     const header = document.createElement('header');
     header.id = 'header';
     header.innerHTML = `
-      <button class="hamburger-btn" title="Toggle sidebar" aria-label="Toggle sidebar"><i data-lucide="menu" style="width:18px;height:18px"></i></button>
+      <button class="hamburger-btn" title="Toggle sidebar" aria-label="Toggle sidebar">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M1 3h14v2H1zm0 4h14v2H1zm0 4h14v2H1z"/></svg>
+      </button>
       <span class="app-title">D-Flow</span>
       <div class="header-controls">
-        <button class="header-btn run-btn" title="Run simulation (continuous)" aria-label="Run simulation"><i data-lucide="play" style="width:14px;height:14px"></i> Run</button>
-        <button class="header-btn stop-btn" title="Stop simulation" aria-label="Stop simulation"><i data-lucide="square" style="width:14px;height:14px"></i> Stop</button>
-        <button class="header-btn step-btn" title="Advance one step" aria-label="Step simulation"><i data-lucide="step-forward" style="width:14px;height:14px"></i> Step</button>
-        <button class="header-btn reset-btn" title="Reset all component states" aria-label="Reset simulation"><i data-lucide="rotate-ccw" style="width:14px;height:14px"></i> Reset</button>
-        <button class="header-btn zoom-fit-btn" title="Zoom to fit all components" aria-label="Zoom to fit"><i data-lucide="maximize" style="width:14px;height:14px"></i></button>
-        <button class="header-btn center-btn" title="Center canvas view" aria-label="Center view"><i data-lucide="crosshair" style="width:14px;height:14px"></i></button>
-        <button class="header-btn save-btn" title="Save to browser storage" aria-label="Save project"><i data-lucide="save" style="width:14px;height:14px"></i></button>
-        <button class="header-btn load-btn" title="Restore last saved project" aria-label="Load project"><i data-lucide="folder-open" style="width:14px;height:14px"></i></button>
-        <button class="header-btn export-btn" title="Export circuit as JSON file" aria-label="Export circuit"><i data-lucide="upload" style="width:14px;height:14px"></i> Export</button>
-        <button class="header-btn import-btn" title="Import circuit from JSON file" aria-label="Import circuit"><i data-lucide="download" style="width:14px;height:14px"></i> Import</button>
-        <button class="header-btn theme-toggle-btn" title="Toggle theme (dark/light/high-contrast)" aria-label="Toggle theme"><i data-lucide="moon" style="width:14px;height:14px"></i></button>
-        <button class="header-btn examples-btn" title="Load example circuit" aria-label="Example circuits"><i data-lucide="book-open" style="width:14px;height:14px"></i> Examples</button>
+        <button class="header-btn run-btn" title="Run simulation (continuous)" aria-label="Run simulation">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><polygon points="3,1 12,7 3,13"/></svg> Run
+        </button>
+        <button class="header-btn stop-btn" title="Stop simulation" aria-label="Stop simulation">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="2" y="2" width="10" height="10" rx="1"/></svg> Stop
+        </button>
+        <button class="header-btn step-btn" title="Advance one step" aria-label="Step simulation">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><polygon points="2,1 10,7 2,13"/><rect x="11" y="1" width="2" height="12"/></svg> Step
+        </button>
+        <button class="header-btn reset-btn" title="Reset all component states" aria-label="Reset simulation">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 7a5 5 0 1 1 1.5 3.6"/><polyline points="2,11 2,7 6,7"/></svg> Reset
+        </button>
+        <button class="header-btn zoom-fit-btn" title="Zoom to fit all components" aria-label="Zoom to fit">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="12" height="12" rx="1"/><line x1="5" y1="1" x2="5" y2="13"/><line x1="1" y1="5" x2="13" y2="5"/></svg>
+        </button>
+        <button class="header-btn center-btn" title="Center canvas view" aria-label="Center view">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="3"/><line x1="7" y1="1" x2="7" y2="4"/><line x1="7" y1="10" x2="7" y2="13"/><line x1="1" y1="7" x2="4" y2="7"/><line x1="10" y1="7" x2="13" y2="7"/></svg>
+        </button>
+        <button class="header-btn save-btn" title="Save to browser storage" aria-label="Save project">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><path d="M11 1H3a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1zM4 1v4h6V1M4 9h6v4H4z"/></svg>
+        </button>
+        <button class="header-btn load-btn" title="Restore last saved project" aria-label="Load project">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><path d="M2 2h3v1H3v8h8V3h-2V2h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1zm5-2l3 3H7V0z"/></svg>
+        </button>
+        <button class="header-btn export-btn" title="Export circuit as JSON file" aria-label="Export circuit">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><path d="M7 1v8M4 6l3 3 3-3M2 11v1a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1"/></svg> Export
+        </button>
+        <button class="header-btn import-btn" title="Import circuit from JSON file" aria-label="Import circuit">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><path d="M7 9V1M4 4l3-3 3 3M2 11v1a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1"/></svg> Import
+        </button>
+        <button class="header-btn theme-toggle-btn" title="Toggle theme (dark/light/high-contrast)" aria-label="Toggle theme">
+          <svg class="theme-icon-dark" width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><path d="M7 1a6 6 0 1 0 0 12A6 6 0 0 0 7 1zm0 1.5v9a4.5 4.5 0 0 1 0-9z"/></svg>
+        </button>
+        <button class="header-btn examples-btn" title="Load example circuit" aria-label="Example circuits">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="5" height="5" rx="1"/><rect x="8" y="1" width="5" height="5" rx="1"/><rect x="1" y="8" width="5" height="5" rx="1"/><rect x="8" y="8" width="5" height="5" rx="1"/></svg> Examples
+        </button>
       </div>
     `;
-
-    // Initialize Lucide icons
-    if (window.lucide) {
-      try { window.lucide.createIcons(); } catch(e) { /* fallback */ }
-    }
-
     return header;
   }
 
@@ -92,6 +116,7 @@ export class Header {
 
     this.hamburgerBtn.addEventListener('click', () => this.eventBus.emit('toggle-sidebar'));
 
+    // Example circuits
     this.examplesBtn.addEventListener('click', () => this._showExamplesDialog());
 
     this.themeToggleBtn.addEventListener('click', () => {
@@ -105,6 +130,7 @@ export class Header {
       this._updateThemeIcon(next);
     });
 
+    // Save
     this.saveBtn.addEventListener('click', () => {
       const state = Serializer.exportState(this.engine);
       localStorage.setItem('dflow-project', JSON.stringify(state));
@@ -112,6 +138,7 @@ export class Header {
       else alert('Project saved to localStorage.');
     });
 
+    // Load
     this.loadBtn.addEventListener('click', () => {
       const saved = localStorage.getItem('dflow-project');
       if (!saved) {
@@ -132,6 +159,7 @@ export class Header {
       }
     });
 
+    // Export JSON
     this.exportBtn.addEventListener('click', () => {
       const state = Serializer.exportState(this.engine);
       const json = JSON.stringify(state, null, 2);
@@ -144,6 +172,7 @@ export class Header {
       URL.revokeObjectURL(url);
     });
 
+    // Import JSON
     this.importBtn.addEventListener('click', () => {
       const input = document.createElement('input');
       input.type = 'file';
@@ -177,23 +206,22 @@ export class Header {
 
   _updateThemeIcon(theme) {
     if (this.themeToggleBtn) {
-      const iconMap = { dark: 'moon', light: 'sun', 'high-contrast': 'contrast' };
-      const iconName = iconMap[theme] || 'moon';
-      // Update the Lucide icon
-      const iconEl = this.themeToggleBtn.querySelector('i[data-lucide]');
-      if (iconEl) {
-        iconEl.setAttribute('data-lucide', iconName);
-        // Re-render the icon
-        if (window.lucide) {
-          try { window.lucide.createIcons({ nodes: [iconEl] }); } catch(e) {}
-        }
-      }
+      const icons = {
+        dark: '<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><path d="M7 1a6 6 0 1 0 0 12A6 6 0 0 0 7 1zm0 1.5v9a4.5 4.5 0 0 1 0-9z"/></svg>',
+        light: '<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><circle cx="7" cy="7" r="3"/><g stroke="currentColor" stroke-width="1.5" fill="none"><line x1="7" y1="1" x2="7" y2="3"/><line x1="7" y1="11" x2="7" y2="13"/><line x1="1" y1="7" x2="3" y2="7"/><line x1="11" y1="7" x2="13" y2="7"/><line x1="2.8" y1="2.8" x2="4.2" y2="4.2"/><line x1="9.8" y1="9.8" x2="11.2" y2="11.2"/><line x1="2.8" y1="11.2" x2="4.2" y2="9.8"/><line x1="9.8" y1="4.2" x2="11.2" y2="2.8"/></g></svg>',
+        'high-contrast': '<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><circle cx="7" cy="7" r="6"/><path fill="var(--color-surface, #111)" d="M7 1a6 6 0 0 0 0 12z"/></svg>'
+      };
+      this.themeToggleBtn.innerHTML = icons[theme] || icons.dark;
     }
   }
 
+  /**
+   * Show a dialog with example circuits to load.
+   */
   _showExamplesDialog() {
     const examples = ExampleCircuits.getAll();
 
+    // Remove any existing dialog
     const existing = document.getElementById('examples-dialog');
     if (existing) existing.remove();
 
@@ -209,7 +237,7 @@ export class Header {
     const content = document.createElement('div');
     content.style.cssText = `
       background: var(--color-surface); border: 1px solid var(--color-border);
-      border-radius: 8px; padding: 20px; max-width: 550px; width: 90%;
+      border-radius: 8px; padding: 20px; max-width: 500px; width: 90%;
       max-height: 80vh; overflow-y: auto; box-shadow: var(--shadow-lg);
     `;
 
@@ -221,7 +249,7 @@ export class Header {
     header.innerHTML = `<h3 style="margin:0;color:var(--color-accent)">Example Circuits</h3>`;
 
     const closeBtn = document.createElement('button');
-    closeBtn.textContent = '\u2715';
+    closeBtn.textContent = '✕';
     closeBtn.style.cssText = `
       background: var(--color-surface-alt); border: 1px solid var(--color-border);
       color: var(--color-text); width: 28px; height: 28px; border-radius: 50%;
@@ -283,6 +311,12 @@ export class Header {
     this.stepBtn.disabled = running;
     this.element.classList.toggle('sim-running', running);
   }
+
+  // HP-2 FIX: Removed _bindGlobalShortcuts() entirely.
+  // The Delete key handler here duplicated CanvasEvents._bindKeyboard().
+  // Both listened on `window` for 'keydown' with 'Delete', causing
+  // double-deletion when both fired. CanvasEvents already handles
+  // Delete/Backspace, Ctrl+Z, Ctrl+Y, Ctrl+C, Ctrl+V, arrows, etc.
 
   setFactory(factory) {
     this.factory = factory;
