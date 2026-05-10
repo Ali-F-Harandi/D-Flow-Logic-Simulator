@@ -49,8 +49,13 @@
   --connector-border: #999;
   --connector-size: 8px;
   --wire-high-color: #00cc66;
+  --wire-high-dasharray: none;
   --wire-neutral-color: #888;
+  --wire-neutral-dasharray: 6,4;
   --wire-z-color: #ff9800;
+  --wire-z-dasharray: 2,2;
+  --wire-fallback-color: #ff4444;
+  --wire-fallback-dasharray: 4,3;
   --gate-bg: var(--color-surface);
   --gate-body-color: var(--color-text);
   --gate-border: 1px solid var(--color-border);
@@ -126,6 +131,11 @@
   --probe-low: #f44747;
   --probe-z: #ff9800;
   --wire-z-color: #ff9800;
+  --wire-high-dasharray: none;
+  --wire-neutral-dasharray: 6,4;
+  --wire-z-dasharray: 2,2;
+  --wire-fallback-color: #d32f2f;
+  --wire-fallback-dasharray: 4,3;
   --truth-table-header-bg: var(--color-surface-alt);
   --truth-table-header-color: var(--color-accent);
   --truth-table-row-alt: rgba(0,0,0,0.03);
@@ -163,7 +173,12 @@
   --connector-border: #fff;
   --wire-neutral-color: #fff;
   --wire-high-color: #0f0;
+  --wire-high-dasharray: none;
+  --wire-neutral-dasharray: 6,4;
   --wire-z-color: #ff0;
+  --wire-z-dasharray: 2,2;
+  --wire-fallback-color: #f00;
+  --wire-fallback-dasharray: 4,3;
   --gate-bg: #000;
   --gate-body-color: #fff;
   --gate-border: 2px solid #fff;
@@ -201,4 +216,294 @@
 
 .grid-dot {
   fill: var(--grid-dot-color);
+}
+
+/* ===== Reduced Motion (prefers-reduced-motion) ===== */
+@media (prefers-reduced-motion: reduce) {
+  .wire-visual.propagating-high,
+  .wire-visual.propagating-low {
+    animation: none !important;
+  }
+  .wire-manual-preview,
+  .wire-manual-glow,
+  .wire-preview,
+  .connector.floating {
+    animation: none !important;
+  }
+  .wire-glow,
+  .wire-visual,
+  .wire-endpoint-source,
+  .wire-endpoint-target,
+  .wire-junction,
+  .wire-junction-intermediate {
+    transition: none !important;
+  }
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ===== Onboarding Tour ===== */
+.onboarding-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 5000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.onboarding-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--border-radius-lg);
+  padding: 24px 28px;
+  max-width: 420px;
+  width: 90%;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  text-align: center;
+}
+
+.onboarding-card h3 {
+  color: var(--color-accent);
+  margin: 0 0 12px 0;
+  font-size: 18px;
+}
+
+.onboarding-card p {
+  color: var(--color-text);
+  font-size: var(--font-size-md);
+  line-height: 1.5;
+  margin: 0 0 8px 0;
+}
+
+.onboarding-step-indicator {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin: 16px 0;
+}
+
+.onboarding-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--color-border);
+  transition: background 0.2s;
+}
+
+.onboarding-dot.active {
+  background: var(--color-accent);
+}
+
+.onboarding-btn-row {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 16px;
+}
+
+.onboarding-btn {
+  padding: 8px 20px;
+  border-radius: var(--border-radius);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: var(--font-size-md);
+  transition: background 0.15s;
+}
+
+.onboarding-btn:hover {
+  background: var(--color-border);
+}
+
+.onboarding-btn-primary {
+  background: var(--color-accent);
+  color: #fff;
+  border-color: var(--color-accent);
+}
+
+.onboarding-btn-primary:hover {
+  background: var(--color-accent-hover);
+}
+
+/* ===== Empty State Overlay ===== */
+.empty-state-overlay {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+  text-align: center;
+  pointer-events: auto;
+  user-select: none;
+}
+
+.empty-state-overlay h2 {
+  color: var(--color-text-muted);
+  font-size: 20px;
+  margin: 0 0 12px;
+  font-weight: 500;
+}
+
+.empty-state-overlay p {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-md);
+  margin: 0 0 20px;
+  opacity: 0.7;
+}
+
+.empty-state-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.empty-state-btn {
+  padding: 10px 20px;
+  border-radius: var(--border-radius-lg);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: var(--font-size-md);
+  transition: all 0.2s;
+}
+
+.empty-state-btn:hover {
+  border-color: var(--color-accent);
+  background: var(--color-surface);
+  color: var(--color-accent);
+}
+
+.empty-state-btn-primary {
+  background: var(--color-accent);
+  color: #fff;
+  border-color: var(--color-accent);
+}
+
+.empty-state-btn-primary:hover {
+  background: var(--color-accent-hover);
+}
+
+/* ===== Simulation Status Pill ===== */
+.sim-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.sim-status-pill.stopped {
+  background: var(--color-surface-alt);
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+}
+
+.sim-status-pill.running {
+  background: rgba(0, 204, 102, 0.15);
+  color: #00cc66;
+  border: 1px solid rgba(0, 204, 102, 0.3);
+}
+
+.sim-status-pill.error {
+  background: rgba(244, 71, 71, 0.15);
+  color: #f44747;
+  border: 1px solid rgba(244, 71, 71, 0.3);
+}
+
+.sim-status-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.sim-status-pill.stopped .sim-status-dot { background: var(--color-text-muted); }
+.sim-status-pill.running .sim-status-dot { background: #00cc66; animation: status-pulse 1.5s infinite; }
+.sim-status-pill.error .sim-status-dot { background: #f44747; }
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ===== Footer Zoom Controls ===== */
+.footer-zoom-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.footer-zoom-btn {
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  width: 22px; height: 22px;
+  border-radius: 3px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+  transition: background 0.15s;
+}
+
+.footer-zoom-btn:hover {
+  background: var(--color-border);
+}
+
+/* ===== Auto-Save Indicator ===== */
+.autosave-indicator {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  opacity: 0.6;
+}
+
+.autosave-indicator.unsaved {
+  color: var(--wire-z-color);
+  opacity: 1;
+}
+
+/* ===== Getting Started Category in Sidebar ===== */
+.component-group.getting-started {
+  border-left: 3px solid var(--color-accent);
+  padding-left: 8px;
+  margin-bottom: 8px;
+}
+
+.component-group.getting-started .group-header {
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.component-group.recently-used .group-header {
+  color: var(--wire-z-color);
+  font-weight: 500;
+  font-style: italic;
+}
+
+/* ===== Wire Edit Handle ===== */
+.wire-edit-handle {
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.wire-edit-handle:hover {
+  opacity: 1 !important;
+}
+
+/* ===== Wire Routing Fallback Visual ===== */
+.wire-visual.routing-fallback {
+  stroke: var(--wire-fallback-color) !important;
+  stroke-dasharray: var(--wire-fallback-dasharray) !important;
 }

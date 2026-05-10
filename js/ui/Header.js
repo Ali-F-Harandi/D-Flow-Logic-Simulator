@@ -38,6 +38,17 @@ export class Header {
         <button class="header-btn reset-btn" title="Reset all component states" aria-label="Reset simulation">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 7a5 5 0 1 1 1.5 3.6"/><polyline points="2,11 2,7 6,7"/></svg> Reset
         </button>
+        <div class="toolbar-separator" style="display:inline-block;width:1px;height:20px;background:var(--color-border);margin:0 4px;vertical-align:middle;"></div>
+        <button class="header-btn undo-btn" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h8a3 3 0 0 1 0 6H7"/><polyline points="6,4 3,7 6,10"/></svg>
+        </button>
+        <button class="header-btn redo-btn" title="Redo (Ctrl+Y)" aria-label="Redo" disabled>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 7H3a3 3 0 0 0 0 6h4"/><polyline points="8,4 11,7 8,10"/></svg>
+        </button>
+        <div class="toolbar-separator" style="display:inline-block;width:1px;height:20px;background:var(--color-border);margin:0 4px;vertical-align:middle;"></div>
+        <button class="header-btn truth-table-btn" title="Generate Truth Table" aria-label="Truth Table">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="12" height="12" rx="1"/><line x1="5" y1="1" x2="5" y2="13"/><line x1="1" y1="5" x2="13" y2="5"/></svg> Truth Table
+        </button>
         <button class="header-btn zoom-fit-btn" title="Zoom to fit all components" aria-label="Zoom to fit">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="12" height="12" rx="1"/><line x1="5" y1="1" x2="5" y2="13"/><line x1="1" y1="5" x2="13" y2="5"/></svg>
         </button>
@@ -81,6 +92,9 @@ export class Header {
     this.zoomFitBtn = this.element.querySelector('.zoom-fit-btn');
     this.centerBtn = this.element.querySelector('.center-btn');
     this.examplesBtn = this.element.querySelector('.examples-btn');
+    this.undoBtn = this.element.querySelector('.undo-btn');
+    this.redoBtn = this.element.querySelector('.redo-btn');
+    this.truthTableBtn = this.element.querySelector('.truth-table-btn');
 
     this.runBtn.addEventListener('click', () => {
       this.engine.run();
@@ -118,6 +132,26 @@ export class Header {
 
     // Example circuits
     this.examplesBtn.addEventListener('click', () => this._showExamplesDialog());
+
+    // Truth Table shortcut button
+    this.truthTableBtn.addEventListener('click', () => {
+      this.eventBus.emit('show-panel', 'truth');
+    });
+
+    // Undo button
+    if (this.undoBtn) {
+      this.undoBtn.addEventListener('click', () => {
+        // Will be wired to undoManager once available
+        this.eventBus.emit('undo-request');
+      });
+    }
+
+    // Redo button
+    if (this.redoBtn) {
+      this.redoBtn.addEventListener('click', () => {
+        this.eventBus.emit('redo-request');
+      });
+    }
 
     this.themeToggleBtn.addEventListener('click', () => {
       const root = document.documentElement;
@@ -320,5 +354,17 @@ export class Header {
 
   setFactory(factory) {
     this.factory = factory;
+  }
+
+  /**
+   * Update undo/redo button states based on undoManager.
+   */
+  updateUndoRedoState(canUndo, canRedo) {
+    if (this.undoBtn) {
+      this.undoBtn.disabled = !canUndo;
+    }
+    if (this.redoBtn) {
+      this.redoBtn.disabled = !canRedo;
+    }
   }
 }

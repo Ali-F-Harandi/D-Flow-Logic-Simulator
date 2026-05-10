@@ -14,6 +14,7 @@ export class Sidebar {
     this._dragGhost = null;
 
     this.eventBus.on('toggle-sidebar', () => this.toggle());
+    this.eventBus.on('component-drop', ({ type }) => this._trackRecent(type));
 
     window.addEventListener('click', (e) => {
       if (
@@ -32,7 +33,7 @@ export class Sidebar {
     sidebar.innerHTML = `
       <div class="sidebar-header">Components</div>
       <div class="search-bar">
-        <input type="text" id="sidebar-search" placeholder="Search components..." autocomplete="off">
+        <input type="text" id="sidebar-search" placeholder="Search components..." autocomplete="off" aria-label="Search components">
       </div>
       <div class="component-list"></div>
     `;
@@ -42,6 +43,22 @@ export class Sidebar {
   _populateAllTypes() {
     this.allTypes = this.factory.getAvailableTypes();
     this.filteredTypes = [...this.allTypes];
+  }
+
+  _getRecentlyUsed() {
+    try {
+      return JSON.parse(localStorage.getItem('dflow-recent-components') || '[]');
+    } catch { return []; }
+  }
+
+  _trackRecent(type) {
+    let recent = this._getRecentlyUsed();
+    // Remove if already present, add to front
+    recent = recent.filter(t => t !== type);
+    recent.unshift(type);
+    // Keep max 5
+    recent = recent.slice(0, 5);
+    localStorage.setItem('dflow-recent-components', JSON.stringify(recent));
   }
 
   _bindSearch() {
@@ -68,6 +85,100 @@ export class Sidebar {
       'Outputs': '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/><circle cx="7" cy="7" r="2.5" fill="currentColor"/></svg>',
       'Other': '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="2"/><path d="M7 1v2M7 11v2M1 7h2M11 7h2M3.05 3.05l1.41 1.41M9.54 9.54l1.41 1.41M3.05 10.95l1.41-1.41M9.54 4.46l1.41-1.41"/></svg>'
     };
+
+    // ─── "Getting Started" category: basic components for beginners ───
+    const gettingStartedTypes = ['and', 'or', 'not', 'toggle_switch', 'light_bulb'];
+    const gsItems = gettingStartedTypes
+      .map(type => this.allTypes.find(t => t.type === type))
+      .filter(Boolean);
+
+    if (gsItems.length > 0) {
+      const gsGroup = document.createElement('div');
+      gsGroup.className = 'component-group getting-started';
+
+      const gsHeader = document.createElement('div');
+      gsHeader.className = 'group-header';
+      gsHeader.innerHTML = '⭐ Getting Started';
+      gsHeader.style.cursor = 'pointer';
+
+      const gsItemsDiv = document.createElement('div');
+      gsItemsDiv.className = 'group-items';
+
+      gsItems.forEach(({ type, label }) => {
+        const item = document.createElement('div');
+        item.className = 'component-item';
+        item.textContent = label;
+        item.draggable = true;
+        item.dataset.type = type;
+        item.title = `Drag to canvas to add ${label}`;
+        item.setAttribute('role', 'option');
+        item.setAttribute('aria-label', `${label} component`);
+
+        item.addEventListener('dragstart', (e) => {
+          e.dataTransfer.setData('text/plain', type);
+          e.dataTransfer.effectAllowed = 'move';
+        });
+
+        item.addEventListener('touchstart', (e) => this._onTouchStart(e, type, label));
+        item.addEventListener('touchmove', (e) => this._onTouchMove(e));
+        item.addEventListener('touchend', (e) => this._onTouchEnd(e));
+
+        gsItemsDiv.appendChild(item);
+      });
+
+      gsGroup.appendChild(gsHeader);
+      gsGroup.appendChild(gsItemsDiv);
+      list.appendChild(gsGroup);
+    }
+
+    // ─── "Recently Used" category ───
+    const recentTypes = this._getRecentlyUsed();
+    if (recentTypes.length > 0) {
+      const recentItems = recentTypes
+        .map(type => this.allTypes.find(t => t.type === type))
+        .filter(Boolean);
+
+      if (recentItems.length > 0) {
+        const recentGroup = document.createElement('div');
+        recentGroup.className = 'component-group recently-used';
+
+        const recentHeader = document.createElement('div');
+        recentHeader.className = 'group-header';
+        recentHeader.innerHTML = '🕐 Recently Used';
+        recentHeader.style.cursor = 'pointer';
+
+        const recentItemsDiv = document.createElement('div');
+        recentItemsDiv.className = 'group-items';
+
+        recentItems.forEach(({ type, label }) => {
+          const item = document.createElement('div');
+          item.className = 'component-item';
+          item.textContent = label;
+          item.draggable = true;
+          item.dataset.type = type;
+          item.title = `Drag to canvas to add ${label}`;
+          item.setAttribute('role', 'option');
+          item.setAttribute('aria-label', `${label} component`);
+
+          item.addEventListener('dragstart', (e) => {
+            e.dataTransfer.setData('text/plain', type);
+            e.dataTransfer.effectAllowed = 'move';
+          });
+
+          item.addEventListener('touchstart', (e) => this._onTouchStart(e, type, label));
+          item.addEventListener('touchmove', (e) => this._onTouchMove(e));
+          item.addEventListener('touchend', (e) => this._onTouchEnd(e));
+
+          recentItemsDiv.appendChild(item);
+        });
+
+        recentGroup.appendChild(recentHeader);
+        recentGroup.appendChild(recentItemsDiv);
+        list.appendChild(recentGroup);
+      }
+    }
+
+    // ─── Regular categories ───
     const grouped = {};
     categories.forEach(cat => (grouped[cat] = []));
 

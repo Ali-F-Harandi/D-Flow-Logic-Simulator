@@ -11,6 +11,8 @@ import { UndoManager, AddComponentCommand } from './utils/UndoManager.js';
 import { Serializer } from './utils/Serializer.js';
 import { HelpOverlay } from './ui/HelpOverlay.js';
 import { CircuitValidator } from './utils/CircuitValidator.js';
+import { OnboardingTour } from './ui/OnboardingTour.js';
+import { EmptyState } from './ui/EmptyState.js';
 
 // --------------------------------------------------
 // GLOBAL ERROR HANDLER – shows any import/parse error
@@ -45,6 +47,90 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Initialize keyboard shortcut help overlay
   new HelpOverlay();
+
+  // Initialize onboarding tour (shows once for new users)
+  new OnboardingTour(eventBus);
+
+  // Initialize empty state overlay
+  new EmptyState(canvas.element, eventBus, engine, canvas, factory);
+
+  // Wire up undo/redo buttons in header
+  eventBus.on('undo-request', () => {
+    if (undoManager.canUndo()) {
+      undoManager.undo();
+    }
+  });
+  eventBus.on('redo-request', () => {
+    if (undoManager.canRedo()) {
+      undoManager.redo();
+    }
+  });
+
+  // Update undo/redo button states periodically
+  const updateUndoRedo = () => {
+    header.updateUndoRedoState(undoManager.canUndo(), undoManager.canRedo());
+  };
+  setInterval(updateUndoRedo, 300);
+
+  // Wire up footer zoom controls
+  eventBus.on('zoom-in', () => {
+    canvas.core.scale = Math.min(canvas.core.scale * 1.2, canvas.core.maxScale);
+    canvas.core.applyTransform();
+  });
+  eventBus.on('zoom-out', () => {
+    canvas.core.scale = Math.max(canvas.core.scale / 1.2, canvas.core.minScale);
+    canvas.core.applyTransform();
+  });
+  eventBus.on('zoom-fit', () => {
+    canvas.zoomToFit();
+  });
+
+  // Auto-save indicator
+  let _lastSaveTime = Date.now();
+  let _hasUnsavedChanges = false;
+
+  eventBus.on('component-drop', () => { _hasUnsavedChanges = true; });
+  eventBus.on('selection-changed', () => { _hasUnsavedChanges = true; });
+
+  // Update auto-save indicator
+  const updateAutosaveIndicator = () => {
+    const indicator = document.getElementById('autosave-indicator');
+    if (indicator) {
+      if (_hasUnsavedChanges) {
+        indicator.textContent = 'Unsaved changes';
+        indicator.className = 'autosave-indicator unsaved';
+      } else {
+        const elapsed = Math.round((Date.now() - _lastSaveTime) / 1000);
+        if (elapsed < 60) {
+          indicator.textContent = `Saved ${elapsed}s ago`;
+        } else {
+          indicator.textContent = `Saved ${Math.round(elapsed / 60)}m ago`;
+        }
+        indicator.className = 'autosave-indicator';
+      }
+    }
+  };
+  setInterval(updateAutosaveIndicator, 5000);
+
+  // Right panel auto-expand on first wire creation
+  let _firstWireCreated = false;
+  document.addEventListener('wire-connected', () => {
+    if (!_firstWireCreated) {
+      _firstWireCreated = true;
+      eventBus.emit('show-panel', 'truth');
+      // Pulse the truth table tab briefly
+      const ttBtn = document.querySelector('#tt-btn');
+      if (ttBtn) {
+        ttBtn.style.boxShadow = '0 0 8px var(--color-accent)';
+        setTimeout(() => { ttBtn.style.boxShadow = ''; }, 2000);
+      }
+    }
+  });
+
+  // Simulation error → status pill
+  document.addEventListener('simulation-error', () => {
+    eventBus.emit('simulation-status', 'error');
+  });
 
   eventBus.on('component-drop', ({ type, x, y }) => {
     const comp = factory.createComponent(type);
@@ -91,7 +177,7 @@ document.addEventListener('DOMContentLoaded', () => {
     canvas.showToast('Canvas cleared', 'info');
   });
 
-  footer.setVersion('v0.9-pre');
+  footer.setVersion('v0.9.1');
 
   // Update footer stats periodically
   const updateFooterStats = () => {

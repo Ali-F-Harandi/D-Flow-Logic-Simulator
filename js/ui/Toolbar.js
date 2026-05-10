@@ -27,6 +27,17 @@ export class Toolbar {
       eventBus.emit('reroute-all-wires');
     });
 
+    // Edit wires mode toggle
+    this._editWiresMode = false;
+    this.element.querySelector('#edit-wires-btn').addEventListener('click', () => {
+      this._editWiresMode = !this._editWiresMode;
+      const btn = this.element.querySelector('#edit-wires-btn');
+      btn.classList.toggle('toolbar-btn-accent', this._editWiresMode);
+      btn.classList.toggle('toolbar-btn-muted', !this._editWiresMode);
+      btn.textContent = this._editWiresMode ? 'Editing Wires' : 'Edit Wires';
+      eventBus.emit('toggle-wire-edit-mode', this._editWiresMode);
+    });
+
     // Wire crossing style toggle
     this._crossingStyle = 'ansi';
     this.element.querySelector('#crossing-style-btn').addEventListener('click', () => {
@@ -75,6 +86,7 @@ export class Toolbar {
       <button id="nl-btn" class="toolbar-btn">Netlist</button>
       <div class="toolbar-separator"></div>
       <button id="reroute-btn" class="toolbar-btn toolbar-btn-accent" title="Reroute all wires using A* pathfinding">Reroute Wires</button>
+      <button id="edit-wires-btn" class="toolbar-btn" title="Toggle wire editing mode — click wires to edit control points">Edit Wires</button>
       <button id="auto-reroute-btn" class="toolbar-btn toolbar-btn-accent" title="Toggle automatic wire rerouting after component drop">Auto-Reroute: ON</button>
       <button id="crossing-style-btn" class="toolbar-btn" title="Toggle wire crossing display style (ANSI bridges / IEC junctions)">Crossing: ANSI</button>
       <button id="validate-btn" class="toolbar-btn" title="Validate circuit for common issues">Validate</button>

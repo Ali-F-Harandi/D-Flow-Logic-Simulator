@@ -32,6 +32,14 @@ export class UndoManager {
       // since the state it was supposed to produce didn't happen.
     }
   }
+
+  canUndo() {
+    return this.undoStack.length > 0;
+  }
+
+  canRedo() {
+    return this.redoStack.length > 0;
+  }
 }
 
 /**

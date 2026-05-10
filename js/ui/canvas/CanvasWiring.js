@@ -326,9 +326,11 @@ export class CanvasWiring {
       const points = this._router.route(fromPos, toPos, mode, opts);
       wire.pathPoints = points;
 
-      // Track routing method
+      // Track routing method and set fallback visual indicator
       if (wire.isAutoRouted) {
-        wire._routedMethod = this._router.getLastStats()?.method || 'manhattan';
+        const method = this._router.getLastStats()?.method || 'manhattan';
+        wire._routedMethod = method;
+        wire.setRoutingFallback(method === 'fallback');
       }
 
       const d = Wire.pointsToSVGPath(points);

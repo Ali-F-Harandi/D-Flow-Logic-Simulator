@@ -54,6 +54,7 @@ export class Wire {
     // ─── New: Auto-route tracking ───
     this.isAutoRouted = (routingMode === Wire.MODE_MANHATTAN);
     this._routedMethod = 'manhattan';         // 'manhattan' | 'astar' | 'fallback'
+    this._isRoutingFallback = false;          // True when A* failed and fell back
 
     // ─── New: Visual states ───
     this._isHovered   = false;
@@ -71,6 +72,26 @@ export class Wire {
   get isManualMode() { return this.routingMode === Wire.MODE_MANUAL; }
 
   get isLocked()  { return this._isLocked; }
+
+  get isRoutingFallback() { return this._isRoutingFallback; }
+
+  /**
+   * Mark this wire as having used a fallback routing method.
+   * Applies a visual indicator (dashed red) and updates tooltip.
+   */
+  setRoutingFallback(isFallback) {
+    this._isRoutingFallback = isFallback;
+    if (!this.element) return;
+    const visualPath = this.element.querySelector('.wire-visual');
+    if (visualPath) {
+      if (isFallback) {
+        visualPath.classList.add('routing-fallback');
+      } else {
+        visualPath.classList.remove('routing-fallback');
+      }
+    }
+    this._updateTooltip();
+  }
 
   get wireState() {
     if (this._isLocked) return 'locked';
@@ -883,8 +904,11 @@ export class Wire {
 
     const style = getComputedStyle(document.documentElement);
     const highColor    = style.getPropertyValue('--wire-high-color').trim()    || '#00cc66';
+    const highDash     = style.getPropertyValue('--wire-high-dasharray').trim() || 'none';
     const neutralColor = style.getPropertyValue('--wire-neutral-color').trim() || '#888';
+    const neutralDash  = style.getPropertyValue('--wire-neutral-dasharray').trim() || '6,4';
     const zColor       = style.getPropertyValue('--wire-z-color').trim()       || '#ff9800';
+    const zDash        = style.getPropertyValue('--wire-z-dasharray').trim()   || '2,2';
 
     // Skip color update if error state is active
     if (this._isError) return;
@@ -894,11 +918,15 @@ export class Wire {
     this._lastSourceValue = sourceValue;
     const visualPath = this.element.querySelector('.wire-visual');
 
-    let color;
+    // Check if reduced motion is preferred
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    let color, dashArray;
     if (sourceValue === true) {
       color = highColor;
+      dashArray = highDash === 'none' ? null : highDash;
       // Signal transition: LOW→HIGH or Z→HIGH
-      if (visualPath && prevValue !== true) {
+      if (visualPath && prevValue !== true && !prefersReducedMotion) {
         visualPath.classList.remove('propagating-low');
         visualPath.classList.add('propagating-high');
         // Remove animation class after it completes
@@ -906,19 +934,25 @@ export class Wire {
       }
     } else if (sourceValue === null) {
       color = zColor;
-      visualPath?.setAttribute('stroke-dasharray', '6,4');
+      dashArray = zDash;
     } else {
       color = neutralColor;
+      dashArray = neutralDash === 'none' ? null : neutralDash;
       // Signal transition: HIGH→LOW
-      if (visualPath && prevValue === true) {
+      if (visualPath && prevValue === true && !prefersReducedMotion) {
         visualPath.classList.remove('propagating-high');
         visualPath.classList.add('propagating-low');
         setTimeout(() => visualPath.classList.remove('propagating-low'), 200);
       }
-      visualPath?.removeAttribute('stroke-dasharray');
     }
 
     this.element.querySelector('.wire-visual')?.setAttribute('stroke', color);
+    // Apply dash array for colorblind-safe patterns
+    if (dashArray) {
+      this.element.querySelector('.wire-visual')?.setAttribute('stroke-dasharray', dashArray);
+    } else {
+      this.element.querySelector('.wire-visual')?.removeAttribute('stroke-dasharray');
+    }
     this.element.querySelector('.wire-junction')?.setAttribute('fill', color);
   }
 
@@ -948,7 +982,8 @@ export class Wire {
       const stateLabel = this.wireState === 'auto' ? 'Auto-routed' :
                         this.wireState === 'manual' ? 'Manually edited' : 'Locked';
       const methodLabel = this._routedMethod || 'unknown';
-      title.textContent = `Wire ${this.id} | ${stateLabel} | Method: ${methodLabel}`;
+      const fallbackLabel = this._isRoutingFallback ? ' | Fallback routing (A* failed)' : '';
+      title.textContent = `Wire ${this.id} | ${stateLabel} | Method: ${methodLabel}${fallbackLabel}`;
     }
   }
 
