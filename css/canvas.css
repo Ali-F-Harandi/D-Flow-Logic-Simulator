@@ -72,3 +72,123 @@
     display: none;
   }
 }
+
+/* ===== Wire Visual Effects ===== */
+
+/* Wire glow effect (shown on hover and during drawing) */
+.wire-glow {
+  transition: stroke 0.15s ease, opacity 0.15s ease;
+}
+
+/* Wire visual path styling */
+.wire-visual {
+  transition: stroke-width 0.1s ease, stroke 0.15s ease;
+}
+
+/* Wire hit area (invisible, wide for easy clicking) */
+.wire-hitarea {
+  cursor: pointer;
+}
+
+/* Wire hover state */
+.wire-hitarea:hover + .wire-visual {
+  filter: brightness(1.3);
+}
+
+/* Signal propagation animation - HIGH */
+.wire-visual.propagating-high {
+  animation: wire-pulse-high 0.2s ease-out;
+}
+
+@keyframes wire-pulse-high {
+  0%   { filter: brightness(1); stroke-width: 3; }
+  50%  { filter: brightness(1.5); stroke-width: 4; }
+  100% { filter: brightness(1); stroke-width: 2; }
+}
+
+/* Signal propagation animation - LOW */
+.wire-visual.propagating-low {
+  animation: wire-pulse-low 0.2s ease-out;
+}
+
+@keyframes wire-pulse-low {
+  0%   { filter: brightness(1); stroke-width: 3; }
+  50%  { filter: brightness(0.7); stroke-width: 4; }
+  100% { filter: brightness(1); stroke-width: 2; }
+}
+
+/* Wire selected state */
+.wire-selected .wire-visual {
+  filter: drop-shadow(0 0 3px rgba(78, 201, 176, 0.6));
+}
+
+/* Manual wire drawing preview */
+.wire-manual-preview {
+  animation: wire-draw-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes wire-draw-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.7; }
+}
+
+.wire-manual-glow {
+  animation: wire-glow-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes wire-glow-pulse {
+  0%, 100% { opacity: 0.3; }
+  50%      { opacity: 0.6; }
+}
+
+/* Wire preview during drag-connection */
+.wire-preview {
+  animation: wire-preview-dash 0.8s linear infinite;
+}
+
+@keyframes wire-preview-dash {
+  to { stroke-dashoffset: -20; }
+}
+
+/* Connector floating (unconnected) indicator */
+.connector.floating {
+  animation: connector-float 2s ease-in-out infinite;
+}
+
+@keyframes connector-float {
+  0%, 100% { opacity: 0.5; }
+  50%      { opacity: 1; }
+}
+
+/* Wire control point handles */
+.wire-control-point-outer:hover + .wire-control-point-ring {
+  stroke: #2ea88a;
+  stroke-width: 2;
+}
+
+.wire-control-point-outer:hover ~ .wire-control-point {
+  fill: #2ea88a;
+  transform-origin: center;
+}
+
+/* Wire add-point indicators */
+.wire-add-point:hover {
+  fill: rgba(78, 201, 176, 0.3) !important;
+  stroke-width: 2 !important;
+  r: 6;
+}
+
+/* Wire endpoint markers */
+.wire-endpoint-source,
+.wire-endpoint-target {
+  transition: all 0.15s ease;
+}
+
+/* Junction dots */
+.wire-junction {
+  transition: fill 0.15s ease;
+}
+
+.wire-junction-intermediate {
+  transition: fill 0.15s ease;
+}

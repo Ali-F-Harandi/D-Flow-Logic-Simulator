@@ -5,12 +5,13 @@ import {
   DeleteComponentCommand
 } from '../../utils/UndoManager.js';
 import { ComponentLayoutPolicy } from '../../core/ComponentLayoutPolicy.js';
+import { WIRE_PIN_MAGNET_RADIUS, GRID_SIZE } from '../../config.js';
 
 export class CanvasEvents {
   constructor(
     compManager, dragHandler, wiring, selection, panZoom, core,
     contextMenu, propertyEditor, undoManager, eventBus, positionCache,
-    canvas          // <-- Canvas instance
+    canvas
   ) {
     this.compManager = compManager;
     this.dragHandler = dragHandler;
@@ -23,7 +24,7 @@ export class CanvasEvents {
     this.undoManager = undoManager;
     this.eventBus = eventBus;
     this.positionCache = positionCache;
-    this.canvas = canvas;    // <-- store real Canvas instance
+    this.canvas = canvas;
     this._toaster = null;
 
     this.element = document.getElementById('canvas-container');
@@ -35,6 +36,9 @@ export class CanvasEvents {
     // Track double-click timing for wire editing
     this._lastClickTime = 0;
     this._lastClickTarget = null;
+
+    // Track hovered wire for highlight effects (new)
+    this._hoveredWireId = null;
 
     this._bindMouse();
     this._bindKeyboard();
@@ -53,6 +57,15 @@ export class CanvasEvents {
         this.panZoom.startPan(e.clientX, e.clientY);
         return;
       }
+
+      // ─── Manual drawing mode: click to add point ───
+      if (this.wiring.isManualDrawing && e.button === 0) {
+        e.preventDefault();
+        const canvasPos = this.core.canvasCoords(e.clientX, e.clientY);
+        this.wiring.addManualDrawPoint(canvasPos);
+        return;
+      }
+
       if (this.wiring.wiring) return;
 
       const target = e.target;
@@ -147,6 +160,14 @@ export class CanvasEvents {
       }
 
       if (this.dragHandler.isDragging) { this.dragHandler.moveDrag(e.clientX, e.clientY); }
+
+      // ─── Manual drawing mode: update preview ───
+      if (this.wiring.isManualDrawing) {
+        const canvasPos = this.core.canvasCoords(e.clientX, e.clientY);
+        this.wiring.updateManualDrawPreview(canvasPos);
+        return;
+      }
+
       if (this.wiring.wiring && this.wiring.wiring.tempPath) {
         const fromPos = this.positionCache.getPosition(this.wiring.wiring.fromNodeId);
         let toPos = this.core.canvasCoords(e.clientX, e.clientY);
@@ -161,7 +182,6 @@ export class CanvasEvents {
         }
         this._lastMagnetNodeId = magnetResult?.nodeId || null;
         const busY = this.core.getBusBarY(this.compManager.components);
-        // Use A* routing for preview (fast enough with obstacle cache)
         try {
           const router = this.wiring._getRouter();
           const previewD = Wire.computePath(fromPos, toPos, {
@@ -171,10 +191,15 @@ export class CanvasEvents {
           });
           this.wiring.wiring.tempPath.setAttribute('d', previewD);
         } catch (e) {
-          // Fallback to simple routing if A* fails
           this.wiring.wiring.tempPath.setAttribute('d', Wire.computePath(fromPos, toPos, { minClearY: busY }));
         }
       }
+
+      // ─── Wire hover highlight (new) ───
+      if (!this.dragHandler.isDragging && !this.wiring.wiring && !this.wiring.isManualDrawing) {
+        this._handleWireHover(e);
+      }
+
       if (this.selection.selectionRect) { this.selection.updateSelection(e); }
     });
 
@@ -189,8 +214,19 @@ export class CanvasEvents {
 
       if (this.dragHandler.isDragging) { this.dragHandler.endDrag(); return; }
 
+      // ─── Manual drawing mode: check for pin connection ───
+      if (this.wiring.isManualDrawing) {
+        const magnetResult = this._findNearestConnector(e.clientX, e.clientY);
+        if (magnetResult) {
+          // Complete the manual drawing by connecting to the pin
+          this.wiring.completeManualDrawing(magnetResult.nodeId);
+          this._highlightConnector(magnetResult.nodeId, false);
+        }
+        // Don't cancel on mouseup — user needs to double-click to finish or Escape to cancel
+        return;
+      }
+
       if (this.wiring.wiring && this.wiring.wiring.tempPath) {
-        // First try: check if mouse is directly over a connector
         const targetConn = e.target.closest('.connector');
         let connected = false;
 
@@ -214,7 +250,6 @@ export class CanvasEvents {
           else if (errorMsg) this.toaster ? this.toaster.show(errorMsg, 'error') : console.warn(errorMsg);
         }
 
-        // Second try: if direct click failed, use auto-magnet result to connect
         if (!connected && this._lastMagnetNodeId) {
           const magnetComp = this.engine._findComponentByNode(this._lastMagnetNodeId);
           const magnetDot = magnetComp?.element?.querySelector(`.connector[data-node="${this._lastMagnetNodeId}"]`);
@@ -237,12 +272,8 @@ export class CanvasEvents {
               success = this.wiring.completeConnection(this._lastMagnetNodeId, this.wiring.wiring.fromNodeId);
             }
           }
-          if (!success && !connected) {
-            // No error toast for magnet fallback
-          }
         }
 
-        // Clear magnet highlight
         if (this._lastMagnetNodeId) {
           this._highlightConnector(this._lastMagnetNodeId, false);
           this._lastMagnetNodeId = null;
@@ -256,6 +287,23 @@ export class CanvasEvents {
 
     // Double-click on wire to add a control point
     this.element.addEventListener('dblclick', (e) => {
+      // ─── Manual drawing mode: double-click to finish ───
+      if (this.wiring.isManualDrawing) {
+        e.preventDefault();
+        // Try to complete by finding nearest pin
+        const magnetResult = this._findNearestConnector(e.clientX, e.clientY);
+        if (magnetResult) {
+          this.wiring.completeManualDrawing(magnetResult.nodeId);
+          this._highlightConnector(magnetResult.nodeId, false);
+        } else {
+          this.wiring.cancelManualDrawing();
+          if (this.toaster) {
+            this.toaster.show('Wire must connect to a pin. Drawing cancelled.', 'warning');
+          }
+        }
+        return;
+      }
+
       const wireEl = e.target.closest('g[data-wire-id]');
       if (!wireEl) return;
 
@@ -279,9 +327,57 @@ export class CanvasEvents {
     });
   }
 
+  /* ─── Wire Hover Highlight (New) ─── */
+
+  /**
+   * Handle wire hover detection for visual feedback.
+   * Shows glow effect and endpoint indicators when hovering over a wire.
+   */
+  _handleWireHover(e) {
+    const target = e.target;
+
+    // Check if hovering over a wire hitarea
+    const wireEl = target.closest?.('g[data-wire-id]');
+    const wireId = wireEl?.dataset?.wireId;
+
+    if (wireId !== this._hoveredWireId) {
+      // Un-hover previous wire
+      if (this._hoveredWireId) {
+        const prevWire = this.wiring.wires.find(w => w.id === this._hoveredWireId);
+        if (prevWire) prevWire.setHovered(false);
+      }
+
+      // Hover new wire
+      if (wireId) {
+        const wire = this.wiring.wires.find(w => w.id === wireId);
+        if (wire) wire.setHovered(true);
+      }
+
+      this._hoveredWireId = wireId || null;
+    }
+  }
+
   /* ---------- Keyboard ---------- */
   _bindKeyboard() {
     window.addEventListener('keydown', (e) => {
+      // ─── Manual drawing mode keyboard shortcuts ───
+      if (this.wiring.isManualDrawing) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          this.wiring.cancelManualDrawing();
+          return;
+        }
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          // Try to complete by connecting to nearest pin
+          // If no pin nearby, cancel
+          this.wiring.cancelManualDrawing();
+          return;
+        }
+        // Don't process other shortcuts while drawing
+        return;
+      }
+
       if (this.wiring.wiring) return;
       const step = this.core.gridSize;
       if (e.ctrlKey && e.key === 'z') { e.preventDefault(); this.undoManager.undo(); }
@@ -305,22 +401,17 @@ export class CanvasEvents {
         e.preventDefault();
         this._cycleFocus(e.shiftKey ? -1 : 1);
       }
-      // F5: Run simulation
       else if (e.key === 'F5') {
         e.preventDefault();
         this.eventBus.emit('simulation-status', 'running');
       }
-      // Shift+F5: Stop simulation
       else if (e.key === 'F5' && e.shiftKey) {
         e.preventDefault();
         this.eventBus.emit('simulation-status', 'stopped');
       }
-      // F8: Step simulation
       else if (e.key === 'F8') {
         e.preventDefault();
-        // Step is handled directly since we need the engine reference
       }
-      // Ctrl+A: Select all (already handled natively in some browsers)
       else if (e.ctrlKey && e.key === 'a') {
         e.preventDefault();
         for (const comp of this.compManager.components) {
@@ -330,17 +421,14 @@ export class CanvasEvents {
           }
         }
       }
-      // Ctrl+Shift+F: Zoom to fit
       else if (e.ctrlKey && e.shiftKey && e.key === 'F') {
         e.preventDefault();
         this.canvas?.zoomToFit();
       }
-      // Home: Center view
       else if (e.key === 'Home') {
         e.preventDefault();
         this.canvas?.core.centerView();
       }
-      // +/-: Zoom in/out
       else if (e.key === '+' || e.key === '=') {
         if (e.ctrlKey) {
           e.preventDefault();
@@ -355,7 +443,6 @@ export class CanvasEvents {
           this.core.zoom(-1, rect.width / 2, rect.height / 2);
         }
       }
-      // 0: Reset zoom
       else if (e.key === '0' && e.ctrlKey) {
         e.preventDefault();
         this.core.scale = 1;
@@ -386,6 +473,15 @@ export class CanvasEvents {
     this.element.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       const items = [];
+
+      // ─── Manual drawing: right-click cancels ───
+      if (this.wiring.isManualDrawing) {
+        items.push({ label: 'Cancel Wire Drawing', action: () => {
+          this.wiring.cancelManualDrawing();
+        }});
+        this.contextMenu.show(e.clientX, e.clientY, items);
+        return;
+      }
 
       // Check for wire control point right-click (remove point)
       if (this.wiring._wireEditHandler) {
@@ -422,7 +518,8 @@ export class CanvasEvents {
             const cmd = new DisconnectWireCommand(this.engine, this.canvas, wire.engineId);
             this.undoManager.execute(cmd);
           }});
-          items.push({ label: 'Reroute This Wire', action: () => {
+          items.push({ label: 'Reroute This Wire (A*)', action: () => {
+            this.wiring._gridNeedsRebuild = true;
             const busY = this.core.getBusBarY(this.compManager.components);
             const router = this.wiring._getRouter();
             wire.forceReroute(
@@ -451,13 +548,47 @@ export class CanvasEvents {
           // Show wire state info
           const stateLabel = wire.wireState === 'auto' ? 'Auto-routed' :
                             wire.wireState === 'manual' ? 'Manually edited' : 'Locked';
-          items.push({ label: `State: ${stateLabel}`, action: () => {} });
+          const methodLabel = wire._routedMethod || 'unknown';
+          items.push({ label: `State: ${stateLabel} (${methodLabel})`, action: () => {} });
+
+          // Draw Wire Manually option
+          items.push({ label: 'Redraw Wire Manually', action: () => {
+            const fromPos = this.positionCache.getPosition(wire.sourceNode.nodeId);
+            const fromNodeId = wire.sourceNode.nodeId;
+            if (fromPos) {
+              // First delete the existing wire
+              const cmd = new DisconnectWireCommand(this.engine, this.canvas, wire.engineId);
+              this.undoManager.execute(cmd);
+              // Start manual drawing from the source pin
+              this.wiring.startManualDrawing(fromPos, fromNodeId, true);
+              if (this.toaster) {
+                this.toaster.show('Click to add bend points. Double-click on a pin to complete. Escape to cancel.', 'info', 5000);
+              }
+            }
+          }});
+
           this.contextMenu.show(e.clientX, e.clientY, items);
           return;
         }
       }
 
+      // Right-click on empty canvas — offer manual wire drawing
       const conn = e.target.closest('.connector');
+      if (!conn && !compEl && !wireEl) {
+        items.push({ label: 'Draw Wire Manually', action: () => {
+          const canvasPos = this.core.canvasCoords(e.clientX, e.clientY);
+          this.wiring.startManualDrawing(canvasPos);
+          if (this.toaster) {
+            this.toaster.show('Click to add bend points. Double-click on a pin to complete. Escape to cancel.', 'info', 5000);
+          }
+        }});
+        items.push({ label: 'Reroute All Wires (A*)', action: () => {
+          this.wiring.rerouteAllWires();
+        }});
+        this.contextMenu.show(e.clientX, e.clientY, items);
+        return;
+      }
+
       if (conn && conn.dataset.node) {
         if (conn.classList.contains('output')) {
           items.push({ label: 'Generate Truth Table', action: () => {
@@ -467,6 +598,17 @@ export class CanvasEvents {
         }
         items.push({ label: 'Set as TestBench Output', action: () => {
           this.eventBus.emit('set-testbench-output', conn.dataset.node);
+        }});
+        items.push({ label: 'Draw Wire from Here (Manual)', action: () => {
+          const nodeId = conn.dataset.node;
+          const isOutput = conn.classList.contains('output');
+          const pos = this.positionCache.getPosition(nodeId);
+          if (pos) {
+            this.wiring.startManualDrawing(pos, nodeId, isOutput);
+            if (this.toaster) {
+              this.toaster.show('Click to add bend points. Double-click on a pin to complete. Escape to cancel.', 'info', 5000);
+            }
+          }
         }});
         this.contextMenu.show(e.clientX, e.clientY, items);
       }
@@ -482,7 +624,6 @@ export class CanvasEvents {
       const type = e.dataTransfer.getData('text/plain');
       if (!type) return;
       const pos = this.core.canvasCoords(e.clientX, e.clientY);
-      // Use ComponentLayoutPolicy for accurate drop centering
       const factory = this.canvas?.factory;
       const comp = factory ? factory.createComponent(type) : null;
       let halfW, halfH;
@@ -502,14 +643,10 @@ export class CanvasEvents {
 
   /* ---------- Auto-Magnet Helpers ---------- */
 
-  /**
-   * Find the nearest connector to a screen point within the magnet radius.
-   * Returns { nodeId, isOutput, position: {x, y} } or null.
-   */
   _findNearestConnector(clientX, clientY) {
-    const MAGNET_RADIUS = 30;
-    const fromIsOutput = this.wiring.wiring?.fromIsOutput;
-    const fromNodeId = this.wiring.wiring?.fromNodeId;
+    const MAGNET_RADIUS = WIRE_PIN_MAGNET_RADIUS;
+    const fromIsOutput = this.wiring.wiring?.fromIsOutput ?? (this.wiring._manualDrawSourceNodeId ? true : null);
+    const fromNodeId = this.wiring.wiring?.fromNodeId || this.wiring._manualDrawSourceNodeId;
     let closest = null;
     let closestDist = MAGNET_RADIUS;
 
@@ -520,11 +657,20 @@ export class CanvasEvents {
       ];
 
       for (const nodeInfo of allNodes) {
-        if (fromIsOutput === nodeInfo.isOutput) continue;
-        if (comp.id === this.engine._findComponentByNode(fromNodeId)?.id) continue;
-        if (!nodeInfo.isOutput) {
-          const inputNode = comp.inputs.find(i => i.id === nodeInfo.nodeId);
-          if (inputNode?.connectedTo) continue;
+        // During manual drawing, allow connecting to any compatible pin
+        if (this.wiring.isManualDrawing) {
+          // Simple check: prefer connecting output→input or input→output
+          if (fromNodeId && fromIsOutput !== undefined && fromIsOutput === nodeInfo.isOutput) {
+            // Skip same-type pins (output→output or input→input)
+            if (comp.id === this.engine._findComponentByNode(fromNodeId)?.id) continue;
+          }
+        } else if (this.wiring.wiring) {
+          if (fromIsOutput === nodeInfo.isOutput) continue;
+          if (comp.id === this.engine._findComponentByNode(fromNodeId)?.id) continue;
+          if (!nodeInfo.isOutput) {
+            const inputNode = comp.inputs.find(i => i.id === nodeInfo.nodeId);
+            if (inputNode?.connectedTo) continue;
+          }
         }
 
         try {
@@ -532,7 +678,7 @@ export class CanvasEvents {
           if (!pos) continue;
           const rect = this.core.element.getBoundingClientRect();
           const screenX = rect.left + pos.x * this.core.scale + this.core.panOffset.x;
-          const screenY = rect.top + pos.y * this.core.scale + this.core.panOffset.y;
+          const screenY = rect.top  + pos.y * this.core.scale + this.core.panOffset.y;
           const dist = Math.hypot(clientX - screenX, clientY - screenY);
 
           if (dist < closestDist) {
@@ -545,9 +691,6 @@ export class CanvasEvents {
     return closest;
   }
 
-  /**
-   * Visually highlight/unhighlight a connector dot for auto-magnet feedback.
-   */
   _highlightConnector(nodeId, highlight) {
     if (!nodeId) return;
     const comp = this.engine._findComponentByNode(nodeId);

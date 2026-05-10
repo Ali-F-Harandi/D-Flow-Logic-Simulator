@@ -1,21 +1,30 @@
 /**
- * Wire.js — Data Model for a circuit wire connection
+ * Wire.js — Data Model for a circuit wire connection (Enhanced)
  *
  * Each wire stores:
  *   - sourceNode / targetNode : the connected node references
  *   - routingMode             : 'direct' | 'manhattan' | 'manual'
  *   - controlPoints           : user-defined intermediate points (Manual mode)
  *   - pathPoints              : the computed / rendered path points
+ *   - isAutoRouted            : whether this wire was auto-routed by A*
  *
- * Wires are "reactive": if a component moves, the path recalculates
- * unless in Manual mode with locked points.
+ * Enhancements over original:
+ *   - Glow effect layer for preview/drawing mode
+ *   - Hover highlight with endpoint indicators
+ *   - Smooth miter joints at corners
+ *   - Error state visual (red glow for invalid connections)
+ *   - Wire state label (auto/manual/locked) as tooltip
+ *   - isAutoRouted flag for selective re-routing
  *
  * Rendering is separated from routing:
  *   - Routing → Wire.computePathPoints(router, opts) → pathPoints[]
  *   - Rendering → Wire._applyPathPointsToSVG() → SVG "d" attribute
  */
 
-import { WIRE_VISUAL_WIDTH, WIRE_HIT_WIDTH, JUNCTION_RADIUS, GRID_SIZE } from '../config.js';
+import {
+  WIRE_VISUAL_WIDTH, WIRE_HIT_WIDTH, JUNCTION_RADIUS, GRID_SIZE,
+  WIRE_DRAW_GLOW_COLOR, WIRE_DRAW_GLOW_WIDTH, WIRE_ERROR_COLOR
+} from '../config.js';
 
 export class Wire {
 
@@ -41,6 +50,15 @@ export class Wire {
     this._isLocked    = false;
     this._controlHandlesVisible = false;
     this._lastSourceValue = undefined;        // For signal transition detection
+
+    // ─── New: Auto-route tracking ───
+    this.isAutoRouted = (routingMode === Wire.MODE_MANHATTAN);
+    this._routedMethod = 'manhattan';         // 'manhattan' | 'astar' | 'fallback'
+
+    // ─── New: Visual states ───
+    this._isHovered   = false;
+    this._isError     = false;
+    this._isGlowing   = false;
   }
 
   /* ─── Backward Compatibility Aliases ─── */
@@ -75,10 +93,12 @@ export class Wire {
       this.controlPoints = this.pathPoints
         .slice(1, -1)
         .map(p => ({ x: p.x, y: p.y }));
+      this.isAutoRouted = false;
     }
     this.routingMode = mode;
     if (mode !== Wire.MODE_MANUAL) {
       this.controlPoints = [];
+      this.isAutoRouted = true;
     }
   }
 
@@ -113,19 +133,21 @@ export class Wire {
    * @param {Object}  [opts]
    * @param {Router}  [opts.router]       – Router instance
    * @param {string}  [opts.sourceNodeId]
+   * @param {string}  [opts.targetNodeId]
    * @param {number}  [opts.minClearY]    – bus-bar Y (backward compat)
    * @param {number}  [opts.maxClearY]    – top-bar Y (backward compat)
    * @returns {string} SVG path "d" attribute
    */
   static computePath(fromPos, toPos, opts = {}) {
-    const { router, sourceNodeId, minClearY, maxClearY } = opts;
+    const { router, sourceNodeId, targetNodeId, minClearY, maxClearY } = opts;
 
     // Try using the injected Router instance
     if (router) {
       if (typeof router.route === 'function') {
-        // New Router class
+        // New Router class (Router) or StarRouter
         const points = router.route(fromPos, toPos, 'manhattan', {
           sourceNodeId,
+          targetNodeId,
           busY: minClearY,
           topY: maxClearY
         });
@@ -202,11 +224,12 @@ export class Wire {
   }
 
   /* ================================================================
-   *  SVG Rendering
+   *  SVG Rendering (Enhanced)
    * ================================================================ */
 
   /**
    * Create SVG elements and render the wire on the svgLayer.
+   * Now includes glow layer, miter joints, and tooltip.
    *
    * @param {SVGElement} svgLayer
    * @param {Function}   getNodePosition – nodeId → {x,y}
@@ -241,25 +264,42 @@ export class Wire {
     const style = getComputedStyle(document.documentElement);
     const neutralColor = style.getPropertyValue('--wire-neutral-color').trim() || '#888';
 
-    // Visual path
+    // ─── Glow layer (behind visual, for hover/preview effects) ───
+    const glowPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    glowPath.setAttribute('stroke', 'transparent');
+    glowPath.setAttribute('stroke-width', WIRE_DRAW_GLOW_WIDTH);
+    glowPath.setAttribute('fill', 'none');
+    glowPath.setAttribute('pointer-events', 'none');
+    glowPath.setAttribute('stroke-linecap', 'round');
+    glowPath.setAttribute('stroke-linejoin', 'round');
+    glowPath.classList.add('wire-glow');
+    glowPath.setAttribute('d', d);
+    glowPath.style.display = 'none';
+
+    // ─── Visual path ───
     const visualPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     visualPath.setAttribute('stroke', neutralColor);
     visualPath.setAttribute('stroke-width', WIRE_VISUAL_WIDTH);
     visualPath.setAttribute('fill', 'none');
     visualPath.setAttribute('pointer-events', 'none');
+    visualPath.setAttribute('stroke-linecap', 'round');
+    visualPath.setAttribute('stroke-linejoin', 'miter');
+    visualPath.setAttribute('stroke-miterlimit', '4');
     visualPath.classList.add('wire-visual');
     visualPath.setAttribute('d', d);
 
-    // Hit area
+    // ─── Hit area ───
     const hitPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     hitPath.setAttribute('stroke', 'transparent');
     hitPath.setAttribute('stroke-width', WIRE_HIT_WIDTH);
     hitPath.setAttribute('fill', 'none');
     hitPath.setAttribute('pointer-events', 'stroke');
+    hitPath.setAttribute('stroke-linecap', 'round');
+    hitPath.setAttribute('stroke-linejoin', 'round');
     hitPath.classList.add('wire-hitarea');
     hitPath.setAttribute('d', d);
 
-    // Junction dot
+    // ─── Junction dot ───
     const junctionDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
     junctionDot.setAttribute('r', JUNCTION_RADIUS);
     junctionDot.setAttribute('fill', neutralColor);
@@ -269,13 +309,47 @@ export class Wire {
     junctionDot.setAttribute('cy', fromPos.y);
     junctionDot.style.display = 'none';
 
+    // ─── Endpoint markers (source and target dots) ───
+    const sourceDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    sourceDot.setAttribute('cx', fromPos.x);
+    sourceDot.setAttribute('cy', fromPos.y);
+    sourceDot.setAttribute('r', '4');
+    sourceDot.setAttribute('fill', 'transparent');
+    sourceDot.setAttribute('stroke', 'transparent');
+    sourceDot.setAttribute('stroke-width', '1.5');
+    sourceDot.setAttribute('pointer-events', 'none');
+    sourceDot.classList.add('wire-endpoint-source');
+    sourceDot.style.display = 'none';
+
+    const targetDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    targetDot.setAttribute('cx', toPos.x);
+    targetDot.setAttribute('cy', toPos.y);
+    targetDot.setAttribute('r', '4');
+    targetDot.setAttribute('fill', 'transparent');
+    targetDot.setAttribute('stroke', 'transparent');
+    targetDot.setAttribute('stroke-width', '1.5');
+    targetDot.setAttribute('pointer-events', 'none');
+    targetDot.classList.add('wire-endpoint-target');
+    targetDot.style.display = 'none';
+
+    // ─── Title (tooltip) ───
+    const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+    title.textContent = `Wire ${this.id} (${this.wireState})`;
+    title.classList.add('wire-tooltip');
+
+    // Assemble group (order matters: glow → visual → hit → dots)
+    group.appendChild(title);
+    group.appendChild(glowPath);
     group.appendChild(visualPath);
     group.appendChild(hitPath);
     group.appendChild(junctionDot);
+    group.appendChild(sourceDot);
+    group.appendChild(targetDot);
     svgLayer.appendChild(group);
 
     this.element = group;
     this.updateOccupiedCells(d);
+    this._updateTooltip();
   }
 
   /**
@@ -309,12 +383,28 @@ export class Wire {
 
     this.element.querySelector('.wire-visual').setAttribute('d', d);
     this.element.querySelector('.wire-hitarea').setAttribute('d', d);
+
+    const glowPath = this.element.querySelector('.wire-glow');
+    if (glowPath) glowPath.setAttribute('d', d);
+
     this.updateOccupiedCells(d);
 
     const junctionDot = this.element.querySelector('.wire-junction');
     if (junctionDot) {
       junctionDot.setAttribute('cx', fromPos.x);
       junctionDot.setAttribute('cy', fromPos.y);
+    }
+
+    // Update endpoint markers
+    const sourceDot = this.element.querySelector('.wire-endpoint-source');
+    if (sourceDot) {
+      sourceDot.setAttribute('cx', fromPos.x);
+      sourceDot.setAttribute('cy', fromPos.y);
+    }
+    const targetDot = this.element.querySelector('.wire-endpoint-target');
+    if (targetDot) {
+      targetDot.setAttribute('cx', toPos.x);
+      targetDot.setAttribute('cy', toPos.y);
     }
   }
 
@@ -331,6 +421,8 @@ export class Wire {
       const d = `M ${fromPos.x} ${fromPos.y} L ${toPos.x} ${toPos.y}`;
       this.element.querySelector('.wire-visual').setAttribute('d', d);
       this.element.querySelector('.wire-hitarea').setAttribute('d', d);
+      const glowPath = this.element.querySelector('.wire-glow');
+      if (glowPath) glowPath.setAttribute('d', d);
       this.pathPoints = [{ ...fromPos }, { ...toPos }];
       return;
     }
@@ -387,12 +479,143 @@ export class Wire {
     const d = Wire.pointsToSVGPath(this.pathPoints);
     this.element.querySelector('.wire-visual').setAttribute('d', d);
     this.element.querySelector('.wire-hitarea').setAttribute('d', d);
+
+    const glowPath = this.element.querySelector('.wire-glow');
+    if (glowPath) glowPath.setAttribute('d', d);
+
     this.updateOccupiedCells(d);
 
     const junctionDot = this.element.querySelector('.wire-junction');
     if (junctionDot) {
       junctionDot.setAttribute('cx', this.pathPoints[0].x);
       junctionDot.setAttribute('cy', this.pathPoints[0].y);
+    }
+
+    // Update endpoint markers
+    const sourceDot = this.element.querySelector('.wire-endpoint-source');
+    if (sourceDot) {
+      sourceDot.setAttribute('cx', this.pathPoints[0].x);
+      sourceDot.setAttribute('cy', this.pathPoints[0].y);
+    }
+    const targetDot = this.element.querySelector('.wire-endpoint-target');
+    if (targetDot) {
+      const lastPt = this.pathPoints[this.pathPoints.length - 1];
+      targetDot.setAttribute('cx', lastPt.x);
+      targetDot.setAttribute('cy', lastPt.y);
+    }
+  }
+
+  /* ================================================================
+   *  Hover & Glow Effects (New)
+   * ================================================================ */
+
+  /**
+   * Set hover state: shows glow, endpoint indicators, and color change.
+   */
+  setHovered(hovered) {
+    if (this._isHovered === hovered) return;
+    this._isHovered = hovered;
+
+    if (!this.element) return;
+
+    const visualPath = this.element.querySelector('.wire-visual');
+    const glowPath   = this.element.querySelector('.wire-glow');
+    const sourceDot  = this.element.querySelector('.wire-endpoint-source');
+    const targetDot  = this.element.querySelector('.wire-endpoint-target');
+
+    if (hovered) {
+      // Show glow
+      if (glowPath) {
+        glowPath.style.display = '';
+        glowPath.setAttribute('stroke', WIRE_DRAW_GLOW_COLOR);
+      }
+
+      // Thicken visual path slightly
+      if (visualPath) {
+        visualPath.setAttribute('stroke-width', String(WIRE_VISUAL_WIDTH + 1));
+      }
+
+      // Show endpoint dots
+      if (sourceDot) {
+        sourceDot.style.display = '';
+        sourceDot.setAttribute('fill', 'rgba(78, 201, 176, 0.6)');
+        sourceDot.setAttribute('stroke', '#4ec9b0');
+      }
+      if (targetDot) {
+        targetDot.style.display = '';
+        targetDot.setAttribute('fill', 'rgba(78, 201, 176, 0.6)');
+        targetDot.setAttribute('stroke', '#4ec9b0');
+      }
+    } else {
+      // Hide glow
+      if (glowPath) {
+        glowPath.style.display = 'none';
+        glowPath.setAttribute('stroke', 'transparent');
+      }
+
+      // Reset visual path
+      if (visualPath) {
+        visualPath.setAttribute('stroke-width', String(WIRE_VISUAL_WIDTH));
+      }
+
+      // Hide endpoint dots
+      if (sourceDot) {
+        sourceDot.style.display = 'none';
+        sourceDot.setAttribute('fill', 'transparent');
+        sourceDot.setAttribute('stroke', 'transparent');
+      }
+      if (targetDot) {
+        targetDot.style.display = 'none';
+        targetDot.setAttribute('fill', 'transparent');
+        targetDot.setAttribute('stroke', 'transparent');
+      }
+    }
+  }
+
+  /**
+   * Set glow state for wire preview during drawing.
+   */
+  setGlowing(glowing) {
+    if (this._isGlowing === glowing) return;
+    this._isGlowing = glowing;
+
+    if (!this.element) return;
+
+    const glowPath = this.element.querySelector('.wire-glow');
+    if (glowPath) {
+      if (glowing) {
+        glowPath.style.display = '';
+        glowPath.setAttribute('stroke', WIRE_DRAW_GLOW_COLOR);
+      } else {
+        glowPath.style.display = 'none';
+        glowPath.setAttribute('stroke', 'transparent');
+      }
+    }
+  }
+
+  /**
+   * Set error state (red glow for invalid/short-circuit connections).
+   */
+  setError(hasError) {
+    if (this._isError === hasError) return;
+    this._isError = hasError;
+
+    if (!this.element) return;
+
+    const visualPath = this.element.querySelector('.wire-visual');
+    const glowPath   = this.element.querySelector('.wire-glow');
+
+    if (hasError) {
+      if (visualPath) visualPath.setAttribute('stroke', WIRE_ERROR_COLOR);
+      if (glowPath) {
+        glowPath.style.display = '';
+        glowPath.setAttribute('stroke', 'rgba(255, 68, 68, 0.4)');
+      }
+    } else {
+      if (glowPath) {
+        glowPath.style.display = 'none';
+        glowPath.setAttribute('stroke', 'transparent');
+      }
     }
   }
 
@@ -419,6 +642,9 @@ export class Wire {
     if (this.routingMode !== Wire.MODE_MANUAL) {
       this.routingMode = Wire.MODE_MANUAL;
     }
+
+    // Mark as manually edited
+    this.isAutoRouted = false;
 
     // Sync controlPoints
     this.controlPoints = this.pathPoints.slice(1, -1).map(p => ({ x: p.x, y: p.y }));
@@ -469,6 +695,7 @@ export class Wire {
       if (this.routingMode !== Wire.MODE_MANUAL) {
         this.routingMode = Wire.MODE_MANUAL;
       }
+      this.isAutoRouted = false;
     }
 
     // Sync controlPoints
@@ -652,6 +879,9 @@ export class Wire {
     const neutralColor = style.getPropertyValue('--wire-neutral-color').trim() || '#888';
     const zColor       = style.getPropertyValue('--wire-z-color').trim()       || '#ff9800';
 
+    // Skip color update if error state is active
+    if (this._isError) return;
+
     // Detect signal transitions for animation
     const prevValue = this._lastSourceValue;
     this._lastSourceValue = sourceValue;
@@ -701,6 +931,21 @@ export class Wire {
   unlock() { this._isLocked = false; }
 
   /* ================================================================
+   *  Tooltip
+   * ================================================================ */
+
+  _updateTooltip() {
+    if (!this.element) return;
+    const title = this.element.querySelector('.wire-tooltip');
+    if (title) {
+      const stateLabel = this.wireState === 'auto' ? 'Auto-routed' :
+                        this.wireState === 'manual' ? 'Manually edited' : 'Locked';
+      const methodLabel = this._routedMethod || 'unknown';
+      title.textContent = `Wire ${this.id} | ${stateLabel} | Method: ${methodLabel}`;
+    }
+  }
+
+  /* ================================================================
    *  Legacy Compatibility
    * ================================================================ */
 
@@ -717,6 +962,7 @@ export class Wire {
       this.routingMode = Wire.MODE_MANHATTAN;
       this.controlPoints = [];
     }
+    this.isAutoRouted = true;
     this.updatePath(getNodePosition, busBarY, router);
   }
 
