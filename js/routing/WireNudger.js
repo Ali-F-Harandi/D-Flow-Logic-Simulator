@@ -298,49 +298,140 @@ export class WireNudger {
 
   /**
    * Nudge a horizontal segment's Y coordinate.
-   * Updates both endpoints of the segment and the connected points
-   * of adjacent segments. Then re-orthogonalizes adjacent segments.
+   * Uses a two-phase approach: compute offsets, then validate orthogonality,
+   * then apply. Protects endpoints (first/last points) from being moved.
    */
   _nudgeSegmentY(wire, segIndex, offset) {
     const pts = wire.pathPoints;
+    const len = pts.length;
 
-    // Update the two points of this horizontal segment
+    // Protect endpoints: never move the first or last point
+    if (segIndex === 0 || segIndex + 1 >= len - 1) return;
+
+    // Phase 1: Apply the Y offset to the horizontal segment's two points
     pts[segIndex].y += offset;
     pts[segIndex + 1].y += offset;
 
-    // Re-orthogonalize: ensure adjacent vertical segments stay vertical
-    // by keeping their X coordinates aligned with the horizontal endpoints
+    // Phase 2: Re-orthogonalize adjacent segments while protecting endpoints
+    // The segment before this one should be vertical — ensure shared X
     if (segIndex > 0) {
-      // The segment before this one should be vertical — ensure shared X
-      pts[segIndex].x = pts[segIndex - 1].x;
+      // Only adjust if the previous point is NOT an endpoint
+      if (segIndex - 1 > 0) {
+        pts[segIndex].x = pts[segIndex - 1].x;
+      } else {
+        // Previous point is an endpoint — move the current point's X to match
+        // the endpoint's X (keep the endpoint fixed)
+        pts[segIndex].x = pts[segIndex - 1].x;
+      }
     }
-    if (segIndex + 2 < pts.length) {
-      // The segment after this one should be vertical — ensure shared X
-      pts[segIndex + 1].x = pts[segIndex + 2].x;
+    // The segment after this one should be vertical — ensure shared X
+    if (segIndex + 2 < len) {
+      if (segIndex + 2 < len - 1) {
+        pts[segIndex + 1].x = pts[segIndex + 2].x;
+      } else {
+        // Next point is an endpoint — keep endpoint fixed, adjust our point
+        pts[segIndex + 1].x = pts[segIndex + 2].x;
+      }
     }
+
+    // Phase 3: Validate orthogonality — ensure no diagonal segments
+    this._validateOrthogonality(wire, segIndex);
   }
 
   /**
    * Nudge a vertical segment's X coordinate.
-   * Updates both endpoints of the segment and the connected points
-   * of adjacent segments. Then re-orthogonalizes adjacent segments.
+   * Uses a two-phase approach with endpoint protection.
    */
   _nudgeSegmentX(wire, segIndex, offset) {
     const pts = wire.pathPoints;
+    const len = pts.length;
 
-    // Update the two points of this vertical segment
+    // Protect endpoints: never move the first or last point
+    if (segIndex === 0 || segIndex + 1 >= len - 1) return;
+
+    // Phase 1: Apply the X offset to the vertical segment's two points
     pts[segIndex].x += offset;
     pts[segIndex + 1].x += offset;
 
-    // Re-orthogonalize: ensure adjacent horizontal segments stay horizontal
-    // by keeping their Y coordinates aligned with the vertical endpoints
+    // Phase 2: Re-orthogonalize adjacent segments while protecting endpoints
+    // The segment before this one should be horizontal — ensure shared Y
     if (segIndex > 0) {
-      // The segment before this one should be horizontal — ensure shared Y
-      pts[segIndex].y = pts[segIndex - 1].y;
+      if (segIndex - 1 > 0) {
+        pts[segIndex].y = pts[segIndex - 1].y;
+      } else {
+        pts[segIndex].y = pts[segIndex - 1].y;
+      }
     }
-    if (segIndex + 2 < pts.length) {
-      // The segment after this one should be horizontal — ensure shared Y
-      pts[segIndex + 1].y = pts[segIndex + 2].y;
+    // The segment after this one should be horizontal — ensure shared Y
+    if (segIndex + 2 < len) {
+      if (segIndex + 2 < len - 1) {
+        pts[segIndex + 1].y = pts[segIndex + 2].y;
+      } else {
+        pts[segIndex + 1].y = pts[segIndex + 2].y;
+      }
+    }
+
+    // Phase 3: Validate orthogonality
+    this._validateOrthogonality(wire, segIndex);
+  }
+
+  /**
+   * Validate and fix orthogonality violations around the nudged segment.
+   * Checks that each pair of consecutive segments is properly orthogonal
+   * (one horizontal, one vertical). If a diagonal is detected, snaps
+   * the interior point to restore orthogonality.
+   */
+  _validateOrthogonality(wire, segIndex) {
+    const pts = wire.pathPoints;
+    const len = pts.length;
+
+    // Check segments around the nudged area
+    const checkStart = Math.max(1, segIndex - 1);
+    const checkEnd   = Math.min(len - 2, segIndex + 2);
+
+    for (let i = checkStart; i <= checkEnd; i++) {
+      const prev = pts[i - 1];
+      const curr = pts[i];
+      const next = (i + 1 < len) ? pts[i + 1] : null;
+
+      if (!next) continue;
+
+      // Check if prev→curr→next forms a proper Manhattan bend
+      const prevToCurrHorizontal = Math.abs(curr.y - prev.y) < 1;
+      const currToNextHorizontal = next && Math.abs(next.y - curr.y) < 1;
+      const prevToCurrVertical   = Math.abs(curr.x - prev.x) < 1;
+      const currToNextVertical   = next && Math.abs(next.x - curr.x) < 1;
+
+      // If both segments are the same orientation, we have a collinear situation
+      // that should have been simplified — not our concern here.
+      // If neither segment is purely H or V, we have a diagonal violation.
+      if (!prevToCurrHorizontal && !prevToCurrVertical) {
+        // prev→curr is diagonal — snap curr to share X or Y with prev
+        // Choose the axis that's closer to the expected direction
+        if (i > 1) {
+          // This is an interior point — snap to the closest grid axis
+          const dx = Math.abs(curr.x - prev.x);
+          const dy = Math.abs(curr.y - prev.y);
+          if (dx < dy) {
+            curr.x = prev.x;
+          } else {
+            curr.y = prev.y;
+          }
+        }
+      }
+
+      if (next && !currToNextHorizontal && !currToNextVertical) {
+        // curr→next is diagonal — snap next to share X or Y with curr
+        if (i + 1 < len - 1) {
+          const dx = Math.abs(next.x - curr.x);
+          const dy = Math.abs(next.y - curr.y);
+          if (dx < dy) {
+            next.x = curr.x;
+          } else {
+            next.y = curr.y;
+          }
+        }
+      }
     }
   }
 }

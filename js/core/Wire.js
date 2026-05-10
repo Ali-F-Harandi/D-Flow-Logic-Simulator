@@ -211,15 +211,15 @@ export class Wire {
 
   /**
    * Parse an SVG "d" attribute into an array of {x,y} points.
-   * Fixed regex: original /[ML]\s*[\d.e+-]+/gi lost Y-coordinates.
-   * New regex correctly captures all coordinate pairs per command.
+   * Tolerant of missing whitespace after M/L commands (handles minified SVGs).
+   * Correctly captures all coordinate pairs per command.
    */
   static svgPathToPoints(d) {
     const points = [];
     if (!d) return points;
-    // Match M or L followed by one or more coordinate pairs (x y or x,y)
-    // Each command can have multiple coordinate pairs
-    const commands = d.match(/[ML]\s+(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?[\s,]+-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?(?:[\s,]+-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)*)/gi);
+    // Match M or L followed by optional whitespace, then one or more coordinate pairs
+    // The \s* (instead of \s+) makes it tolerant of missing whitespace after command letter
+    const commands = d.match(/[ML]\s*(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?[\s,]+-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?(?:[\s,]+-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)*)/gi);
     if (!commands) return points;
     for (const cmd of commands) {
       const nums = cmd.slice(1).trim().split(/[\s,]+/).map(Number).filter(n => !isNaN(n));
@@ -981,8 +981,8 @@ export class Wire {
     this.occupiedCells.clear();
     if (!d) return;
     const gs = GRID_SIZE;
-    // Match M or L followed by one or more coordinate pairs
-    const commands = d.match(/[ML]\s+(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?[\s,]+-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?(?:[\s,]+-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)*)/gi);
+    // Match M or L followed by optional whitespace, then one or more coordinate pairs
+    const commands = d.match(/[ML]\s*(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?[\s,]+-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?(?:[\s,]+-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)*)/gi);
     if (!commands) return;
     let cx = 0, cy = 0;
     for (const cmd of commands) {

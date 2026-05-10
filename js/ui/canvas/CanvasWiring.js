@@ -312,8 +312,9 @@ export class CanvasWiring {
         continue;
       }
 
+      // Channel is now keyed by wire.id (fan-out fix: each wire gets a distinct channel)
       const opts = {
-        channelX: channelMap.get(sourceId),
+        channelX: channelMap.get(wire.id),
         busY,
         topY,
         sourceNodeId: sourceId,
@@ -431,7 +432,17 @@ export class CanvasWiring {
     const busY  = this.core.getBusBarY(components);
     const topY  = this.core.getTopClearY(components);
     const sourceId = this.wiring?.fromNodeId;
-    const channelX = this._lastChannelMap?.get(sourceId);
+    // Channel map is now keyed by wire.id; for preview, find the best matching channel
+    let channelX = undefined;
+    if (this._lastChannelMap) {
+      // Look for any wire originating from this source to find its channel
+      for (const wire of this.wires) {
+        if (wire.fromNode.nodeId === sourceId) {
+          channelX = this._lastChannelMap.get(wire.id);
+          break;
+        }
+      }
+    }
 
     // Try A* routing for preview if grid is built
     if (this._router._gridBuilt) {
@@ -824,5 +835,35 @@ export class CanvasWiring {
 
   /* ─── Component list (injected by Canvas) ─── */
 
-  _getComponents() { return []; }
+  /**
+   * Set the component provider callback.
+   * This is the proper injection point for Canvas to provide
+   * its component list to the wiring subsystem.
+   *
+   * @param {Function} provider - () => Array<Component>
+   */
+  setComponentProvider(provider) {
+    if (typeof provider !== 'function') {
+      console.warn('CanvasWiring.setComponentProvider: provider must be a function');
+      return;
+    }
+    this._componentProvider = provider;
+  }
+
+  /**
+   * Get the current list of components from the canvas.
+   * Uses the injected provider if available, otherwise returns empty array.
+   *
+   * @returns {Array<Component>}
+   */
+  _getComponents() {
+    if (this._componentProvider) {
+      return this._componentProvider();
+    }
+    // Fallback: try to get components from the engine
+    if (this.engine && this.engine.components) {
+      return Array.from(this.engine.components.values());
+    }
+    return [];
+  }
 }

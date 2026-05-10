@@ -50,7 +50,8 @@ export class Canvas {
 
     // Pass `this` (the Canvas instance) to wiring, selection, touch & events
     this.wiring = new CanvasWiring(this.engine, this.eventBus, this.undoManager, this.core, this.positionCache, this);
-    this.wiring._getComponents = () => this.compManager.components;
+    // Inject component provider using the proper setter (fixes P0: grid starvation)
+    this.wiring.setComponentProvider(() => this.compManager.components);
     this.wiring._redrawCallback = () => this.wiring.performRedraw(this.compManager.components);
 
     // Wire edit handler — manages control point dragging for manual wire editing

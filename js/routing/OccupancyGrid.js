@@ -293,13 +293,15 @@ export class OccupancyGrid {
 
   /**
    * Update grid for a single moved component.
-   * Clears old position and marks new position.
+   * Clears old position (including old pins) and marks new position.
+   * This is an incremental update that avoids a full grid rebuild.
+   *
    * @param {Object} comp
    * @param {{x:number,y:number}} oldPos
    * @param {Function} getPosition
    */
   updateComponent(comp, oldPos, getPosition) {
-    // Clear old position
+    // Clear old position (including old pin cells)
     if (oldPos) {
       const w = comp._cachedWidth  || 80;
       const h = comp._cachedHeight || 60;
@@ -314,6 +316,17 @@ export class OccupancyGrid {
         for (let col = startCol; col <= endCol; col++) {
           this.setCell(col, row, CELL_FREE);
         }
+      }
+
+      // Clear old pin positions from the pin map
+      const allNodes = [...comp.inputs, ...comp.outputs];
+      for (const node of allNodes) {
+        const pos = getPosition(node.id);
+        if (!pos) continue;
+        const col = this.toCol(pos.x);
+        const row = this.toRow(pos.y);
+        const key = `${col},${row}`;
+        this._pinPositions.delete(key);
       }
     }
 

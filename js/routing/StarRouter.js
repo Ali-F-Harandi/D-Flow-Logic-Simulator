@@ -195,7 +195,7 @@ export class StarRouter {
    * @returns {Object|null} Path result with grid coordinates, or null
    */
   _astar(startCol, startRow, endCol, endRow, initialDir, passablePins, opts) {
-    // Priority queue (binary min-heap)
+    // Priority queue (binary min-heap with decrease-key support)
     const openSet = new BinaryHeap();
 
     // Visited set: key = "col,row,dir" → best known cost
@@ -214,8 +214,9 @@ export class StarRouter {
       row: startRow,
       dir: initialDir,
       gCost: startCost,
-      fCost: startCost + startHeuristic
-    }, startCost + startHeuristic);
+      fCost: startCost + startHeuristic,
+      _key: startKey
+    }, startCost + startHeuristic, startKey);
 
     visited.set(startKey, startCost);
 
@@ -273,13 +274,27 @@ export class StarRouter {
         });
 
         const hCost = this._heuristic(nextCol, nextRow, endCol, endRow);
-        openSet.push({
+        const fCost = newGCost + hCost;
+
+        // Try decrease-key first; if the key exists in the heap, update it
+        if (!openSet.decreaseKey(nextKey, fCost, {
           col: nextCol,
           row: nextRow,
           dir: dir,
           gCost: newGCost,
-          fCost: newGCost + hCost
-        }, newGCost + hCost);
+          fCost: fCost,
+          _key: nextKey
+        })) {
+          // Key not in heap — push a new entry
+          openSet.push({
+            col: nextCol,
+            row: nextRow,
+            dir: dir,
+            gCost: newGCost,
+            fCost: fCost,
+            _key: nextKey
+          }, fCost, nextKey);
+        }
       }
     }
 
@@ -624,8 +639,10 @@ export class StarRouter {
   }
 
   /**
-   * Assign vertical channels to wire sources to prevent overlap.
-   * Delegates to the same logic as the original Router.
+   * Assign vertical channels to each wire to prevent overlap.
+   * Fan-out fix: channels are assigned PER WIRE (not per source),
+   * so multiple wires from the same output pin get distinct channels
+   * distributed across adjacent grid columns.
    */
   assignChannels(wires, getPosition) {
     const gs = this.gridSize;
@@ -633,30 +650,51 @@ export class StarRouter {
     const usedChannels = new Set();
     const channelSpacing = 2;
 
-    const sourceInfos = new Map();
+    // Group wires by source to handle fan-out distribution
+    const sourceWires = new Map(); // srcId → [{wire, tgtPos}]
     for (const wire of wires) {
       const srcId = wire.fromNode.nodeId;
-      if (sourceInfos.has(srcId)) continue;
+      if (!sourceWires.has(srcId)) {
+        sourceWires.set(srcId, []);
+      }
       const srcPos = getPosition(srcId);
       if (!srcPos) continue;
-
       const tgtPos = getPosition(wire.toNode.nodeId);
-      let midX;
-      if (tgtPos) {
-        midX = (srcPos.x + tgtPos.x) / 2;
-      } else {
-        midX = srcPos.x + 2 * gs;
-      }
-
-      sourceInfos.set(srcId, { x: srcPos.x, y: srcPos.y, midX });
+      sourceWires.get(srcId).push({ wire, srcPos, tgtPos });
     }
 
-    const sorted = [...sourceInfos.entries()].sort((a, b) => {
-      const dx = a[1].midX - b[1].midX;
-      return dx !== 0 ? dx : a[1].y - b[1].y;
+    // Build wire info list sorted by preferred channel position
+    const wireInfos = [];
+    for (const [srcId, entries] of sourceWires) {
+      if (entries.length === 0) continue;
+      const srcPos = entries[0].srcPos;
+
+      for (const entry of entries) {
+        let midX;
+        if (entry.tgtPos) {
+          midX = (srcPos.x + entry.tgtPos.x) / 2;
+        } else {
+          midX = srcPos.x + 2 * gs;
+        }
+        wireInfos.push({
+          wireId: entry.wire.id,
+          srcId,
+          srcPos,
+          tgtPos: entry.tgtPos,
+          midX,
+          y: srcPos.y
+        });
+      }
+    }
+
+    // Sort by preferred midX (then by Y for tie-breaking)
+    wireInfos.sort((a, b) => {
+      const dx = a.midX - b.midX;
+      return dx !== 0 ? dx : a.y - b.y;
     });
 
-    for (const [srcId, info] of sorted) {
+    // Assign distinct channels per wire
+    for (const info of wireInfos) {
       const preferredCol = Math.round(info.midX / gs);
       let channelCol = preferredCol;
 
@@ -668,7 +706,7 @@ export class StarRouter {
         channelCol = preferredCol + Math.ceil(offset / 2) * direction * channelSpacing;
       }
 
-      channelMap.set(srcId, channelCol * gs);
+      channelMap.set(info.wireId, channelCol * gs);
       usedChannels.add(channelCol);
     }
 
@@ -676,11 +714,13 @@ export class StarRouter {
   }
 }
 
-/* ─── Binary Min-Heap for A* Priority Queue ─── */
+/* ─── Binary Min-Heap for A* Priority Queue (with decrease-key) ─── */
 
 class BinaryHeap {
   constructor() {
     this._data = [];
+    // Map: item key → index in _data array (for O(1) lookups in decreaseKey)
+    this._positionMap = new Map();
   }
 
   get size() { return this._data.length; }
@@ -689,10 +729,16 @@ class BinaryHeap {
    * Push an item with a priority.
    * @param {*} item
    * @param {number} priority
+   * @param {string} [key] - Optional key for decrease-key support
    */
-  push(item, priority) {
-    this._data.push({ item, priority });
-    this._bubbleUp(this._data.length - 1);
+  push(item, priority, key) {
+    const entry = { item, priority, _key: key };
+    const index = this._data.length;
+    this._data.push(entry);
+    if (key !== undefined) {
+      this._positionMap.set(key, index);
+    }
+    this._bubbleUp(index, key);
   }
 
   /**
@@ -702,19 +748,62 @@ class BinaryHeap {
   pop() {
     if (this._data.length === 0) return null;
     const top = this._data[0];
+    // Remove from position map
+    const topKey = top._key;
+    if (topKey !== undefined) {
+      this._positionMap.delete(topKey);
+    }
     const last = this._data.pop();
     if (this._data.length > 0) {
       this._data[0] = last;
+      const lastKey = last._key;
+      if (lastKey !== undefined) {
+        this._positionMap.set(lastKey, 0);
+      }
       this._sinkDown(0);
     }
     return top.item;
   }
 
-  _bubbleUp(index) {
+  /**
+   * Decrease the priority of an item identified by key.
+   * If the item doesn't exist or the new priority isn't lower, does nothing.
+   *
+   * @param {string} key - The key used when pushing the item
+   * @param {number} newPriority - The new (lower) priority
+   * @param {*} newItem - Updated item data (optional)
+   * @returns {boolean} True if the key was found and updated
+   */
+  decreaseKey(key, newPriority, newItem) {
+    const index = this._positionMap.get(key);
+    if (index === undefined) return false;
+    const entry = this._data[index];
+    if (newPriority >= entry.priority) return false;
+
+    entry.priority = newPriority;
+    if (newItem !== undefined) {
+      entry.item = newItem;
+    }
+    this._bubbleUp(index, key);
+    return true;
+  }
+
+  /**
+   * Check if a key exists in the heap.
+   * @param {string} key
+   * @returns {boolean}
+   */
+  has(key) {
+    return this._positionMap.has(key);
+  }
+
+  _bubbleUp(index, key) {
     while (index > 0) {
       const parentIndex = Math.floor((index - 1) / 2);
       if (this._data[parentIndex].priority <= this._data[index].priority) break;
-      [this._data[parentIndex], this._data[index]] = [this._data[index], this._data[parentIndex]];
+
+      // Swap
+      this._swap(index, parentIndex);
       index = parentIndex;
     }
   }
@@ -734,8 +823,17 @@ class BinaryHeap {
       }
 
       if (smallest === index) break;
-      [this._data[index], this._data[smallest]] = [this._data[smallest], this._data[index]];
+      this._swap(index, smallest);
       index = smallest;
     }
+  }
+
+  _swap(i, j) {
+    [this._data[i], this._data[j]] = [this._data[j], this._data[i]];
+    // Update position map for both swapped entries
+    const keyI = this._data[i]._key;
+    const keyJ = this._data[j]._key;
+    if (keyI !== undefined) this._positionMap.set(keyI, i);
+    if (keyJ !== undefined) this._positionMap.set(keyJ, j);
   }
 }

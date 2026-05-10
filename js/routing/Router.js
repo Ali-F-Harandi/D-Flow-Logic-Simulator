@@ -331,12 +331,16 @@ export class Router {
    * ================================================================ */
 
   /**
-   * Assign exclusive vertical channel columns to wire sources.
-   * Prevents multiple sources from overlapping in the same column.
+   * Assign exclusive vertical channel columns to each wire.
+   * Prevents multiple wires from overlapping in the same column.
+   *
+   * Fan-out fix: channels are assigned PER WIRE (not per source),
+   * so multiple wires from the same output pin get distinct channels
+   * distributed across adjacent grid columns.
    *
    * @param {Array}    wires       – Wire objects
    * @param {Function} getPosition – nodeId → {x,y} | null
-   * @returns {Map<string,number>} sourceNodeId → channelX (px)
+   * @returns {Map<string,number>} wireId → channelX (px)
    */
   assignChannels(wires, getPosition) {
     const gs = this.gridSize;
@@ -344,30 +348,51 @@ export class Router {
     const usedChannels = new Set();
     const channelSpacing = 2;
 
-    const sourceInfos = new Map();
+    // Group wires by source to handle fan-out distribution
+    const sourceWires = new Map(); // srcId → [{wire, tgtPos}]
     for (const wire of wires) {
       const srcId = wire.fromNode.nodeId;
-      if (sourceInfos.has(srcId)) continue;
+      if (!sourceWires.has(srcId)) {
+        sourceWires.set(srcId, []);
+      }
       const srcPos = getPosition(srcId);
       if (!srcPos) continue;
-
       const tgtPos = getPosition(wire.toNode.nodeId);
-      let midX;
-      if (tgtPos) {
-        midX = (srcPos.x + tgtPos.x) / 2;
-      } else {
-        midX = srcPos.x + 2 * gs;
-      }
-
-      sourceInfos.set(srcId, { x: srcPos.x, y: srcPos.y, midX });
+      sourceWires.get(srcId).push({ wire, srcPos, tgtPos });
     }
 
-    const sorted = [...sourceInfos.entries()].sort((a, b) => {
-      const dx = a[1].midX - b[1].midX;
-      return dx !== 0 ? dx : a[1].y - b[1].y;
+    // Build wire info list sorted by preferred channel position
+    const wireInfos = [];
+    for (const [srcId, entries] of sourceWires) {
+      if (entries.length === 0) continue;
+      const srcPos = entries[0].srcPos;
+
+      for (const entry of entries) {
+        let midX;
+        if (entry.tgtPos) {
+          midX = (srcPos.x + entry.tgtPos.x) / 2;
+        } else {
+          midX = srcPos.x + 2 * gs;
+        }
+        wireInfos.push({
+          wireId: entry.wire.id,
+          srcId,
+          srcPos,
+          tgtPos: entry.tgtPos,
+          midX,
+          y: srcPos.y
+        });
+      }
+    }
+
+    // Sort by preferred midX (then by Y for tie-breaking)
+    wireInfos.sort((a, b) => {
+      const dx = a.midX - b.midX;
+      return dx !== 0 ? dx : a.y - b.y;
     });
 
-    for (const [srcId, info] of sorted) {
+    // Assign distinct channels per wire
+    for (const info of wireInfos) {
       const preferredCol = Math.round(info.midX / gs);
       let channelCol = preferredCol;
 
@@ -379,7 +404,7 @@ export class Router {
         channelCol = preferredCol + Math.ceil(offset / 2) * direction * channelSpacing;
       }
 
-      channelMap.set(srcId, channelCol * gs);
+      channelMap.set(info.wireId, channelCol * gs);
       usedChannels.add(channelCol);
     }
 

@@ -73,6 +73,8 @@ export class CanvasDrag {
 
   /**
    * Update dragged components positions.
+   * Uses incremental grid updates during drag for better performance,
+   * with full grid rebuild + reroute on drop.
    */
   moveDrag(clientX, clientY) {
     if (!this.dragData) return;
@@ -84,20 +86,25 @@ export class CanvasDrag {
       let ny = orig.y + dy;
       nx = this.core.snap(nx);
       ny = this.core.snap(ny);
-      comp.updatePosition(nx, ny);
-    });
-    this.dragData.components.forEach(comp => this.wiring.updateWiresForComponent(comp));
-    this.wiring.positionCache.invalidate();
 
-    // Update obstacle cache incrementally during drag for smoother wire routing
-    this.dragData.components.forEach(comp => {
+      // Store old position for incremental grid update
+      const oldPos = { x: comp.position.x, y: comp.position.y };
+      comp.updatePosition(nx, ny);
+
+      // Update cached dimensions
       if (comp.element) {
         comp._cachedWidth = comp.element.offsetWidth;
         comp._cachedHeight = comp.element.offsetHeight;
       }
-      const orig = this.dragData.origins[comp.id];
-      this.wiring.updateObstacleCacheForComponent(comp, orig);
+
+      // Use incremental grid update (avoids full rebuild during drag)
+      const router = this.wiring._getRouter();
+      if (router && router._gridBuilt) {
+        router.updateComponentOnGrid(comp, oldPos, (nodeId) => this.wiring.positionCache.getPosition(nodeId));
+      }
     });
+    this.dragData.components.forEach(comp => this.wiring.updateWiresForComponent(comp));
+    this.wiring.positionCache.invalidate();
 
     // Update alignment indicators
     this._updateAlignIndicators();
