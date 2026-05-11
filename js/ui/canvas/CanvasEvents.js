@@ -109,7 +109,7 @@ export class CanvasEvents {
       if (target.closest('g[data-wire-id]')) {
         const wireEl = target.closest('g[data-wire-id]');
         const wireId = wireEl.dataset.wireId;
-        // Feature 3: Clear any active net trace on single click
+        // Clear any active net trace on single click
         this._clearNetTrace();
         this.selection._clearWireSelection();
         this.selection.clearSelection();
@@ -120,7 +120,7 @@ export class CanvasEvents {
           const visual = wireEl.querySelector('.wire-visual');
           if (visual) visual.setAttribute('stroke-width', '4');
 
-          // Show control handles for this wire
+          // Show control handles for this wire (all wires support control points now)
           if (this.wiring._wireEditHandler) {
             this.wiring._wireEditHandler.setActiveWire(wire);
           }
@@ -139,8 +139,7 @@ export class CanvasEvents {
         return;
       }
 
-      // Magnet fallback: if clicking near a connector but not directly on it,
-      // start wiring from the nearest connector (improves UX for small connectors)
+      // Magnet fallback
       if (!target.closest('.component') && !target.closest('g[data-wire-id]')) {
         const nearestConn = this._findNearestConnector(e.clientX, e.clientY);
         if (nearestConn && !this.wiring.wiring) {
@@ -272,18 +271,14 @@ export class CanvasEvents {
       if (this.selection.selectionRect) { this.selection.endSelection(e); }
     });
 
-    // Double-click on wire to trace net
+    // Double-click on wire to add waypoint or trace net
     this.element.addEventListener('dblclick', (e) => {
       const wireEl = e.target.closest('g[data-wire-id]');
       if (!wireEl) return;
 
-      // Double-click on wire triggers net tracing
       const wireId = wireEl.dataset.wireId;
-      const traceWire = this.wiring.wires.find(w => w.id === wireId);
-      if (traceWire) {
-        this._traceNet(wireId);
-        return;
-      }
+      const wire = this.wiring.wires.find(w => w.id === wireId);
+      if (!wire) return;
 
       // If double-clicking on a control point, remove it
       if (this.wiring._wireEditHandler) {
@@ -293,6 +288,18 @@ export class CanvasEvents {
           return;
         }
       }
+
+      // Double-click on wire segment → add a waypoint at click position
+      if (this.wiring._wireEditHandler) {
+        const canvasPos = this.core.canvasCoords(e.clientX, e.clientY);
+        this.wiring._wireEditHandler.addPointAtPosition(canvasPos, wire);
+        // Make this wire the active wire to show handles
+        this.wiring._wireEditHandler.setActiveWire(wire);
+        return;
+      }
+
+      // Fallback: trace net
+      this._traceNet(wireId);
     });
   }
 
@@ -301,18 +308,15 @@ export class CanvasEvents {
   _handleWireHover(e) {
     const target = e.target;
 
-    // Check if hovering over a wire hitarea
     const wireEl = target.closest?.('g[data-wire-id]');
     const wireId = wireEl?.dataset?.wireId;
 
     if (wireId !== this._hoveredWireId) {
-      // Un-hover previous wire
       if (this._hoveredWireId) {
         const prevWire = this.wiring.wires.find(w => w.id === this._hoveredWireId);
         if (prevWire) prevWire.setHovered(false);
       }
 
-      // Hover new wire
       if (wireId) {
         const wire = this.wiring.wires.find(w => w.id === wireId);
         if (wire) wire.setHovered(true);
@@ -489,7 +493,7 @@ export class CanvasEvents {
       if (this.wiring._wireEditHandler) {
         const hit = this.wiring._wireEditHandler.hitTestControlPoint(e.target);
         if (hit && hit.type === 'control') {
-          items.push({ label: 'Remove Control Point', action: () => {
+          items.push({ label: 'Remove Waypoint', action: () => {
             this.wiring._wireEditHandler.removePoint(hit.wireId, hit.pointIndex);
           }});
           this.contextMenu.show(e.clientX, e.clientY, items);
@@ -531,16 +535,25 @@ export class CanvasEvents {
             this.undoManager.execute(cmd);
           }});
 
-          items.push({ label: wire.isLocked ? 'Unlock Wire' : 'Lock Wire', action: () => {
-            if (wire.isLocked) {
-              wire.unlock();
-            } else {
-              wire.lock();
-              wire.hideControlHandles();
+          // Add Waypoint option
+          items.push({ label: 'Add Waypoint', action: () => {
+            const canvasPos = this.core.canvasCoords(e.clientX, e.clientY);
+            if (this.wiring._wireEditHandler) {
+              this.wiring._wireEditHandler.addPointAtPosition(canvasPos, wire);
+              this.wiring._wireEditHandler.setActiveWire(wire);
             }
           }});
 
-          // Trace Net option in wire context menu
+          // Clear Waypoints option (if wire has waypoints)
+          if (wire.waypoints.length > 0) {
+            items.push({ label: 'Clear All Waypoints', action: () => {
+              wire.waypoints = [];
+              wire._recomputeAndApply();
+              wire.refreshControlHandles();
+            }});
+          }
+
+          // Trace Net option
           items.push({ label: 'Trace Net', action: () => {
             this._traceNet(wire.id);
           }});
@@ -564,7 +577,6 @@ export class CanvasEvents {
       }
 
       if (conn && conn.dataset.node) {
-        // "Invert Input" option for input connectors on gates
         const nodeId = conn.dataset.node;
         const isOutput = conn.classList.contains('output');
         if (!isOutput) {

@@ -288,29 +288,34 @@ export class AddWirePointCommand {
 }
 
 /**
- * Command for removing a wire control point (undo/redo support).
+ * Command for removing a wire control point / waypoint (undo/redo support).
+ * index is in pathPoints terms (1 = first waypoint, etc.)
  */
 export class RemoveWirePointCommand {
   constructor(wiring, wireId, index) {
     this.wiring = wiring;
     this.wireId = wireId;
-    this.index = index;
+    this.index = index;  // pathPoints index
     this.savedPoint = null;
   }
   execute() {
     const wire = this.wiring.wires.find(w => w.id === this.wireId);
-    if (wire && this.index > 0 && this.index < wire.pathPoints.length - 1) {
-      this.savedPoint = { ...wire.pathPoints[this.index] };
-      wire.removeControlPoint(this.index);
-      wire.refreshControlHandles();
-      return true;
+    if (wire) {
+      const wpIndex = this.index - 1;  // Convert pathPoints index to waypoints index
+      if (wpIndex >= 0 && wpIndex < wire.waypoints.length) {
+        this.savedPoint = { ...wire.waypoints[wpIndex] };
+        wire.removeControlPoint(wpIndex);
+        wire.refreshControlHandles();
+        return true;
+      }
     }
     return false;
   }
   undo() {
     const wire = this.wiring.wires.find(w => w.id === this.wireId);
     if (wire && this.savedPoint) {
-      wire.addControlPoint(this.index, this.savedPoint);
+      const wpIndex = this.index - 1;  // Convert back to waypoints index
+      wire.addControlPoint(wpIndex, this.savedPoint);
       wire.refreshControlHandles();
       return true;
     }

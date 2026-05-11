@@ -202,10 +202,11 @@ export class WireTooltip {
    * @returns {string}
    */
   _getRoutingInfo(wire) {
-    const mode = wire.routingMode || 'unknown';
-    const state = wire.wireState;
-    const method = wire._routedMethod || '';
-    return `${mode}${method ? ` (${method})` : ''} [${state}]`;
+    const wpCount = wire.waypoints ? wire.waypoints.length : 0;
+    if (wpCount > 0) {
+      return `Bézier (${wpCount} waypoint${wpCount > 1 ? 's' : ''})`;
+    }
+    return 'Bézier (auto)';
   }
 
   /**

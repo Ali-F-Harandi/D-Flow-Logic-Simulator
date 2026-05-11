@@ -1,13 +1,11 @@
 /**
- * CanvasWiring.js — Wire Lifecycle Manager (Bézier-First)
+ * CanvasWiring.js — Wire Lifecycle Manager (Segment-by-Segment)
  *
  * Orchestrates wire creation, removal, and visual updates.
  * All wires use Bézier routing by default — smooth cubic curves
- * based on port direction vectors. This is the only routing mode
- * that works well for this project.
- *
- * Simplified from the original A-star/Manhattan/Manual routing system
- * which was full of bugs. Only Bézier is used now.
+ * based on port direction vectors. Users can add waypoints by
+ * clicking on wires; segments between co-axial waypoints are
+ * rendered as straight lines (enabling manual Manhattan routing).
  */
 
 import { Wire } from '../../core/Wire.js';
@@ -35,8 +33,6 @@ export class CanvasWiring {
     this._previewThrottleTimer    = null;
     this._previewThrottleInterval = 50;
 
-    // Stable wire routing mode
-    this._stableMode = true;
     this.autoRerouteOnDrop = true;
 
     // Wire edit handler
@@ -50,8 +46,6 @@ export class CanvasWiring {
 
   /**
    * Component lookup function for facing-aware port directions.
-   * @param {string} nodeId
-   * @returns {Component|null}
    */
   _compLookupByNode(nodeId) {
     return this.engine._findComponentByNode(nodeId);
@@ -94,9 +88,9 @@ export class CanvasWiring {
 
   /* ─── Properties ─── */
 
-  get stableMode()       { return this._stableMode; }
-  set stableMode(val)    { this._stableMode = val; }
-  get isManualDrawing()  { return false; } // Manual drawing removed
+  get stableMode()       { return true; }
+  set stableMode(val)    { /* no-op */ }
+  get isManualDrawing()  { return false; }
   get spatialHash()      { return this._spatialHash; }
 
   setWireEditHandler(handler) { this._wireEditHandler = handler; }
@@ -113,7 +107,7 @@ export class CanvasWiring {
   /* ─── Router accessor (kept for compatibility) ─── */
 
   _getRouter() {
-    return null; // No router needed — Bézier doesn't use A*
+    return null;
   }
 
   /* ─── Spatial Hash Rebuild ─── */
@@ -150,7 +144,7 @@ export class CanvasWiring {
 
   addVisualWire(engineId, fromNodeId, toNodeId) {
     const visualId = generateId('wire');
-    const wire = new Wire(visualId, { nodeId: fromNodeId }, { nodeId: toNodeId }, Wire.MODE_BEZIER);
+    const wire = new Wire(visualId, { nodeId: fromNodeId }, { nodeId: toNodeId });
     wire.engineId = engineId;
     wire.setCompLookup((nodeId) => this._compLookupByNode(nodeId));
     this._renderWire(wire);
@@ -183,10 +177,8 @@ export class CanvasWiring {
   updateWiresForComponent(comp) {
     const prefix = comp.id + '.';
 
-    // Fast: just update endpoints for Bézier (no pathfinding needed)
     this.wires.forEach(wire => {
       if (wire.fromNode.nodeId.startsWith(prefix) || wire.toNode.nodeId.startsWith(prefix)) {
-        if (wire.isLocked) return;
         const fromPos = this.positionCache.getPosition(wire.fromNode.nodeId);
         const toPos   = this.positionCache.getPosition(wire.toNode.nodeId);
         if (fromPos && toPos) {
@@ -218,72 +210,26 @@ export class CanvasWiring {
   }
 
   /* ================================================================
-   *  Main Routing: rerouteAllWires (Bézier-only)
+   *  Main Routing: rerouteAllWires
    * ================================================================ */
 
   /**
-   * Recompute all wire paths. Since all wires use Bézier mode,
-   * this just recomputes the Bézier curves for each wire.
+   * Recompute all wire paths. Since all wires use segment-by-segment
+   * rendering, this just recomputes the paths for each wire.
    */
   rerouteAllWires() {
     const getPosition = (nodeId) => this.positionCache.getPosition(nodeId);
 
     for (const wire of this.wires) {
-      if (wire.isLocked) continue;
-
-      // Ensure Bézier mode
-      if (wire.routingMode !== Wire.MODE_BEZIER) {
-        wire.routingMode = Wire.MODE_BEZIER;
-        wire.controlPoints = [];
-        wire.isAutoRouted = true;
-        wire._routedMethod = 'bezier';
-        wire._isRoutingFallback = false;
-        const visualPath = wire.element?.querySelector('.wire-visual');
-        if (visualPath) visualPath.classList.remove('routing-fallback');
-      }
-
       const fromPos = getPosition(wire.sourceNode.nodeId);
       const toPos   = getPosition(wire.targetNode.nodeId);
       if (!fromPos || !toPos) continue;
 
-      const sourceId = wire.sourceNode.nodeId;
-      const targetId = wire.targetNode.nodeId;
-      const fromDir = Wire.getPortDirection(sourceId, (id) => this._compLookupByNode(id));
-      const toDir   = Wire.getPortDirection(targetId, (id) => this._compLookupByNode(id));
-
-      // Compute Bézier path
-      const d = Wire.computeBezierPath(fromPos, toPos, fromDir, toDir);
-
-      // Store pathPoints for Bézier
-      const dist = Math.hypot(toPos.x - fromPos.x, toPos.y - fromPos.y);
-      const controlDist = Math.max(40, Math.min(200, dist * 0.5));
-      wire.pathPoints = [
-        { x: fromPos.x, y: fromPos.y },
-        { x: fromPos.x + fromDir.x * controlDist, y: fromPos.y + fromDir.y * controlDist },
-        { x: toPos.x + toDir.x * controlDist, y: toPos.y + toDir.y * controlDist },
-        { x: toPos.x, y: toPos.y }
-      ];
-
-      if (wire.element) {
-        wire.element.querySelector('.wire-visual').setAttribute('d', d);
-        wire.element.querySelector('.wire-hitarea').setAttribute('d', d);
-
-        const glowPath = wire.element.querySelector('.wire-glow');
-        if (glowPath) glowPath.setAttribute('d', d);
-
-        const sourceDot = wire.element.querySelector('.wire-endpoint-source');
-        if (sourceDot) {
-          sourceDot.setAttribute('cx', fromPos.x);
-          sourceDot.setAttribute('cy', fromPos.y);
-        }
-        const targetDot = wire.element.querySelector('.wire-endpoint-target');
-        if (targetDot) {
-          targetDot.setAttribute('cx', toPos.x);
-          targetDot.setAttribute('cy', toPos.y);
-        }
-
-        wire.updateOccupiedCells(d);
-      }
+      // Clear waypoints on full reroute (reset to automatic Bézier)
+      wire.waypoints = [];
+      wire._sourcePos = { ...fromPos };
+      wire._targetPos = { ...toPos };
+      wire._recomputeAndApply();
     }
 
     // Update colors
@@ -296,8 +242,6 @@ export class CanvasWiring {
     });
 
     this._updateJunctions();
-
-    // Update spatial hash
     this._rebuildSpatialHash();
 
     if (this.canvas?.toaster) {
@@ -352,20 +296,17 @@ export class CanvasWiring {
       this.core.svgLayer,
       (nodeId) => this.positionCache.getPosition(nodeId),
       this.core.getBusBarY(this._getComponents()),
-      null // No router needed for Bézier
+      null
     );
   }
 
   /* ─── Junctions ─── */
 
   _updateJunctions() {
-    // For Bézier-only mode, junction dots are hidden — they're a Manhattan
-    // convention (indicating T-connections at wire overlaps) and don't
-    // make sense for smooth curves.
+    // Junction dots are hidden for Bézier-style wires
     this.wires.forEach(w => {
       w.hideJunction();
     });
-
     this._clearIntermediateJunctions();
   }
 
@@ -376,22 +317,13 @@ export class CanvasWiring {
     }
   }
 
-  _detectIntermediateJunctions() {
-    // Not needed for Bézier-only mode
-    this._clearIntermediateJunctions();
-  }
-
   /* ─── Wire Crossings ─── */
 
   updateWireCrossings() {
-    // Not needed for Bézier-only mode — crossing detection only
-    // works with orthogonal (Manhattan) wires.
+    this._clearIntermediateJunctions();
   }
 
-  setCrossingStyle(style) {
-    // No-op for Bézier-only mode
-  }
-
+  setCrossingStyle(style) { /* no-op */ }
   get crossingDetector() { return null; }
 
   /* ─── Reroute for a specific component ─── */
@@ -401,8 +333,7 @@ export class CanvasWiring {
   }
 
   /**
-   * Legacy compat: rerouteWithFanOut() — now just recomputes Bézier paths.
-   * Called from UndoManager and CanvasDrag after component changes.
+   * Legacy compat: rerouteWithFanOut() — now just recomputes paths.
    */
   rerouteWithFanOut() {
     this.rerouteAllWires();

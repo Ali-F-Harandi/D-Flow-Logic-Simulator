@@ -1,71 +1,60 @@
 /**
- * Wire.js — Data Model for a circuit wire connection (Enhanced)
+ * Wire.js — Data Model for a circuit wire connection (Segment-by-Segment)
  *
- * Each wire stores:
- *   - sourceNode / targetNode : the connected node references
- *   - routingMode             : 'direct' | 'manhattan' | 'manual' | 'bezier'
- *   - controlPoints           : user-defined intermediate points (Manual mode)
- *   - pathPoints              : the computed / rendered path points
- *   - isAutoRouted            : whether this wire was auto-routed by A*
+ * Inspired by OpenCircuits' approach:
+ *   - Wires connect using Bézier curves between consecutive points
+ *   - Each segment is independently Bézier or straight line
+ *   - When two consecutive points share the same X or Y, that segment is a straight line
+ *   - This enables manual Manhattan-style routing by placing aligned waypoints
+ *   - Click anywhere on a wire to add a waypoint (control point)
+ *   - Waypoints can be dragged, deleted
+ *   - No "routing mode" or "lock wire" — one unified model
  *
- * Enhancements over original:
- *   - Glow effect layer for preview/drawing mode
- *   - Hover highlight with endpoint indicators
- *   - Smooth miter joints at corners
- *   - Error state visual (red glow for invalid connections)
- *   - Wire state label (auto/manual/locked) as tooltip
- *   - isAutoRouted flag for selective re-routing
- *
- * Rendering is separated from routing:
- *   - Routing → Wire.computePathPoints(router, opts) → pathPoints[]
- *   - Rendering → Wire._applyPathPointsToSVG() → SVG "d" attribute
+ * Data model:
+ *   - waypoints[]  : user-created intermediate points [{x,y}]
+ *   - _sourcePos   : cached source port position
+ *   - _targetPos   : cached target port position
+ *   - pathPoints   : computed [source, ...waypoints, target] (all on-curve points)
  */
 
 import {
   WIRE_VISUAL_WIDTH, WIRE_HIT_WIDTH, JUNCTION_RADIUS, GRID_SIZE,
   WIRE_DRAW_GLOW_COLOR, WIRE_DRAW_GLOW_WIDTH, WIRE_ERROR_COLOR,
   WIRE_BEZIER_CONTROL_FACTOR, WIRE_BEZIER_MIN_CONTROL, WIRE_BEZIER_MAX_CONTROL,
-  WIRE_DEFAULT_ROUTING_MODE
+  WIRE_COAXIAL_THRESHOLD
 } from '../config.js';
 import { ComponentLayoutPolicy } from './ComponentLayoutPolicy.js';
 
 export class Wire {
 
-  /* ─── Routing Mode Constants ─── */
-  static MODE_DIRECT   = 'direct';
-  static MODE_MANHATTAN = 'manhattan';
-  static MODE_MANUAL   = 'manual';
-  static MODE_BEZIER   = 'bezier';
+  /* ─── Constants ─── */
+  static MODE_BEZIER = 'bezier';   // Kept for backward compat — all wires use this now
 
   /* ================================================================
    *  Constructor
    * ================================================================ */
 
-  constructor(id, sourceNode, targetNode, routingMode = Wire.MODE_BEZIER) {
+  constructor(id, sourceNode, targetNode) {
     this.id           = id;
     this.sourceNode   = sourceNode;           // { nodeId }
     this.targetNode   = targetNode;           // { nodeId }
-    this.routingMode  = routingMode;
-    this.controlPoints = [];                  // Manual-mode intermediate points [{x,y}]
-    this.pathPoints   = [];                   // Computed path [{x,y}]
+    this.waypoints    = [];                   // User-created intermediate points [{x,y}]
     this.element      = null;                 // SVG <g> group
     this.engineId     = null;                 // Link to Engine wire ID
-    this.occupiedCells = new Set();           // Legacy compat (no longer critical)
-    this._isLocked    = false;
+    this.occupiedCells = new Set();
+
+    // Cached endpoint positions (updated during render/updatePath)
+    this._sourcePos = null;
+    this._targetPos = null;
+
+    // Visual states
     this._controlHandlesVisible = false;
-    this._lastSourceValue = undefined;        // For signal transition detection
-
-    // ─── New: Auto-route tracking ───
-    this.isAutoRouted = (routingMode === Wire.MODE_MANHATTAN || routingMode === Wire.MODE_BEZIER);
-    this._routedMethod = routingMode === Wire.MODE_BEZIER ? 'bezier' : 'manhattan'; // 'bezier' | 'manhattan' | 'astar' | 'fallback'
-    this._isRoutingFallback = false;          // True when A* failed and fell back
-
-    // ─── New: Visual states ───
+    this._lastSourceValue = undefined;
     this._isHovered   = false;
     this._isError     = false;
     this._isGlowing   = false;
 
-    // Feature 5: Component lookup for facing-aware port directions
+    // Component lookup for facing-aware port directions
     this._compLookup  = null;
   }
 
@@ -76,230 +65,64 @@ export class Wire {
   get toNode()   { return this.targetNode; }
   set toNode(v)  { this.targetNode = v; }
 
-  get isManualMode() { return this.routingMode === Wire.MODE_MANUAL; }
+  /** routingMode always returns 'bezier' — no more mode switching */
+  get routingMode() { return Wire.MODE_BEZIER; }
+  set routingMode(_) { /* no-op */ }
 
-  get isLocked()  { return this._isLocked; }
+  /** isManualMode — true if wire has user-placed waypoints */
+  get isManualMode() { return this.waypoints.length > 0; }
 
-  get isRoutingFallback() { return this._isRoutingFallback; }
+  /** isAutoRouted — true if no waypoints (automatic Bézier) */
+  get isAutoRouted() { return this.waypoints.length === 0; }
+  set isAutoRouted(_) { /* no-op */ }
 
-  /**
-   * Mark this wire as having used a fallback routing method.
-   * Applies a visual indicator (dashed red) and updates tooltip.
-   */
-  setRoutingFallback(isFallback) {
-    this._isRoutingFallback = isFallback;
-    if (!this.element) return;
-    const visualPath = this.element.querySelector('.wire-visual');
-    if (visualPath) {
-      if (isFallback) {
-        visualPath.classList.add('routing-fallback');
-      } else {
-        visualPath.classList.remove('routing-fallback');
-      }
-    }
-    this._updateTooltip();
+  /** isLocked — always false (lock feature removed) */
+  get isLocked() { return false; }
+
+  /** pathPoints — computed from endpoints + waypoints */
+  get pathPoints() {
+    const pts = [];
+    if (this._sourcePos) pts.push({ ...this._sourcePos });
+    for (const wp of this.waypoints) pts.push({ ...wp });
+    if (this._targetPos) pts.push({ ...this._targetPos });
+    return pts;
   }
 
+  set pathPoints(points) {
+    if (!points || points.length < 2) return;
+    this._sourcePos = { ...points[0] };
+    this._targetPos = { ...points[points.length - 1] };
+    this.waypoints = points.slice(1, -1).map(p => ({ x: p.x, y: p.y }));
+  }
+
+  /** controlPoints — alias for waypoints (backward compat) */
+  get controlPoints() { return this.waypoints; }
+  set controlPoints(pts) { this.waypoints = pts ? pts.map(p => ({ x: p.x, y: p.y })) : []; }
+
+  /** wireState — for display purposes */
   get wireState() {
-    if (this._isLocked) return 'locked';
-    if (this.routingMode === Wire.MODE_MANUAL) return 'manual';
+    if (this.waypoints.length > 0) return 'manual';
     return 'auto';
   }
 
-  /* ─── Feature 5: Component Lookup for Facing-Aware Directions ─── */
+  /* ─── Feature: Component Lookup for Facing-Aware Directions ─── */
 
-  /**
-   * Set the component lookup function for facing-aware port directions.
-   * When set, all Bézier path computations use the actual component
-   * facing direction instead of the default EAST/WEST assumption.
-   *
-   * @param {Function} lookup – (nodeId) => Component
-   */
   setCompLookup(lookup) {
     this._compLookup = lookup;
   }
 
-  /**
-   * Get the facing-aware port direction for the source node.
-   * Uses the stored compLookup if available.
-   * @returns {{x:number, y:number}}
-   */
   getSourceDirection() {
     return Wire.getPortDirection(this.sourceNode.nodeId, this._compLookup);
   }
 
-  /**
-   * Get the facing-aware port direction for the target node.
-   * Uses the stored compLookup if available.
-   * @returns {{x:number, y:number}}
-   */
   getTargetDirection() {
     return Wire.getPortDirection(this.targetNode.nodeId, this._compLookup);
   }
 
   /* ================================================================
-   *  Routing Mode
+   *  Port Direction (static helper)
    * ================================================================ */
 
-  /**
-   * Switch routing mode.
-   * When switching TO Manual, current bend points become control points.
-   * When switching FROM Manual, control points are cleared.
-   */
-  setRoutingMode(mode) {
-    if (mode === Wire.MODE_MANUAL && this.routingMode !== Wire.MODE_MANUAL) {
-      // BUG FIX: When switching from Bézier to Manual, pathPoints contains
-      // [start, cp1, cp2, end] where cp1/cp2 are cubic Bézier control points
-      // that are NOT on the actual curve. Using them as manual control points
-      // would create a polyline through wrong positions. Instead, we sample
-      // points along the actual Bézier curve to get meaningful bend points.
-      if (this.routingMode === Wire.MODE_BEZIER && this.pathPoints.length === 4) {
-        const sampled = Wire.sampleBezierPoints(this.pathPoints, 8);
-        this.controlPoints = sampled.slice(1, -1).map(p => ({ x: p.x, y: p.y }));
-      } else {
-        this.controlPoints = this.pathPoints
-          .slice(1, -1)
-          .map(p => ({ x: p.x, y: p.y }));
-      }
-      this.isAutoRouted = false;
-    }
-    this.routingMode = mode;
-    if (mode !== Wire.MODE_MANUAL) {
-      this.controlPoints = [];
-      this.isAutoRouted = true;
-    }
-  }
-
-  /* ================================================================
-   *  Path Computation
-   * ================================================================ */
-
-  /**
-   * Compute path points using the Router.
-   *
-   * @param {{x:number,y:number}} fromPos
-   * @param {{x:number,y:number}} toPos
-   * @param {Router} router – Router instance
-   * @param {Object} [opts] – channelX, busY, topY, …
-   * @returns {Array<{x:number,y:number}>}
-   */
-  computePathPoints(fromPos, toPos, router, opts = {}) {
-    if (this.routingMode === Wire.MODE_BEZIER) {
-      const fromDir = opts.fromDir || this.getSourceDirection();
-      const toDir   = opts.toDir   || this.getTargetDirection();
-      const points  = router.route(fromPos, toPos, 'bezier', {
-        ...opts,
-        fromDir,
-        toDir,
-        sourceNodeId: this.sourceNode.nodeId,
-        targetNodeId: this.targetNode.nodeId,
-        compLookup: this._compLookup
-      });
-      this.pathPoints = points;
-      return points;
-    }
-    const points = router.route(fromPos, toPos, this.routingMode, {
-      ...opts,
-      controlPoints: this.controlPoints
-    });
-    this.pathPoints = points;
-    return points;
-  }
-
-  /**
-   * Static convenience: compute an SVG path string directly.
-   * Used for previews and fallback rendering where no wire instance exists.
-   *
-   * @param {{x:number,y:number}} fromPos
-   * @param {{x:number,y:number}} toPos
-   * @param {Object}  [opts]
-   * @param {Router}  [opts.router]       – Router instance
-   * @param {string}  [opts.sourceNodeId]
-   * @param {string}  [opts.targetNodeId]
-   * @param {number}  [opts.minClearY]    – bus-bar Y (backward compat)
-   * @param {number}  [opts.maxClearY]    – top-bar Y (backward compat)
-   * @param {{x:number,y:number}} [opts.fromDir] – Source port direction
-   * @param {{x:number,y:number}} [opts.toDir]   – Target port direction
-   * @returns {string} SVG path "d" attribute
-   */
-  static computePath(fromPos, toPos, opts = {}) {
-    const { router, sourceNodeId, targetNodeId, minClearY, maxClearY, fromDir, toDir } = opts;
-
-    // ── Bézier mode: compute cubic Bézier curve ──
-    if (WIRE_DEFAULT_ROUTING_MODE === 'bezier') {
-      const fd = fromDir || Wire.getPortDirection(sourceNodeId);
-      const td = toDir   || Wire.getPortDirection(targetNodeId);
-      return Wire.computeBezierPath(fromPos, toPos, fd, td);
-    }
-
-    // Try using the injected Router instance
-    if (router) {
-      if (typeof router.route === 'function') {
-        // New Router class (Router) or StarRouter
-        const points = router.route(fromPos, toPos, 'manhattan', {
-          sourceNodeId,
-          targetNodeId,
-          busY: minClearY,
-          topY: maxClearY
-        });
-        return Wire.pointsToSVGPath(points);
-      }
-      if (typeof router.computePath === 'function') {
-        // Legacy router object
-        return router.computePath(fromPos, toPos, sourceNodeId, opts);
-      }
-    }
-
-    // ── Fallback: simple Manhattan routing (no router) ──
-    const sx = fromPos.x, sy = fromPos.y;
-    const tx = toPos.x,   ty = toPos.y;
-
-    if (tx >= sx + GRID_SIZE) {
-      const mx = sx + (tx - sx) / 2;
-      return `M ${sx} ${sy} L ${mx} ${sy} L ${mx} ${ty} L ${tx} ${ty}`;
-    }
-
-    // Fix: Handle nearby horizontal pins to avoid loop-back paths
-    if (tx >= sx - GRID_SIZE) {
-      const step = 40;
-      const midY = (Math.abs(ty - sy) < GRID_SIZE)
-        ? Math.min(sy, ty) - step
-        : (sy + ty) / 2;
-      return `M ${sx} ${sy} L ${sx} ${midY} L ${tx} ${midY} L ${tx} ${ty}`;
-    }
-
-    // Fix: Backward routing — avoid creating loops when source and target
-    // are close together. Use a step-out path that goes around.
-    const offset = 40;
-    const minClear = minClearY != null ? minClearY + 20 : Math.max(sy, ty) + 70;
-    const busLevel = Math.max(Math.max(sy, ty) + offset, minClear);
-
-    // Check if we need to route below or above based on available space
-    if (maxClearY != null && busLevel > maxClearY) {
-      // Route above instead of below
-      const topLevel = Math.min(Math.min(sy, ty) - offset, maxClearY);
-      return `M ${sx} ${sy} L ${sx + offset} ${sy} L ${sx + offset} ${topLevel} L ${tx - offset} ${topLevel} L ${tx - offset} ${ty} L ${tx} ${ty}`;
-    }
-
-    return `M ${sx} ${sy} L ${sx + offset} ${sy} L ${sx + offset} ${busLevel} L ${tx - offset} ${busLevel} L ${tx - offset} ${ty} L ${tx} ${ty}`;
-  }
-
-  /* ================================================================
-   *  Bézier Path Computation (OpenCircuits-style)
-   * ================================================================ */
-
-  /**
-   * Get port direction vector based on node ID.
-   * Output pins have direction (1, 0) → wire exits going RIGHT
-   * Input pins have direction (-1, 0) → wire arrives from the LEFT
-   *
-   * When a component lookup function is provided, the direction is
-   * adjusted for the component's facing direction and mirror state.
-   *
-   * @param {string} nodeId
-   * @param {Function} [compLookup] — (nodeId) => Component (optional, for facing-aware direction)
-   * @returns {{x:number, y:number}}
-   */
   static getPortDirection(nodeId, compLookup) {
     if (compLookup) {
       const comp = compLookup(nodeId);
@@ -311,27 +134,124 @@ export class Wire {
     return { x: -1, y: 0 };
   }
 
+  /* ================================================================
+   *  Segment-by-Segment SVG Path Computation
+   * ================================================================ */
+
+  /**
+   * Compute the full SVG path from source through waypoints to target.
+   * Each segment is independently Bézier or straight line.
+   *
+   * @param {{x:number,y:number}} sourcePos
+   * @param {{x:number,y:number}} targetPos
+   * @param {Array<{x:number,y:number}>} waypoints
+   * @param {{x:number,y:number}} sourceDir — source port direction
+   * @param {{x:number,y:number}} targetDir — target port direction
+   * @returns {string} SVG path "d" attribute
+   */
+  static computeSegmentPath(sourcePos, targetPos, waypoints, sourceDir, targetDir) {
+    const points = [sourcePos, ...waypoints, targetPos];
+    if (points.length < 2) return '';
+
+    let d = `M ${points[0].x} ${points[0].y}`;
+
+    for (let i = 0; i < points.length - 1; i++) {
+      const A = points[i];
+      const B = points[i + 1];
+
+      // Check if co-axial → straight line
+      if (Math.abs(A.x - B.x) < WIRE_COAXIAL_THRESHOLD ||
+          Math.abs(A.y - B.y) < WIRE_COAXIAL_THRESHOLD) {
+        d += ` L ${B.x} ${B.y}`;
+        continue;
+      }
+
+      // Compute direction vectors for this segment
+      const fromDir = Wire._getSegmentFromDir(points, i, sourceDir);
+      const toDir   = Wire._getSegmentToDir(points, i + 1, targetDir);
+
+      // Compute control point distances
+      const segDist = Math.hypot(B.x - A.x, B.y - A.y);
+      const scale = Math.max(
+        WIRE_BEZIER_MIN_CONTROL,
+        Math.min(WIRE_BEZIER_MAX_CONTROL, segDist * WIRE_BEZIER_CONTROL_FACTOR)
+      );
+
+      // Adaptive scale based on direction projection
+      const fromProj = (B.x - A.x) * fromDir.x + (B.y - A.y) * fromDir.y;
+      const toProj   = -((B.x - A.x) * toDir.x + (B.y - A.y) * toDir.y);
+
+      const fromScale = fromProj > 0
+        ? Math.max(WIRE_BEZIER_MIN_CONTROL, Math.min(WIRE_BEZIER_MAX_CONTROL, fromProj * WIRE_BEZIER_CONTROL_FACTOR))
+        : scale;
+      const toScale = toProj > 0
+        ? Math.max(WIRE_BEZIER_MIN_CONTROL, Math.min(WIRE_BEZIER_MAX_CONTROL, toProj * WIRE_BEZIER_CONTROL_FACTOR))
+        : scale;
+
+      const cx1 = A.x + fromDir.x * fromScale;
+      const cy1 = A.y + fromDir.y * fromScale;
+      const cx2 = B.x + toDir.x * toScale;
+      const cy2 = B.y + toDir.y * toScale;
+
+      d += ` C ${cx1} ${cy1} ${cx2} ${cy2} ${B.x} ${B.y}`;
+    }
+
+    return d;
+  }
+
+  /**
+   * Get the "from" direction for segment starting at points[index].
+   * This determines the tangent at the START of the segment.
+   */
+  static _getSegmentFromDir(points, index, sourceDir) {
+    if (index === 0) {
+      // Source port — use port direction
+      return sourceDir || { x: 1, y: 0 };
+    }
+    // Waypoint — direction toward next point
+    const curr = points[index];
+    const next = points[index + 1];
+    if (!next) return { x: 1, y: 0 };
+    const dx = next.x - curr.x;
+    const dy = next.y - curr.y;
+    const len = Math.hypot(dx, dy);
+    return len > 0 ? { x: dx / len, y: dy / len } : { x: 1, y: 0 };
+  }
+
+  /**
+   * Get the "to" direction for segment ending at points[index].
+   * This determines the tangent at the END of the segment.
+   * Points AWAY from the endpoint toward the previous point (inward).
+   */
+  static _getSegmentToDir(points, index, targetDir) {
+    if (index === points.length - 1) {
+      // Target port — use port direction (points inward toward wire)
+      return targetDir || { x: -1, y: 0 };
+    }
+    // Waypoint — direction toward previous point (inward from this end)
+    const curr = points[index];
+    const prev = points[index - 1];
+    if (!prev) return { x: -1, y: 0 };
+    const dx = prev.x - curr.x;
+    const dy = prev.y - curr.y;
+    const len = Math.hypot(dx, dy);
+    return len > 0 ? { x: dx / len, y: dy / len } : { x: -1, y: 0 };
+  }
+
+  /* ================================================================
+   *  Static Bézier Path Computation (for previews / backward compat)
+   * ================================================================ */
+
   /**
    * Compute a cubic Bézier SVG path string from two port positions and their directions.
-   * If ports are approximately aligned on the same axis, use a straight line.
-   *
-   * Feature 5: Direction-driven control distances.
-   * Each control point distance is computed based on the projection of the
-   * source→target vector onto that port's direction, making curves adapt
-   * naturally when ports face different directions (e.g., rotated gates).
-   *
-   * @param {{x:number,y:number}} fromPos
-   * @param {{x:number,y:number}} toPos
-   * @param {{x:number,y:number}} [fromDir] – Source port direction (default {x:1, y:0})
-   * @param {{x:number,y:number}} [toDir]   – Target port direction (default {x:-1, y:0})
-   * @returns {string} SVG path "d" attribute
+   * Used for wiring previews and simple 2-point connections.
    */
   static computeBezierPath(fromPos, toPos, fromDir, toDir) {
     const sx = fromPos.x, sy = fromPos.y;
     const tx = toPos.x, ty = toPos.y;
 
     // If approximately aligned, use straight line
-    if (Math.abs(sx - tx) < 1 || Math.abs(sy - ty) < 1) {
+    if (Math.abs(sx - tx) < WIRE_COAXIAL_THRESHOLD || Math.abs(sy - ty) < WIRE_COAXIAL_THRESHOLD) {
       return `M ${sx} ${sy} L ${tx} ${ty}`;
     }
 
@@ -342,19 +262,14 @@ export class Wire {
     const dy = ty - sy;
     const dist = Math.hypot(dx, dy);
 
-    // Base control distance (proportional to total distance)
     const baseControlDist = Math.max(
       WIRE_BEZIER_MIN_CONTROL,
       Math.min(WIRE_BEZIER_MAX_CONTROL, dist * WIRE_BEZIER_CONTROL_FACTOR)
     );
 
-    // Feature 5: Direction-driven per-port control distances
-    // Compute projection of source→target onto each port direction
-    const fromProjection = dx * fd.x + dy * fd.y;     // dot product with from direction
-    const toProjection   = -(dx * td.x + dy * td.y);  // negative: target direction points inward
+    const fromProjection = dx * fd.x + dy * fd.y;
+    const toProjection   = -(dx * td.x + dy * td.y);
 
-    // When projection is positive (port faces toward the other), use adaptive distance;
-    // otherwise fall back to base proportional distance
     const fromScale = fromProjection > 0
       ? Math.max(WIRE_BEZIER_MIN_CONTROL, Math.min(WIRE_BEZIER_MAX_CONTROL, fromProjection * WIRE_BEZIER_CONTROL_FACTOR))
       : baseControlDist;
@@ -370,20 +285,32 @@ export class Wire {
     return `M ${sx} ${sy} C ${cx1} ${cy1} ${cx2} ${cy2} ${tx} ${ty}`;
   }
 
+  /**
+   * Static convenience: compute an SVG path string directly.
+   * Used for previews and fallback rendering where no wire instance exists.
+   */
+  static computePath(fromPos, toPos, opts = {}) {
+    const { sourceNodeId, targetNodeId, fromDir, toDir } = opts;
+    const fd = fromDir || Wire.getPortDirection(sourceNodeId);
+    const td = toDir   || Wire.getPortDirection(targetNodeId);
+    return Wire.computeBezierPath(fromPos, toPos, fd, td);
+  }
+
   /* ================================================================
    *  SVG Path Helpers
    * ================================================================ */
 
   /**
    * Convert an array of {x,y} points to an SVG path "d" string.
-   * For Bézier mode, if points have 4 elements, generates a cubic Bézier.
-   * For Manhattan/Direct/Manual, generates an L-based polyline.
+   * For simple 4-point Bézier, generates cubic Bézier.
+   * Otherwise, generates segment-by-segment path.
    */
   static pointsToSVGPath(points, isBezier = false) {
     if (!points || points.length < 2) return '';
     if (isBezier && points.length === 4) {
       return `M ${points[0].x} ${points[0].y} C ${points[1].x} ${points[1].y} ${points[2].x} ${points[2].y} ${points[3].x} ${points[3].y}`;
     }
+    // Simple polyline fallback
     let d = `M ${points[0].x} ${points[0].y}`;
     for (let i = 1; i < points.length; i++) {
       d += ` L ${points[i].x} ${points[i].y}`;
@@ -393,12 +320,6 @@ export class Wire {
 
   /**
    * Sample points along a cubic Bézier curve defined by 4 control points.
-   * Used when converting a Bézier wire to Manual mode — we need actual
-   * on-curve points, not the Bézier control handles.
-   *
-   * @param {Array<{x:number,y:number}>} bezierPoints - [P0, P1, P2, P3] (start, cp1, cp2, end)
-   * @param {number} numSamples - Number of samples (including endpoints)
-   * @returns {Array<{x:number,y:number}>} Sampled points on the curve
    */
   static sampleBezierPoints(bezierPoints, numSamples = 8) {
     if (!bezierPoints || bezierPoints.length < 4) return bezierPoints || [];
@@ -421,15 +342,11 @@ export class Wire {
 
   /**
    * Parse an SVG "d" attribute into an array of {x,y} points.
-   * Tolerant of missing whitespace after M/L commands (handles minified SVGs).
-   * BUG FIX: Now also handles C (cubic Bézier) commands by sampling
-   * points along the curve.
    */
   static svgPathToPoints(d) {
     const points = [];
     if (!d) return points;
 
-    // Parse the path string command by command
     let currentX = 0, currentY = 0;
     const commandRegex = /([MLC])\s*([\s\S]*?)(?=[MLC]|$)/gi;
     const matches = d.matchAll(commandRegex);
@@ -448,14 +365,11 @@ export class Wire {
           points.push({ x: currentX, y: currentY });
         }
       } else if (cmd === 'C') {
-        // Cubic Bézier: C cx1 cy1 cx2 cy2 x y
-        // Sample points along the curve for approximate occupied cells
         for (let i = 0; i + 5 < nums.length; i += 6) {
           const cp1x = nums[i], cp1y = nums[i + 1];
           const cp2x = nums[i + 2], cp2y = nums[i + 3];
           const endX = nums[i + 4], endY = nums[i + 5];
 
-          // Sample 8 points along the Bézier curve
           const bezierPoints = [
             { x: currentX, y: currentY },
             { x: cp1x, y: cp1y },
@@ -463,7 +377,6 @@ export class Wire {
             { x: endX, y: endY }
           ];
           const sampled = Wire.sampleBezierPoints(bezierPoints, 8);
-          // Skip first point (already added by previous M/L)
           for (let j = 1; j < sampled.length; j++) {
             points.push(sampled[j]);
           }
@@ -477,17 +390,11 @@ export class Wire {
   }
 
   /* ================================================================
-   *  SVG Rendering (Enhanced)
+   *  SVG Rendering
    * ================================================================ */
 
   /**
    * Create SVG elements and render the wire on the svgLayer.
-   * Now includes glow layer, miter joints, and tooltip.
-   *
-   * @param {SVGElement} svgLayer
-   * @param {Function}   getNodePosition – nodeId → {x,y}
-   * @param {number}     [busBarY]
-   * @param {Router}     [router]
    */
   render(svgLayer, getNodePosition, busBarY = null, router = null) {
     if (this.element) return;
@@ -495,49 +402,13 @@ export class Wire {
     const fromPos = getNodePosition(this.sourceNode.nodeId);
     const toPos   = getNodePosition(this.targetNode.nodeId);
 
-    // Compute path
-    let d;
-    if (this.routingMode === Wire.MODE_BEZIER) {
-      // Feature 5: Use facing-aware port directions
-      const fromDir = this.getSourceDirection();
-      const toDir   = this.getTargetDirection();
+    this._sourcePos = { ...fromPos };
+    this._targetPos = { ...toPos };
 
-      // Use the Router for direction-driven Bézier if available
-      if (router && typeof router.routeBezier === 'function') {
-        const bezierPoints = router.routeBezier(fromPos, toPos, {
-          fromDir, toDir,
-          sourceNodeId: this.sourceNode.nodeId,
-          targetNodeId: this.targetNode.nodeId,
-          compLookup: this._compLookup
-        });
-        this.pathPoints = bezierPoints;
-        d = Wire.pointsToSVGPath(bezierPoints, true);
-      } else {
-        d = Wire.computeBezierPath(fromPos, toPos, fromDir, toDir);
-        // Store Bézier control points as pathPoints
-        const dist = Math.hypot(toPos.x - fromPos.x, toPos.y - fromPos.y);
-        const controlDist = Math.max(
-          WIRE_BEZIER_MIN_CONTROL,
-          Math.min(WIRE_BEZIER_MAX_CONTROL, dist * WIRE_BEZIER_CONTROL_FACTOR)
-        );
-        this.pathPoints = [
-          { x: fromPos.x, y: fromPos.y },
-          { x: fromPos.x + fromDir.x * controlDist, y: fromPos.y + fromDir.y * controlDist },
-          { x: toPos.x + toDir.x * controlDist, y: toPos.y + toDir.y * controlDist },
-          { x: toPos.x, y: toPos.y }
-        ];
-      }
-    } else if (router && typeof router.route === 'function') {
-      const points = this.computePathPoints(fromPos, toPos, router, { busY: busBarY });
-      d = Wire.pointsToSVGPath(points);
-    } else {
-      d = Wire.computePath(fromPos, toPos, {
-        minClearY: busBarY,
-        router,
-        sourceNodeId: this.sourceNode.nodeId
-      });
-      this.pathPoints = Wire.svgPathToPoints(d);
-    }
+    // Compute path using segment-by-segment rendering
+    const sourceDir = this.getSourceDirection();
+    const targetDir = this.getTargetDirection();
+    const d = Wire.computeSegmentPath(fromPos, toPos, this.waypoints, sourceDir, targetDir);
 
     // Create SVG group
     const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -547,7 +418,7 @@ export class Wire {
     const style = getComputedStyle(document.documentElement);
     const neutralColor = style.getPropertyValue('--wire-neutral-color').trim() || '#888';
 
-    // ─── Glow layer (behind visual, for hover/preview effects) ───
+    // ─── Glow layer ───
     const glowPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     glowPath.setAttribute('stroke', 'transparent');
     glowPath.setAttribute('stroke-width', WIRE_DRAW_GLOW_WIDTH);
@@ -582,7 +453,7 @@ export class Wire {
     hitPath.classList.add('wire-hitarea');
     hitPath.setAttribute('d', d);
 
-    // ─── Junction dot ───
+    // ─── Junction dot (hidden for Bézier-style wires) ───
     const junctionDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
     junctionDot.setAttribute('r', JUNCTION_RADIUS);
     junctionDot.setAttribute('fill', neutralColor);
@@ -592,7 +463,7 @@ export class Wire {
     junctionDot.setAttribute('cy', fromPos.y);
     junctionDot.style.display = 'none';
 
-    // ─── Endpoint markers (source and target dots) ───
+    // ─── Endpoint markers ───
     const sourceDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
     sourceDot.setAttribute('cx', fromPos.x);
     sourceDot.setAttribute('cy', fromPos.y);
@@ -615,8 +486,7 @@ export class Wire {
     targetDot.classList.add('wire-endpoint-target');
     targetDot.style.display = 'none';
 
-    // Assemble group (order matters: glow → visual → hit → dots)
-    // Native SVG tooltip removed — was annoying and useless
+    // Assemble group
     group.appendChild(glowPath);
     group.appendChild(visualPath);
     group.appendChild(hitPath);
@@ -627,207 +497,54 @@ export class Wire {
 
     this.element = group;
     this.updateOccupiedCells(d);
-    this._updateTooltip();
   }
 
+  /* ================================================================
+   *  Path Update Methods
+   * ================================================================ */
+
   /**
-   * Full re-route using the Router.  Called on explicit reroute or drop.
+   * Full re-route — recomputes the SVG path from current positions.
+   * Called on explicit reroute or drop.
    */
   updatePath(getNodePosition, busBarY = null, router = null) {
     if (!this.element) return;
 
     const fromPos = getNodePosition(this.sourceNode.nodeId);
     const toPos   = getNodePosition(this.targetNode.nodeId);
+    if (!fromPos || !toPos) return;
 
-    // In Manual mode, adjust endpoints while preserving control points
-    if (this.routingMode === Wire.MODE_MANUAL && this.controlPoints.length > 0) {
-      this._updateEndpointsOnly(fromPos, toPos);
-      return;
-    }
+    this._sourcePos = { ...fromPos };
+    this._targetPos = { ...toPos };
 
-    // Compute new path
-    let d;
-    if (this.routingMode === Wire.MODE_BEZIER) {
-      // Feature 5: Use facing-aware port directions
-      const fromDir = this.getSourceDirection();
-      const toDir   = this.getTargetDirection();
-      d = Wire.computeBezierPath(fromPos, toPos, fromDir, toDir);
-      // Update pathPoints — use direction-driven control distances from router if available
-      if (router && typeof router.routeBezier === 'function') {
-        const bezierPoints = router.routeBezier(fromPos, toPos, {
-          fromDir, toDir,
-          sourceNodeId: this.sourceNode.nodeId,
-          targetNodeId: this.targetNode.nodeId,
-          compLookup: this._compLookup
-        });
-        this.pathPoints = bezierPoints;
-        d = Wire.pointsToSVGPath(bezierPoints, true);
-      } else {
-        const dist = Math.hypot(toPos.x - fromPos.x, toPos.y - fromPos.y);
-        const controlDist = Math.max(
-          WIRE_BEZIER_MIN_CONTROL,
-          Math.min(WIRE_BEZIER_MAX_CONTROL, dist * WIRE_BEZIER_CONTROL_FACTOR)
-        );
-        this.pathPoints = [
-          { x: fromPos.x, y: fromPos.y },
-          { x: fromPos.x + fromDir.x * controlDist, y: fromPos.y + fromDir.y * controlDist },
-          { x: toPos.x + toDir.x * controlDist, y: toPos.y + toDir.y * controlDist },
-          { x: toPos.x, y: toPos.y }
-        ];
-      }
-    } else if (router && typeof router.route === 'function') {
-      const points = this.computePathPoints(fromPos, toPos, router, { busY: busBarY });
-      d = Wire.pointsToSVGPath(points);
-    } else {
-      d = Wire.computePath(fromPos, toPos, {
-        minClearY: busBarY,
-        router,
-        sourceNodeId: this.sourceNode.nodeId
-      });
-      this.pathPoints = Wire.svgPathToPoints(d);
-    }
-
-    this.element.querySelector('.wire-visual').setAttribute('d', d);
-    this.element.querySelector('.wire-hitarea').setAttribute('d', d);
-
-    const glowPath = this.element.querySelector('.wire-glow');
-    if (glowPath) glowPath.setAttribute('d', d);
-
-    this.updateOccupiedCells(d);
-
-    const junctionDot = this.element.querySelector('.wire-junction');
-    if (junctionDot) {
-      junctionDot.setAttribute('cx', fromPos.x);
-      junctionDot.setAttribute('cy', fromPos.y);
-    }
-
-    // Update endpoint markers
-    const sourceDot = this.element.querySelector('.wire-endpoint-source');
-    if (sourceDot) {
-      sourceDot.setAttribute('cx', fromPos.x);
-      sourceDot.setAttribute('cy', fromPos.y);
-    }
-    const targetDot = this.element.querySelector('.wire-endpoint-target');
-    if (targetDot) {
-      targetDot.setAttribute('cx', toPos.x);
-      targetDot.setAttribute('cy', toPos.y);
-    }
+    this._recomputeAndApply();
   }
 
   /**
-   * Stable endpoint update — only adjust start/end, keep interior points.
-   * Used during drag for fast, flicker-free updates.
-   * Full reroute happens on drop via rerouteWithFanOut().
+   * Stable endpoint update — fast update during drag.
+   * Waypoints stay in place; only endpoints update.
    */
   updateEndpointsStable(fromPos, toPos) {
     if (!this.element) return;
-    if (this._isLocked) return;
 
-    // For Bézier mode, just recompute the full Bézier path (fast, no pathfinding)
-    if (this.routingMode === Wire.MODE_BEZIER) {
-      // Feature 5: Use facing-aware port directions
-      const fromDir = this.getSourceDirection();
-      const toDir   = this.getTargetDirection();
-      const d = Wire.computeBezierPath(fromPos, toPos, fromDir, toDir);
-      const dist = Math.hypot(toPos.x - fromPos.x, toPos.y - fromPos.y);
-      const controlDist = Math.max(
-        WIRE_BEZIER_MIN_CONTROL,
-        Math.min(WIRE_BEZIER_MAX_CONTROL, dist * WIRE_BEZIER_CONTROL_FACTOR)
-      );
-      this.pathPoints = [
-        { x: fromPos.x, y: fromPos.y },
-        { x: fromPos.x + fromDir.x * controlDist, y: fromPos.y + fromDir.y * controlDist },
-        { x: toPos.x + toDir.x * controlDist, y: toPos.y + toDir.y * controlDist },
-        { x: toPos.x, y: toPos.y }
-      ];
-      this.element.querySelector('.wire-visual').setAttribute('d', d);
-      this.element.querySelector('.wire-hitarea').setAttribute('d', d);
-      const glowPath = this.element.querySelector('.wire-glow');
-      if (glowPath) glowPath.setAttribute('d', d);
+    this._sourcePos = { ...fromPos };
+    this._targetPos = { ...toPos };
 
-      const junctionDot = this.element.querySelector('.wire-junction');
-      if (junctionDot) {
-        junctionDot.setAttribute('cx', fromPos.x);
-        junctionDot.setAttribute('cy', fromPos.y);
-      }
-      const sourceDot = this.element.querySelector('.wire-endpoint-source');
-      if (sourceDot) {
-        sourceDot.setAttribute('cx', fromPos.x);
-        sourceDot.setAttribute('cy', fromPos.y);
-      }
-      const targetDot = this.element.querySelector('.wire-endpoint-target');
-      if (targetDot) {
-        targetDot.setAttribute('cx', toPos.x);
-        targetDot.setAttribute('cy', toPos.y);
-      }
-      return;
-    }
-
-    if (this.pathPoints.length < 2) {
-      const d = `M ${fromPos.x} ${fromPos.y} L ${toPos.x} ${toPos.y}`;
-      this.element.querySelector('.wire-visual').setAttribute('d', d);
-      this.element.querySelector('.wire-hitarea').setAttribute('d', d);
-      const glowPath = this.element.querySelector('.wire-glow');
-      if (glowPath) glowPath.setAttribute('d', d);
-      this.pathPoints = [{ ...fromPos }, { ...toPos }];
-      return;
-    }
-
-    this._updateEndpointsOnly(fromPos, toPos);
+    this._recomputeAndApply();
   }
 
   /**
-   * Shift endpoints + first/last interior points by the same delta.
-   * This produces a "stretchy" effect that is fast and stable during drag.
+   * Recompute the SVG path from current positions + waypoints and apply to all SVG elements.
    */
-  _updateEndpointsOnly(fromPos, toPos) {
-    if (this.pathPoints.length < 2) return;
+  _recomputeAndApply() {
+    if (!this.element || !this._sourcePos || !this._targetPos) return;
 
-    const oldFirst = { ...this.pathPoints[0] };
-    const oldLast  = { ...this.pathPoints[this.pathPoints.length - 1] };
+    const sourceDir = this.getSourceDirection();
+    const targetDir = this.getTargetDirection();
+    const d = Wire.computeSegmentPath(
+      this._sourcePos, this._targetPos, this.waypoints, sourceDir, targetDir
+    );
 
-    this.pathPoints[0] = { x: fromPos.x, y: fromPos.y };
-    this.pathPoints[this.pathPoints.length - 1] = { x: toPos.x, y: toPos.y };
-
-    if (this.pathPoints.length > 2) {
-      const startDelta = { x: fromPos.x - oldFirst.x, y: fromPos.y - oldFirst.y };
-      const endDelta   = { x: toPos.x - oldLast.x,    y: toPos.y - oldLast.y };
-
-      this.pathPoints[1] = {
-        x: this.pathPoints[1].x + startDelta.x,
-        y: this.pathPoints[1].y + startDelta.y
-      };
-
-      if (this.pathPoints.length > 3) {
-        const lastIdx = this.pathPoints.length - 2;
-        this.pathPoints[lastIdx] = {
-          x: this.pathPoints[lastIdx].x + endDelta.x,
-          y: this.pathPoints[lastIdx].y + endDelta.y
-        };
-      }
-    }
-
-    // Also update controlPoints in Manual mode
-    if (this.routingMode === Wire.MODE_MANUAL) {
-      // controlPoints = pathPoints minus endpoints
-      this.controlPoints = this.pathPoints.slice(1, -1).map(p => ({ x: p.x, y: p.y }));
-    }
-
-    this._applyPathPointsToSVG();
-  }
-
-  /**
-   * Apply current pathPoints to SVG elements (single source of truth).
-   */
-  _applyPathPointsToSVG() {
-    if (!this.element || this.pathPoints.length < 2) return;
-
-    // BUG FIX: For Bézier wires, if pathPoints has been modified to != 4 points
-    // (e.g., after manual conversion or point insertion), we must NOT use the
-    // Bézier C-command path — use polyline instead. Only use C-command when
-    // we have exactly the 4 points required for a cubic Bézier.
-    const isBezier = this.routingMode === Wire.MODE_BEZIER && this.pathPoints.length === 4;
-    const d = Wire.pointsToSVGPath(this.pathPoints, isBezier);
     this.element.querySelector('.wire-visual').setAttribute('d', d);
     this.element.querySelector('.wire-hitarea').setAttribute('d', d);
 
@@ -836,33 +553,30 @@ export class Wire {
 
     this.updateOccupiedCells(d);
 
+    // Update junction dot position
     const junctionDot = this.element.querySelector('.wire-junction');
     if (junctionDot) {
-      junctionDot.setAttribute('cx', this.pathPoints[0].x);
-      junctionDot.setAttribute('cy', this.pathPoints[0].y);
+      junctionDot.setAttribute('cx', this._sourcePos.x);
+      junctionDot.setAttribute('cy', this._sourcePos.y);
     }
 
     // Update endpoint markers
     const sourceDot = this.element.querySelector('.wire-endpoint-source');
     if (sourceDot) {
-      sourceDot.setAttribute('cx', this.pathPoints[0].x);
-      sourceDot.setAttribute('cy', this.pathPoints[0].y);
+      sourceDot.setAttribute('cx', this._sourcePos.x);
+      sourceDot.setAttribute('cy', this._sourcePos.y);
     }
     const targetDot = this.element.querySelector('.wire-endpoint-target');
     if (targetDot) {
-      const lastPt = this.pathPoints[this.pathPoints.length - 1];
-      targetDot.setAttribute('cx', lastPt.x);
-      targetDot.setAttribute('cy', lastPt.y);
+      targetDot.setAttribute('cx', this._targetPos.x);
+      targetDot.setAttribute('cy', this._targetPos.y);
     }
   }
 
   /* ================================================================
-   *  Hover & Glow Effects (New)
+   *  Hover & Glow Effects
    * ================================================================ */
 
-  /**
-   * Set hover state: shows glow, endpoint indicators, and color change.
-   */
   setHovered(hovered) {
     if (this._isHovered === hovered) return;
     this._isHovered = hovered;
@@ -875,18 +589,13 @@ export class Wire {
     const targetDot  = this.element.querySelector('.wire-endpoint-target');
 
     if (hovered) {
-      // Show glow
       if (glowPath) {
         glowPath.style.display = '';
         glowPath.setAttribute('stroke', WIRE_DRAW_GLOW_COLOR);
       }
-
-      // Thicken visual path slightly
       if (visualPath) {
         visualPath.setAttribute('stroke-width', String(WIRE_VISUAL_WIDTH + 1));
       }
-
-      // Show endpoint dots
       if (sourceDot) {
         sourceDot.style.display = '';
         sourceDot.setAttribute('fill', 'rgba(78, 201, 176, 0.6)');
@@ -898,18 +607,13 @@ export class Wire {
         targetDot.setAttribute('stroke', '#4ec9b0');
       }
     } else {
-      // Hide glow
       if (glowPath) {
         glowPath.style.display = 'none';
         glowPath.setAttribute('stroke', 'transparent');
       }
-
-      // Reset visual path
       if (visualPath) {
         visualPath.setAttribute('stroke-width', String(WIRE_VISUAL_WIDTH));
       }
-
-      // Hide endpoint dots
       if (sourceDot) {
         sourceDot.style.display = 'none';
         sourceDot.setAttribute('fill', 'transparent');
@@ -923,9 +627,6 @@ export class Wire {
     }
   }
 
-  /**
-   * Set glow state for wire preview during drawing.
-   */
   setGlowing(glowing) {
     if (this._isGlowing === glowing) return;
     this._isGlowing = glowing;
@@ -944,9 +645,6 @@ export class Wire {
     }
   }
 
-  /**
-   * Set error state (red glow for invalid/short-circuit connections).
-   */
   setError(hasError) {
     if (this._isError === hasError) return;
     this._isError = hasError;
@@ -971,14 +669,9 @@ export class Wire {
   }
 
   /* ================================================================
-   *  Feature 3: Wire Net Tracing (traced state)
+   *  Wire Net Tracing
    * ================================================================ */
 
-  /**
-   * Set the traced (net-highlight) state on this wire.
-   * Adds/removes the `.traced` CSS class on the wire-visual path.
-   * @param {boolean} isTraced
-   */
   setTraced(isTraced) {
     if (!this.element) return;
     const visualPath = this.element.querySelector('.wire-visual');
@@ -992,65 +685,50 @@ export class Wire {
   }
 
   /* ================================================================
-   *  Control Points (Manual Mode)
+   *  Waypoint Management (Control Points)
    * ================================================================ */
 
   /**
-   * Insert a control point at a given index in pathPoints.
-   * @param {number} index – Position in pathPoints (1 … length-1)
+   * Add a waypoint at a given position.
+   * @param {number} index – Position in waypoints array (0 … waypoints.length)
    * @param {{x:number,y:number}} point
    */
   addControlPoint(index, point) {
-    if (index < 1 || index >= this.pathPoints.length) return;
+    if (index < 0 || index > this.waypoints.length) return;
 
     const snapped = {
       x: Math.round(point.x / GRID_SIZE) * GRID_SIZE,
       y: Math.round(point.y / GRID_SIZE) * GRID_SIZE
     };
 
-    this.pathPoints.splice(index, 0, snapped);
-
-    // Ensure Manual mode
-    if (this.routingMode !== Wire.MODE_MANUAL) {
-      this.routingMode = Wire.MODE_MANUAL;
-    }
-
-    // Mark as manually edited
-    this.isAutoRouted = false;
-
-    // Sync controlPoints
-    this.controlPoints = this.pathPoints.slice(1, -1).map(p => ({ x: p.x, y: p.y }));
-
-    this._applyPathPointsToSVG();
+    this.waypoints.splice(index, 0, snapped);
+    this._recomputeAndApply();
   }
 
   /**
-   * Remove a control point by index.
-   * @param {number} index – Index in pathPoints (cannot remove endpoints)
+   * Remove a waypoint by index.
+   * @param {number} index – Index in waypoints array
    */
   removeControlPoint(index) {
-    if (index < 1 || index >= this.pathPoints.length - 1) return;
+    if (index < 0 || index >= this.waypoints.length) return;
 
-    this.pathPoints.splice(index, 1);
-
-    // Sync controlPoints
-    this.controlPoints = this.pathPoints.slice(1, -1).map(p => ({ x: p.x, y: p.y }));
-
-    if (this.controlPoints.length === 0 && this.routingMode === Wire.MODE_MANUAL) {
-      // No more control points — could revert to Manhattan, but stay manual
-    }
-
-    this._applyPathPointsToSVG();
+    this.waypoints.splice(index, 1);
+    this._recomputeAndApply();
   }
 
   /**
-   * Move a control point to a new position (snapped to grid).
-   * @param {number} index – Index in pathPoints
+   * Move a waypoint to a new position (snapped to grid).
+   * @param {number} index – Index in pathPoints (1 = first waypoint, etc.)
    * @param {{x:number,y:number}} newPos
    * @param {boolean} [snapToGrid=true]
    */
   moveControlPoint(index, newPos, snapToGrid = true) {
-    if (index < 0 || index >= this.pathPoints.length) return;
+    // Convert pathPoints index to waypoints index
+    const wpIndex = index - 1;
+    if (wpIndex < 0 || wpIndex >= this.waypoints.length) {
+      // Might be trying to move an endpoint — not allowed
+      return;
+    }
 
     let x = newPos.x;
     let y = newPos.y;
@@ -1060,60 +738,137 @@ export class Wire {
       y = Math.round(y / GRID_SIZE) * GRID_SIZE;
     }
 
-    this.pathPoints[index] = { x, y };
-
-    // Intermediate points are always control points
-    if (index > 0 && index < this.pathPoints.length - 1) {
-      if (this.routingMode !== Wire.MODE_MANUAL) {
-        this.routingMode = Wire.MODE_MANUAL;
-      }
-      this.isAutoRouted = false;
-    }
-
-    // Sync controlPoints
-    this.controlPoints = this.pathPoints.slice(1, -1).map(p => ({ x: p.x, y: p.y }));
-
-    this._applyPathPointsToSVG();
+    this.waypoints[wpIndex] = { x, y };
+    this._recomputeAndApply();
   }
 
   /**
-   * Force orthogonal alignment at a control point.
-   * Ensures the previous point shares either X or Y with the current point,
-   * creating proper Manhattan-style 90° bends.
-   * @param {number} index – Index in pathPoints (must be an interior point)
+   * Insert a waypoint at the closest point on the wire path.
+   * Used when clicking on a wire segment.
+   * @param {{x:number,y:number}} canvasPos – Click position in canvas coordinates
+   * @returns {number} The index in pathPoints where the waypoint was inserted
    */
-  applyOrthogonalConstraint(index) {
-    if (index <= 0 || index >= this.pathPoints.length - 1) return;
-    const prev = this.pathPoints[index - 1];
-    const curr = this.pathPoints[index];
-    const next = this.pathPoints[index + 1];
+  addWaypointAtPosition(canvasPos) {
+    if (!this._sourcePos || !this._targetPos) return -1;
 
-    // Force orthogonal: previous point shares X or Y with current
-    const dxPrev = Math.abs(prev.x - curr.x);
-    const dyPrev = Math.abs(prev.y - curr.y);
-    if (dxPrev > dyPrev) {
-      prev.y = curr.y;
-    } else {
-      prev.x = curr.x;
+    const allPoints = this.pathPoints;
+    if (allPoints.length < 2) return -1;
+
+    // Find the closest segment
+    let bestSegIdx = 0;
+    let bestDist = Infinity;
+    let bestPoint = null;
+
+    for (let i = 0; i < allPoints.length - 1; i++) {
+      const A = allPoints[i];
+      const B = allPoints[i + 1];
+
+      // Check if this segment is a straight line or Bézier
+      const isCoaxial = Math.abs(A.x - B.x) < WIRE_COAXIAL_THRESHOLD ||
+                         Math.abs(A.y - B.y) < WIRE_COAXIAL_THRESHOLD;
+
+      if (isCoaxial) {
+        // Straight line — use point-to-segment distance
+        const result = this._closestPointOnSegment(canvasPos, A, B);
+        if (result.dist < bestDist) {
+          bestDist = result.dist;
+          bestSegIdx = i;
+          bestPoint = result.point;
+        }
+      } else {
+        // Bézier curve — sample and find closest
+        const sourceDir = (i === 0) ? this.getSourceDirection() :
+          Wire._getSegmentFromDir(allPoints, i, this.getSourceDirection());
+        const targetDir = (i + 1 === allPoints.length - 1) ? this.getTargetDirection() :
+          Wire._getSegmentToDir(allPoints, i + 1, this.getTargetDirection());
+
+        const segDist = Math.hypot(B.x - A.x, B.y - A.y);
+        const scale = Math.max(
+          WIRE_BEZIER_MIN_CONTROL,
+          Math.min(WIRE_BEZIER_MAX_CONTROL, segDist * WIRE_BEZIER_CONTROL_FACTOR)
+        );
+
+        const fromProj = (B.x - A.x) * sourceDir.x + (B.y - A.y) * sourceDir.y;
+        const toProj   = -((B.x - A.x) * targetDir.x + (B.y - A.y) * targetDir.y);
+
+        const fromScale = fromProj > 0
+          ? Math.max(WIRE_BEZIER_MIN_CONTROL, Math.min(WIRE_BEZIER_MAX_CONTROL, fromProj * WIRE_BEZIER_CONTROL_FACTOR))
+          : scale;
+        const toScale = toProj > 0
+          ? Math.max(WIRE_BEZIER_MIN_CONTROL, Math.min(WIRE_BEZIER_MAX_CONTROL, toProj * WIRE_BEZIER_CONTROL_FACTOR))
+          : scale;
+
+        const c1 = { x: A.x + sourceDir.x * fromScale, y: A.y + sourceDir.y * fromScale };
+        const c2 = { x: B.x + targetDir.x * toScale, y: B.y + targetDir.y * toScale };
+
+        // Sample the Bézier curve
+        const bezierPoints = [A, c1, c2, B];
+        const sampled = Wire.sampleBezierPoints(bezierPoints, 20);
+
+        for (let j = 0; j < sampled.length; j++) {
+          const d = Math.hypot(canvasPos.x - sampled[j].x, canvasPos.y - sampled[j].y);
+          if (d < bestDist) {
+            bestDist = d;
+            bestSegIdx = i;
+            bestPoint = sampled[j];
+          }
+        }
+      }
     }
 
-    // Also constrain next point
-    const dxNext = Math.abs(next.x - curr.x);
-    const dyNext = Math.abs(next.y - curr.y);
-    if (dxNext > dyNext) {
-      next.y = curr.y;
-    } else {
-      next.x = curr.x;
+    if (bestPoint) {
+      // Snap to grid
+      const snapped = {
+        x: Math.round(bestPoint.x / GRID_SIZE) * GRID_SIZE,
+        y: Math.round(bestPoint.y / GRID_SIZE) * GRID_SIZE
+      };
+
+      // Insert waypoint after bestSegIdx in pathPoints terms
+      // pathPoints = [source, ...waypoints, target]
+      // bestSegIdx is the index of the start point of the segment
+      // The waypoint should be inserted at waypoints index = bestSegIdx
+      const wpIndex = bestSegIdx;
+      this.waypoints.splice(wpIndex, 0, snapped);
+      this._recomputeAndApply();
+
+      // Return the index in pathPoints (source is index 0, waypoints start at 1)
+      return wpIndex + 1;
     }
 
-    this._applyPathPointsToSVG();
+    return -1;
+  }
+
+  /**
+   * Find the closest point on a line segment AB to point P.
+   */
+  _closestPointOnSegment(P, A, B) {
+    const dx = B.x - A.x;
+    const dy = B.y - A.y;
+    const lenSq = dx * dx + dy * dy;
+
+    if (lenSq === 0) {
+      return { point: { ...A }, dist: Math.hypot(P.x - A.x, P.y - A.y) };
+    }
+
+    let t = ((P.x - A.x) * dx + (P.y - A.y) * dy) / lenSq;
+    t = Math.max(0, Math.min(1, t));
+
+    const point = {
+      x: A.x + t * dx,
+      y: A.y + t * dy
+    };
+
+    return {
+      point,
+      dist: Math.hypot(P.x - point.x, P.y - point.y)
+    };
   }
 
   /* ================================================================
    *  Control Handle Visualization
    * ================================================================ */
 
-  /** Show draggable control-point handles on this wire. */
+  /** Show draggable control-point handles at each waypoint. */
   showControlHandles() {
     if (this._controlHandlesVisible) return;
     this._controlHandlesVisible = true;
@@ -1134,18 +889,25 @@ export class Wire {
   }
 
   /**
-   * Render control handle circles at each intermediate path point.
+   * Render control handle circles at each waypoint.
    */
   _renderControlHandles() {
     if (!this.element) return;
     this._removeControlHandleElements();
 
+    const allPoints = this.pathPoints;
+    if (allPoints.length < 3) {
+      // No waypoints — just show "+" handles at segment midpoints
+      this._renderAddPointHandles(allPoints);
+      return;
+    }
+
     const handleGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     handleGroup.classList.add('wire-control-handles');
 
-    // Handles for intermediate points (not endpoints)
-    for (let i = 1; i < this.pathPoints.length - 1; i++) {
-      const pt = this.pathPoints[i];
+    // Handles for waypoints (indices 1 to length-2 in pathPoints)
+    for (let i = 1; i < allPoints.length - 1; i++) {
+      const pt = allPoints[i];
 
       // Layer 1: Outer ring (large hit target)
       const outerRing = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
@@ -1189,10 +951,61 @@ export class Wire {
       handleGroup.appendChild(handle);
     }
 
-    // "+" indicators at segment midpoints for adding new points
-    for (let i = 0; i < this.pathPoints.length - 1; i++) {
-      const p1 = this.pathPoints[i];
-      const p2 = this.pathPoints[i + 1];
+    // "+" indicators at segment midpoints
+    for (let i = 0; i < allPoints.length - 1; i++) {
+      const p1 = allPoints[i];
+      const p2 = allPoints[i + 1];
+      const midX = (p1.x + p2.x) / 2;
+      const midY = (p1.y + p2.y) / 2;
+
+      const segLen = Math.abs(p2.x - p1.x) + Math.abs(p2.y - p1.y);
+      if (segLen < GRID_SIZE * 2) continue;
+
+      const addHandle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      addHandle.setAttribute('cx', midX);
+      addHandle.setAttribute('cy', midY);
+      addHandle.setAttribute('r', '5');
+      addHandle.setAttribute('fill', 'rgba(78, 201, 176, 0.15)');
+      addHandle.setAttribute('stroke', '#4ec9b0');
+      addHandle.setAttribute('stroke-width', '1.5');
+      addHandle.setAttribute('stroke-dasharray', '2,2');
+      addHandle.setAttribute('pointer-events', 'all');
+      addHandle.setAttribute('cursor', 'crosshair');
+      addHandle.classList.add('wire-add-point');
+      addHandle.dataset.afterIndex = i;
+      addHandle.dataset.wireId = this.id;
+      handleGroup.appendChild(addHandle);
+
+      const plusH = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      plusH.setAttribute('x1', midX - 3); plusH.setAttribute('y1', midY);
+      plusH.setAttribute('x2', midX + 3); plusH.setAttribute('y2', midY);
+      plusH.setAttribute('stroke', '#4ec9b0');
+      plusH.setAttribute('stroke-width', '1.5');
+      plusH.setAttribute('pointer-events', 'none');
+      handleGroup.appendChild(plusH);
+
+      const plusV = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      plusV.setAttribute('x1', midX); plusV.setAttribute('y1', midY - 3);
+      plusV.setAttribute('x2', midX); plusV.setAttribute('y2', midY + 3);
+      plusV.setAttribute('stroke', '#4ec9b0');
+      plusV.setAttribute('stroke-width', '1.5');
+      plusV.setAttribute('pointer-events', 'none');
+      handleGroup.appendChild(plusV);
+    }
+
+    this.element.appendChild(handleGroup);
+  }
+
+  /**
+   * Render only the "+" add-point handles (for wires with no waypoints yet).
+   */
+  _renderAddPointHandles(allPoints) {
+    const handleGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    handleGroup.classList.add('wire-control-handles');
+
+    for (let i = 0; i < allPoints.length - 1; i++) {
+      const p1 = allPoints[i];
+      const p2 = allPoints[i + 1];
       const midX = (p1.x + p2.x) / 2;
       const midY = (p1.y + p2.y) / 2;
 
@@ -1240,7 +1053,7 @@ export class Wire {
   }
 
   /* ================================================================
-   *  Visual State
+   *  Visual State (Color)
    * ================================================================ */
 
   updateColor(sourceValue) {
@@ -1254,26 +1067,21 @@ export class Wire {
     const zColor       = style.getPropertyValue('--wire-z-color').trim()       || '#ff9800';
     const zDash        = style.getPropertyValue('--wire-z-dasharray').trim()   || '2,2';
 
-    // Skip color update if error state is active
     if (this._isError) return;
 
-    // Detect signal transitions for animation
     const prevValue = this._lastSourceValue;
     this._lastSourceValue = sourceValue;
     const visualPath = this.element.querySelector('.wire-visual');
 
-    // Check if reduced motion is preferred
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     let color, dashArray;
     if (sourceValue === true) {
       color = highColor;
       dashArray = highDash === 'none' ? null : highDash;
-      // Signal transition: LOW→HIGH or Z→HIGH
       if (visualPath && prevValue !== true && !prefersReducedMotion) {
         visualPath.classList.remove('propagating-low');
         visualPath.classList.add('propagating-high');
-        // Remove animation class after it completes
         setTimeout(() => visualPath.classList.remove('propagating-high'), 200);
       }
     } else if (sourceValue === null) {
@@ -1282,7 +1090,6 @@ export class Wire {
     } else {
       color = neutralColor;
       dashArray = neutralDash === 'none' ? null : neutralDash;
-      // Signal transition: HIGH→LOW
       if (visualPath && prevValue === true && !prefersReducedMotion) {
         visualPath.classList.remove('propagating-high');
         visualPath.classList.add('propagating-low');
@@ -1291,131 +1098,78 @@ export class Wire {
     }
 
     this.element.querySelector('.wire-visual')?.setAttribute('stroke', color);
-    // Apply dash array for colorblind-safe patterns
     if (dashArray) {
       this.element.querySelector('.wire-visual')?.setAttribute('stroke-dasharray', dashArray);
     } else {
       this.element.querySelector('.wire-visual')?.removeAttribute('stroke-dasharray');
     }
-    // Junction dots are hidden in Bézier-only mode — no need to update fill
   }
 
+  /* ================================================================
+   *  Junction (simplified — hidden for Bézier-style wires)
+   * ================================================================ */
+
   showJunction() {
-    this.element?.querySelector('.wire-junction')?.style && (this.element.querySelector('.wire-junction').style.display = '');
+    const junctionDot = this.element?.querySelector('.wire-junction');
+    if (junctionDot) junctionDot.style.display = '';
   }
 
   hideJunction() {
-    this.element?.querySelector('.wire-junction')?.style && (this.element.querySelector('.wire-junction').style.display = 'none');
+    const junctionDot = this.element?.querySelector('.wire-junction');
+    if (junctionDot) junctionDot.style.display = 'none';
   }
 
   /* ================================================================
-   *  Lock / Unlock
+   *  Lock / Unlock (removed — no-ops for backward compat)
    * ================================================================ */
 
-  lock()   { this._isLocked = true; }
-  unlock() { this._isLocked = false; }
+  lock()   { /* Lock feature removed */ }
+  unlock() { /* Lock feature removed */ }
 
   /* ================================================================
-   *  Tooltip
+   *  Routing Mode (removed — no-ops for backward compat)
    * ================================================================ */
 
-  _updateTooltip() {
-    // Tooltip removed — was annoying and useless
-  }
+  setRoutingMode(mode) { /* No-op — all wires use segment-by-segment rendering */ }
 
   /* ================================================================
    *  Legacy Compatibility
    * ================================================================ */
 
-  /** Reset all path data. Called before batch re-routing. */
   clearPathPoints() {
-    this.pathPoints = [];
-    this.controlPoints = [];
+    this.waypoints = [];
+    this._sourcePos = null;
+    this._targetPos = null;
     this.occupiedCells.clear();
   }
 
-  /** Force a full re-route. For Bézier wires, just recomputes the curve. */
   forceReroute(getNodePosition, busBarY = null, router = null) {
-    if (this.routingMode === Wire.MODE_MANUAL) {
-      this.routingMode = Wire.MODE_BEZIER;
-      this.controlPoints = [];
-    } else if (this.routingMode === Wire.MODE_MANHATTAN || this.routingMode === Wire.MODE_DIRECT) {
-      this.routingMode = Wire.MODE_BEZIER;
-      this._isRoutingFallback = false;
-      const visualPath = this.element?.querySelector('.wire-visual');
-      if (visualPath) visualPath.classList.remove('routing-fallback');
-    }
-    this.isAutoRouted = true;
-    this._routedMethod = 'bezier';
+    // Clear waypoints and recompute
+    this.waypoints = [];
     this.updatePath(getNodePosition, busBarY, router);
   }
 
-  /**
-   * Update the cached set of grid cells this wire occupies.
-   * Kept for backward compat — no longer critical for routing.
-   */
   updateOccupiedCells(d) {
     this.occupiedCells.clear();
     if (!d) return;
     const gs = GRID_SIZE;
-    // BUG FIX: Now handles C (cubic Bézier) commands by sampling points
-    // along the curve, in addition to M and L commands.
-    // First, convert the path to points (which now supports C commands),
-    // then compute occupied cells from the resulting polyline points.
     const points = Wire.svgPathToPoints(d);
     if (points.length < 2) return;
 
     for (let i = 0; i < points.length - 1; i++) {
       const p1 = points[i];
       const p2 = points[i + 1];
-      const isH = Math.abs(p2.y - p1.y) < 1;
-      const isV = Math.abs(p2.x - p1.x) < 1;
-      if (isH) {
-        const y = Math.round(p1.y / gs);
-        for (let x = Math.round(Math.min(p1.x, p2.x) / gs); x <= Math.round(Math.max(p1.x, p2.x) / gs); x++) {
-          this.occupiedCells.add(`${x},${y}`);
-        }
-      } else if (isV) {
-        const x = Math.round(p1.x / gs);
-        for (let y = Math.round(Math.min(p1.y, p2.y) / gs); y <= Math.round(Math.max(p1.y, p2.y) / gs); y++) {
-          this.occupiedCells.add(`${x},${y}`);
-        }
-      }
-      // For diagonal segments (from Bézier sampling), add cells along the path
-      else {
-        const steps = Math.max(1, Math.ceil(Math.hypot(p2.x - p1.x, p2.y - p1.y) / gs));
-        for (let s = 0; s <= steps; s++) {
-          const t = s / steps;
-          const cx = p1.x + (p2.x - p1.x) * t;
-          const cy = p1.y + (p2.y - p1.y) * t;
-          this.occupiedCells.add(`${Math.round(cx / gs)},${Math.round(cy / gs)}`);
-        }
+      const steps = Math.max(1, Math.ceil(Math.hypot(p2.x - p1.x, p2.y - p1.y) / gs));
+      for (let s = 0; s <= steps; s++) {
+        const t = s / steps;
+        const cx = Math.round((p1.x + t * (p2.x - p1.x)) / gs) * gs;
+        const cy = Math.round((p1.y + t * (p2.y - p1.y)) / gs) * gs;
+        this.occupiedCells.add(`${cx},${cy}`);
       }
     }
   }
 
-  /** Store path points from SVG path data (legacy compat). */
-  storePathPoints(d) {
-    this.pathPoints = Wire.svgPathToPoints(d);
-  }
-
-  /* ================================================================
-   *  Bézier SVG Path Computation
-   * ================================================================ */
-
-  /**
-   * Compute the full Bézier SVG path string for this wire.
-   *
-   * @param {Function} getNodePosition – nodeId → {x,y}
-   * @returns {string} SVG path "d" attribute
-   */
-  computeBezierSVGPath(getNodePosition) {
-    const fromPos = getNodePosition(this.sourceNode.nodeId);
-    const toPos   = getNodePosition(this.targetNode.nodeId);
-    if (!fromPos || !toPos) return '';
-
-    const fromDir = Wire.getPortDirection(this.sourceNode.nodeId, this._compLookup);
-    const toDir   = Wire.getPortDirection(this.targetNode.nodeId, this._compLookup);
-    return Wire.computeBezierPath(fromPos, toPos, fromDir, toDir);
-  }
+  /** Backward compat — not used but referenced in some places */
+  setRoutingFallback() { /* no-op */ }
+  get isRoutingFallback() { return false; }
 }

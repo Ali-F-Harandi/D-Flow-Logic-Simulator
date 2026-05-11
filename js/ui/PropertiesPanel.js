@@ -238,14 +238,14 @@ export class PropertiesPanel {
     const stateGroup = document.createElement('div');
     stateGroup.className = 'properties-field properties-state';
     const stateLabel = wire.wireState === 'auto' ? 'Auto-routed' :
-                      wire.wireState === 'manual' ? 'Manually edited' : 'Locked';
+                      wire.wireState === 'manual' ? 'Has waypoints' : 'Auto-routed';
     stateGroup.textContent = `State: ${stateLabel}`;
     this.panel.appendChild(stateGroup);
 
     // Control points count
     const cpGroup = document.createElement('div');
     cpGroup.className = 'properties-field';
-    cpGroup.textContent = `Control Points: ${wire.controlPoints.length}`;
+    cpGroup.textContent = `Waypoints: ${wire.waypoints.length}`;
     this.panel.appendChild(cpGroup);
 
     // Path points count

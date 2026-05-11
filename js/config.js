@@ -29,7 +29,8 @@ export const WIRE_PIN_MAGNET_RADIUS   = 30;    // Auto-magnet snap distance (pix
 export const WIRE_BEZIER_CONTROL_FACTOR = 0.5;   // Control distance as fraction of port distance
 export const WIRE_BEZIER_MIN_CONTROL    = 40;     // Minimum control point distance (px)
 export const WIRE_BEZIER_MAX_CONTROL    = 200;    // Maximum control point distance (px)
-export const WIRE_DEFAULT_ROUTING_MODE  = 'bezier'; // 'bezier' | 'manhattan' | 'direct'
+export const WIRE_DEFAULT_ROUTING_MODE  = 'bezier'; // 'bezier' (always)
+export const WIRE_COAXIAL_THRESHOLD     = 5;      // Co-axial alignment threshold (px) — segments with endpoints within this X or Y distance are drawn as straight lines
 
 // ─── Spatial Hash Constants ───
 export const SPATIAL_HASH_CELL_SIZE   = GRID_SIZE * 4;

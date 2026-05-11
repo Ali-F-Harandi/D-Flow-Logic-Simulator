@@ -2,23 +2,24 @@
  * WireEditHandler — manages manual wire editing interactions
  *
  * Handles:
- *   - Dragging control points on selected wires
- *   - Adding new control points (click on segment midpoint / double-click)
- *   - Removing control points (right-click / double-click on point)
+ *   - Dragging waypoints on selected wires
+ *   - Adding new waypoints (click on "+" handle or double-click on wire segment)
+ *   - Removing waypoints (right-click / double-click on point)
  *   - Showing/hiding control handles when wires are selected/deselected
  *
- * All point coordinates are snapped to GRID_SIZE.
+ * ALL wires support control points now (not just Manual mode).
+ * When a wire has no waypoints, only "+" add-point handles are shown.
+ * When it has waypoints, both drag handles and "+" handles are shown.
  *
  * Usage:
- *   1. Click a wire to select it → green control points appear
+ *   1. Click a wire to select it → green control handles appear
  *   2. DRAG green points to adjust wire shape
- *   3. Double-click a wire segment to ADD a new control point
- *   4. Double-click a control point to REMOVE it
- *   5. Right-click a control point for context menu options
+ *   3. Double-click a wire segment to ADD a new waypoint
+ *   4. Double-click a waypoint to REMOVE it
+ *   5. Right-click a waypoint for context menu options
  */
 
 import { GRID_SIZE } from '../../config.js';
-import { Wire } from '../../core/Wire.js';
 import { AddWirePointCommand, RemoveWirePointCommand, MoveWirePointCommand } from '../../utils/UndoManager.js';
 
 export class WireEditHandler {
@@ -36,7 +37,7 @@ export class WireEditHandler {
     this._dragWire       = null;
     this._dragPointIndex = -1;
     this._dragStartPos   = null;
-    this._dragOrigPointPos = null; // original point position for undo
+    this._dragOrigPointPos = null;
 
     // Currently edited wire (with visible control handles)
     this._activeWire = null;
@@ -51,9 +52,7 @@ export class WireEditHandler {
 
   /**
    * Show control handles for a wire and hide them for others.
-   * Bézier wires do NOT show control handles — their path points are
-   * cubic Bézier control handles (not on-curve points), so dragging
-   * them would distort the curve in confusing ways.
+   * ALL wires now support control handles.
    * @param {Wire} wire – The wire to show handles for, or null to hide all
    */
   setActiveWire(wire) {
@@ -63,11 +62,6 @@ export class WireEditHandler {
     this._activeWire = wire;
 
     if (wire) {
-      // Bézier wires: control point editing doesn't make sense
-      // (pathPoints[1] and [2] are cubic control handles, not on-curve)
-      if (wire.routingMode === Wire.MODE_BEZIER) {
-        return;
-      }
       wire.showControlHandles();
       if (!WireEditHandler._instructionShown && this.wiring.wires.length > 0) {
         WireEditHandler._instructionShown = true;
@@ -123,17 +117,26 @@ export class WireEditHandler {
 
   /**
    * Start dragging a control point.
+   * @param {string} wireId
+   * @param {number} pointIndex — index in pathPoints (1 = first waypoint)
+   * @param {number} clientX
+   * @param {number} clientY
    */
   startDrag(wireId, pointIndex, clientX, clientY) {
     const wire = this.wiring.wires.find(w => w.id === wireId);
-    if (!wire || pointIndex < 1 || pointIndex >= wire.pathPoints.length - 1) return false;
+    if (!wire) return false;
+
+    // pointIndex is in pathPoints terms (0=source, 1..n=waypoints, n+1=target)
+    // Only allow dragging waypoints (not endpoints)
+    const wpIndex = pointIndex - 1;
+    if (wpIndex < 0 || wpIndex >= wire.waypoints.length) return false;
 
     this._dragging       = true;
     this._dragWire       = wire;
     this._dragPointIndex = pointIndex;
     this._dragStartPos   = { x: clientX, y: clientY };
     // Save original point position for undo
-    this._dragOrigPointPos = { ...wire.pathPoints[pointIndex] };
+    this._dragOrigPointPos = { ...wire.waypoints[wpIndex] };
 
     document.body.style.cursor = 'grabbing';
     return true;
@@ -141,7 +144,6 @@ export class WireEditHandler {
 
   /**
    * Update control point position during drag.
-   * Snaps to grid for clean Manhattan routing.
    */
   moveDrag(clientX, clientY) {
     if (!this._dragging || !this._dragWire) return;
@@ -158,13 +160,16 @@ export class WireEditHandler {
 
     // Create undo command for the drag if the point moved
     if (this._dragWire && this._dragOrigPointPos && this.undoManager) {
-      const currentPos = { ...this._dragWire.pathPoints[this._dragPointIndex] };
-      if (currentPos.x !== this._dragOrigPointPos.x || currentPos.y !== this._dragOrigPointPos.y) {
-        const cmd = new MoveWirePointCommand(
-          this.wiring, this._dragWire.id,
-          this._dragPointIndex, this._dragOrigPointPos, currentPos
-        );
-        this.undoManager.execute(cmd);
+      const wpIndex = this._dragPointIndex - 1;
+      if (wpIndex >= 0 && wpIndex < this._dragWire.waypoints.length) {
+        const currentPos = { ...this._dragWire.waypoints[wpIndex] };
+        if (currentPos.x !== this._dragOrigPointPos.x || currentPos.y !== this._dragOrigPointPos.y) {
+          const cmd = new MoveWirePointCommand(
+            this.wiring, this._dragWire.id,
+            this._dragPointIndex, this._dragOrigPointPos, currentPos
+          );
+          this.undoManager.execute(cmd);
+        }
       }
     }
 
@@ -175,15 +180,12 @@ export class WireEditHandler {
     this._dragOrigPointPos = null;
 
     document.body.style.cursor = '';
-
-    // Update crossings since wire path changed
-    this.wiring.updateWireCrossings();
   }
 
   /* ─── Add / Remove Points ─── */
 
   /**
-   * Add a new control point at a segment midpoint.
+   * Add a new waypoint at a segment midpoint (from "+" handle click).
    */
   addPointAtSegment(wireId, afterIndex, clientX, clientY) {
     const wire = this.wiring.wires.find(w => w.id === wireId);
@@ -192,7 +194,8 @@ export class WireEditHandler {
     const canvasPos = this.core.canvasCoords(clientX, clientY);
     const x = Math.round(canvasPos.x / GRID_SIZE) * GRID_SIZE;
     const y = Math.round(canvasPos.y / GRID_SIZE) * GRID_SIZE;
-    const insertIndex = afterIndex + 1;
+    // afterIndex is pathPoints index; waypoint index = afterIndex
+    const insertIndex = afterIndex;
     const point = { x, y };
 
     // Use undo command
@@ -204,75 +207,64 @@ export class WireEditHandler {
       wire.refreshControlHandles();
     }
 
-    // Start dragging the new point
-    this.startDrag(wireId, insertIndex, clientX, clientY);
+    // Start dragging the new point (pathPoints index = insertIndex + 1)
+    this.startDrag(wireId, insertIndex + 1, clientX, clientY);
   }
 
   /**
-   * Remove a control point (right-click or double-click).
+   * Remove a waypoint (right-click or double-click).
+   * @param {string} wireId
+   * @param {number} pointIndex — index in pathPoints
    */
   removePoint(wireId, pointIndex) {
     const wire = this.wiring.wires.find(w => w.id === wireId);
     if (!wire) return;
+
+    // Convert pathPoints index to waypoints index
+    const wpIndex = pointIndex - 1;
+    if (wpIndex < 0 || wpIndex >= wire.waypoints.length) return;
 
     // Use undo command
     if (this.undoManager) {
       const cmd = new RemoveWirePointCommand(this.wiring, wireId, pointIndex);
       this.undoManager.execute(cmd);
     } else {
-      wire.removeControlPoint(pointIndex);
+      wire.removeControlPoint(wpIndex);
       wire.refreshControlHandles();
     }
-    this.wiring.updateWireCrossings();
   }
 
   /**
-   * Add a control point at a specific canvas position.
+   * Add a waypoint at a specific canvas position on the wire.
    * Finds the closest segment and inserts the point there.
+   * @param {{x:number,y:number}} canvasPos
+   * @param {Wire} wire
    */
   addPointAtPosition(canvasPos, wire) {
-    if (!wire || wire.pathPoints.length < 2) return;
+    if (!wire) return;
 
-    let bestIdx  = 0;
-    let bestDist = Infinity;
-
-    for (let i = 0; i < wire.pathPoints.length - 1; i++) {
-      const p1 = wire.pathPoints[i];
-      const p2 = wire.pathPoints[i + 1];
-      const dist = this._pointToSegmentDist(canvasPos, p1, p2);
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestIdx  = i;
+    const pathIndex = wire.addWaypointAtPosition(canvasPos);
+    if (pathIndex >= 0 && this.undoManager) {
+      const wpIndex = pathIndex - 1;
+      const point = wire.waypoints[wpIndex];
+      if (point) {
+        const cmd = new AddWirePointCommand(this.wiring, wire.id, wpIndex, point);
+        this.undoManager.execute(cmd);
       }
     }
 
-    const x = Math.round(canvasPos.x / GRID_SIZE) * GRID_SIZE;
-    const y = Math.round(canvasPos.y / GRID_SIZE) * GRID_SIZE;
-    const insertIndex = bestIdx + 1;
-    const point = { x, y };
-
-    // Use undo command
-    if (this.undoManager) {
-      const cmd = new AddWirePointCommand(this.wiring, wire.id, insertIndex, point);
-      this.undoManager.execute(cmd);
-    } else {
-      wire.addControlPoint(insertIndex, point);
-      wire.refreshControlHandles();
-    }
+    wire.refreshControlHandles();
   }
 
   /* ─── Ghost Preview (Segment Insertion) ─── */
 
-  /**
-   * Show a ghost wire preview at a segment midpoint.
-   * Called when hovering over an add-point handle.
-   */
   showPointPreview(wireId, afterIndex) {
     const wire = this.wiring.wires.find(w => w.id === wireId);
-    if (!wire || afterIndex < 0 || afterIndex >= wire.pathPoints.length - 1) return;
+    const allPoints = wire?.pathPoints;
+    if (!wire || !allPoints || afterIndex < 0 || afterIndex >= allPoints.length - 1) return;
 
-    const p1 = wire.pathPoints[afterIndex];
-    const p2 = wire.pathPoints[afterIndex + 1];
+    const p1 = allPoints[afterIndex];
+    const p2 = allPoints[afterIndex + 1];
     const midX = (p1.x + p2.x) / 2;
     const midY = (p1.y + p2.y) / 2;
 
@@ -295,9 +287,6 @@ export class WireEditHandler {
     }
   }
 
-  /**
-   * Hide the ghost wire preview.
-   */
   hidePointPreview() {
     if (this._ghostPreview && this._ghostPreview.parentNode) {
       this._ghostPreview.parentNode.removeChild(this._ghostPreview);
