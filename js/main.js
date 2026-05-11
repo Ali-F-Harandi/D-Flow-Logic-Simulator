@@ -13,6 +13,8 @@ import { HelpOverlay } from './ui/HelpOverlay.js';
 import { CircuitValidator } from './utils/CircuitValidator.js';
 import { OnboardingTour } from './ui/OnboardingTour.js';
 import { EmptyState } from './ui/EmptyState.js';
+import { ConfirmDialog } from './utils/ConfirmDialog.js';
+import { SubcircuitManager } from './utils/SubcircuitManager.js';
 
 // --------------------------------------------------
 // GLOBAL ERROR HANDLER – shows any import/parse error
@@ -28,7 +30,7 @@ window.addEventListener('error', (event) => {
   document.body.appendChild(div);
 });
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   const appContainer = document.getElementById('app');
   const eventBus = new EventBus();
   const factory = new ComponentFactory();
@@ -66,11 +68,21 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Update undo/redo button states periodically
+  // Update undo/redo button states (event-driven instead of polling)
   const updateUndoRedo = () => {
     header.updateUndoRedoState(undoManager.canUndo(), undoManager.canRedo());
   };
-  setInterval(updateUndoRedo, 300);
+  // Update on relevant events
+  eventBus.on('undo-request', updateUndoRedo);
+  eventBus.on('redo-request', updateUndoRedo);
+  eventBus.on('component-drop', updateUndoRedo);
+  eventBus.on('selection-changed', updateUndoRedo);
+  eventBus.on('wire-connected', updateUndoRedo);
+  eventBus.on('component-deleted', updateUndoRedo);
+  eventBus.on('wire-removed', updateUndoRedo);
+  eventBus.on('component-modified', updateUndoRedo);
+  // Initial update
+  updateUndoRedo();
 
   // Wire up footer zoom controls
   eventBus.on('zoom-in', () => {
@@ -85,15 +97,11 @@ document.addEventListener('DOMContentLoaded', () => {
     canvas.zoomToFit();
   });
 
-  // Auto-save indicator
+  // Auto-save indicator (event-driven instead of polling)
   let _lastSaveTime = Date.now();
   let _hasUnsavedChanges = false;
 
-  eventBus.on('component-drop', () => { _hasUnsavedChanges = true; });
-  eventBus.on('selection-changed', () => { _hasUnsavedChanges = true; });
-
-  // Update auto-save indicator
-  const updateAutosaveIndicator = () => {
+  const _updateAutosaveIndicator = () => {
     const indicator = document.getElementById('autosave-indicator');
     if (indicator) {
       if (_hasUnsavedChanges) {
@@ -110,7 +118,28 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
   };
-  setInterval(updateAutosaveIndicator, 5000);
+
+  const _markUnsaved = () => {
+    _hasUnsavedChanges = true;
+    _updateAutosaveIndicator();
+  };
+
+  eventBus.on('component-drop', _markUnsaved);
+  eventBus.on('selection-changed', _markUnsaved);
+  eventBus.on('wire-connected', _markUnsaved);
+  eventBus.on('component-deleted', _markUnsaved);
+  eventBus.on('wire-removed', _markUnsaved);
+  eventBus.on('component-modified', _markUnsaved);
+
+  // Track save events
+  eventBus.on('project-saved', () => {
+    _lastSaveTime = Date.now();
+    _hasUnsavedChanges = false;
+    _updateAutosaveIndicator();
+  });
+
+  // Update elapsed time display less frequently (every 30s instead of 5s)
+  setInterval(_updateAutosaveIndicator, 30000);
 
   // Right panel auto-expand on first wire creation
   let _firstWireCreated = false;
@@ -162,10 +191,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Clear all
-  eventBus.on('clear-all', () => {
+  // Clear all (uses themed ConfirmDialog instead of window.confirm)
+  eventBus.on('clear-all', async () => {
     if (engine.components.size > 0) {
-      if (!confirm('Clear all components and wires? This cannot be undone.')) return;
+      const confirmed = await ConfirmDialog.show(
+        'Clear all components and wires? This cannot be undone.',
+        { title: 'Clear Canvas', confirmText: 'Clear All', confirmClass: 'confirm-dialog-btn-danger' }
+      );
+      if (!confirmed) return;
     }
     engine.stop();
     canvas.clearAll();
@@ -177,18 +210,40 @@ document.addEventListener('DOMContentLoaded', () => {
     canvas.showToast('Canvas cleared', 'info');
   });
 
-  footer.setVersion('v0.9.1');
+  // Subcircuit Manager — save/load reusable subcircuits
+  const subcircuitManager = new SubcircuitManager(engine, canvas, factory, eventBus);
 
-  // Update footer stats periodically
+  eventBus.on('save-subcircuit', () => {
+    const selectedIds = canvas.selection.selectedComponents;
+    if (selectedIds.size === 0) {
+      canvas.showToast('Select components to save as subcircuit', 'warning');
+      return;
+    }
+    subcircuitManager.showSaveDialog(selectedIds);
+  });
+
+  eventBus.on('load-subcircuit', () => {
+    subcircuitManager.showLoadDialog();
+  });
+
+  footer.setVersion('v0.9.2');
+
+  // Update footer stats (event-driven instead of polling)
   const updateFooterStats = () => {
     footer.updateStats(engine.getStats(), canvas.core.scale);
   };
-  setInterval(updateFooterStats, 500);
+  eventBus.on('component-drop', updateFooterStats);
+  eventBus.on('component-deleted', updateFooterStats);
+  eventBus.on('wire-connected', updateFooterStats);
+  eventBus.on('wire-removed', updateFooterStats);
+  eventBus.on('simulation-status', updateFooterStats);
+  // Initial update
+  updateFooterStats();
 
   // Also update on zoom/pan changes
   canvas.core._onTransformChange = () => {
     canvas.positionCache.setTransform(canvas.core.panOffset, canvas.core.scale);
-    footer.updateStats(engine.getStats(), canvas.core.scale);
+    updateFooterStats();
   };
 
   // FIX (Bug #8 Medium): Stop engine and clear clock intervals
@@ -197,10 +252,13 @@ document.addEventListener('DOMContentLoaded', () => {
     engine.stop();
   });
 
-  // Auto‑restore saved project
+  // Auto‑restore saved project (uses themed ConfirmDialog)
   const saved = localStorage.getItem('dflow-project');
   if (saved) {
-    const restore = confirm('A saved project was found. Do you want to restore it?');
+    const restore = await ConfirmDialog.show(
+      'A saved project was found. Do you want to restore it?',
+      { title: 'Restore Project', confirmText: 'Restore', cancelText: 'Dismiss' }
+    );
     if (restore) {
       try {
         const data = JSON.parse(saved);

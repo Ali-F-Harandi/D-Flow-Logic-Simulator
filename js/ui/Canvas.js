@@ -154,8 +154,8 @@ export class Canvas {
       btn.style.display = hasSelection ? 'flex' : 'none';
     };
 
-    // Check periodically for selection changes (simple approach)
-    setInterval(updateVisibility, 300);
+    // Listen for selection changes (event-driven instead of polling)
+    this.eventBus.on('selection-changed', updateVisibility);
   }
 
   // Public delegations

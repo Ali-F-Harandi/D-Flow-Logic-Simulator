@@ -207,6 +207,9 @@ export class CanvasWiring {
 
     // Mark grid for rebuild
     this._gridNeedsRebuild = true;
+
+    // Emit event for event-driven UI updates
+    this.eventBus.emit('wire-connected', { engineId, fromNodeId, toNodeId });
   }
 
   removeVisualWireByEngineId(engineId) {
@@ -220,6 +223,9 @@ export class CanvasWiring {
       this._updateJunctions();
       this.updateWireCrossings();
       this._gridNeedsRebuild = true;
+
+      // Emit event for event-driven UI updates
+      this.eventBus.emit('wire-removed', { engineId });
     }
   }
 

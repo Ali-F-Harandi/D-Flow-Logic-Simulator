@@ -1,10 +1,16 @@
 /**
  * Pure data model for a circuit: components and wires.
+ *
+ * Performance improvement: wires are now stored in both an Array (for
+ * ordered iteration) AND a Map (for O(1) lookups by ID). The
+ * _wireIndex Map is kept in sync with the wires Array automatically.
  */
 export class Circuit {
   constructor() {
     this.components = new Map();   // id -> Component
     this.wires = [];               // { id, from: {componentId, nodeId}, to: {componentId, nodeId} }
+    this._wireIndex = new Map();   // id -> wire object (O(1) lookup)
+    this._nodeToWireIndex = new Map(); // toNodeId -> wire (O(1) lookup for disconnect)
   }
 
   addComponent(component) {
@@ -18,16 +24,67 @@ export class Circuit {
 
   addWire(wire) {
     this.wires.push(wire);
+    this._wireIndex.set(wire.id, wire);
+    if (wire.to && wire.to.nodeId) {
+      this._nodeToWireIndex.set(wire.to.nodeId, wire);
+    }
   }
 
   removeWire(wireId) {
-    const idx = this.wires.findIndex(w => w.id === wireId);
-    if (idx !== -1) this.wires.splice(idx, 1);
+    const wire = this._wireIndex.get(wireId);
+    if (wire) {
+      // Remove from node index
+      if (wire.to && wire.to.nodeId) {
+        this._nodeToWireIndex.delete(wire.to.nodeId);
+      }
+      // Remove from wire index
+      this._wireIndex.delete(wireId);
+      // Remove from array
+      const idx = this.wires.indexOf(wire);
+      if (idx !== -1) this.wires.splice(idx, 1);
+    }
+  }
+
+  /**
+   * Find a wire by its ID in O(1) time.
+   * @param {string} wireId
+   * @returns {Object|undefined}
+   */
+  getWireById(wireId) {
+    return this._wireIndex.get(wireId);
+  }
+
+  /**
+   * Find a wire by the target (input) node ID in O(1) time.
+   * Used when checking if an input is already connected.
+   * @param {string} toNodeId
+   * @returns {Object|undefined}
+   */
+  getWireByToNode(toNodeId) {
+    return this._nodeToWireIndex.get(toNodeId);
+  }
+
+  /**
+   * Find wires originating from a specific output node.
+   * Returns an array of wires (there can be multiple fan-out wires).
+   * @param {string} fromNodeId
+   * @returns {Array}
+   */
+  getWiresFromNode(fromNodeId) {
+    const result = [];
+    for (const wire of this.wires) {
+      if (wire.from.nodeId === fromNodeId) {
+        result.push(wire);
+      }
+    }
+    return result;
   }
 
   clear() {
     this.components.clear();
     this.wires = [];
+    this._wireIndex.clear();
+    this._nodeToWireIndex.clear();
   }
 
   toJSON() {

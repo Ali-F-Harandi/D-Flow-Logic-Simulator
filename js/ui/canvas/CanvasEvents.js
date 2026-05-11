@@ -614,6 +614,12 @@ export class CanvasEvents {
         items.push({ label: 'Reroute All Wires (A*)', action: () => {
           this.wiring.rerouteAllWires();
         }});
+        items.push({ label: 'Save Selection as Subcircuit', action: () => {
+          this.eventBus.emit('save-subcircuit');
+        }});
+        items.push({ label: 'Load Subcircuit', action: () => {
+          this.eventBus.emit('load-subcircuit');
+        }});
         this.contextMenu.show(e.clientX, e.clientY, items);
         return;
       }

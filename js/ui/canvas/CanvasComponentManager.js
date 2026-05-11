@@ -85,6 +85,8 @@ export class CanvasComponentManager {
       if (!opts.skipEngine) {
         this.engine.removeComponent(compId);
       }
+      // Emit event for event-driven UI updates
+      this.eventBus.emit('component-deleted', { compId });
     }
   }
 

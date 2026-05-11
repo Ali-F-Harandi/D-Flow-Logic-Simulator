@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>D-Flow Engine Tests</title>
+  <style>
+    body { font-family: monospace; background: #1e1e1e; color: #ccc; padding: 20px; }
+    .pass { color: #4ec9b0; }
+    .fail { color: #f44747; }
+    .summary { margin-top: 20px; font-size: 16px; font-weight: bold; }
+    h1 { color: #007acc; }
+    h2 { color: #4ec9b0; margin-top: 24px; }
+    .test-line { margin: 4px 0; }
+  </style>
+</head>
+<body>
+  <h1>D-Flow Logic Simulator — Engine Test Suite</h1>
+  <div id="results"></div>
+  <div id="summary" class="summary"></div>
+
+  <script type="module">
+    import { Engine } from '../js/core/Engine.js';
+    import { Circuit } from '../js/core/Circuit.js';
+    import { Component } from '../js/core/Component.js';
+    import { ComponentFactory } from '../js/core/ComponentFactory.js';
+    import { EventBus } from '../js/utils/EventBus.js';
+    import { UndoManager } from '../js/utils/UndoManager.js';
+    import { VerilogExporter } from '../js/utils/VerilogExporter.js';
+    import { ConfirmDialog } from '../js/utils/ConfirmDialog.js';
+
+    const results = document.getElementById('results');
+    let passed = 0;
+    let failed = 0;
+
+    function assert(condition, testName) {
+      if (condition) {
+        passed++;
+        results.innerHTML += `<div class="test-line pass">✓ ${testName}</div>`;
+      } else {
+        failed++;
+        results.innerHTML += `<div class="test-line fail">✗ ${testName}</div>`;
+      }
+    }
+
+    function assertEqual(actual, expected, testName) {
+      assert(actual === expected, `${testName} (expected: ${expected}, got: ${actual})`);
+    }
+
+    // ─── Engine Basics ───
+    results.innerHTML += '<h2>Engine Basics</h2>';
+
+    const engine = new Engine();
+    assert(engine instanceof Engine, 'Engine creates successfully');
+    assertEqual(engine.components.size, 0, 'Engine starts with 0 components');
+    assertEqual(engine.wires.length, 0, 'Engine starts with 0 wires');
+    assertEqual(engine.running, false, 'Engine starts not running');
+
+    // ─── Component Factory ───
+    results.innerHTML += '<h2>Component Factory</h2>';
+
+    const factory = new ComponentFactory();
+    assert(factory instanceof ComponentFactory, 'Factory creates successfully');
+
+    const types = factory.getAvailableTypes();
+    assert(types.length > 0, 'Factory has available types');
+    assert(types.some(t => t.type === 'AND'), 'Factory includes AND gate');
+    assert(types.some(t => t.type === 'D'), 'Factory includes D Flip-Flop');
+    assert(types.some(t => t.type === 'ToggleSwitch'), 'Factory includes ToggleSwitch');
+    assert(types.some(t => t.type === 'LightBulb'), 'Factory includes LightBulb');
+    assert(types.some(t => t.type === 'Clock'), 'Factory includes Clock');
+
+    // ─── Component Creation ───
+    results.innerHTML += '<h2>Component Creation</h2>';
+
+    const andGate = factory.createComponent('AND');
+    assert(andGate instanceof Component, 'AND gate creates as Component');
+    assertEqual(andGate.type, 'AND', 'AND gate type is correct');
+    assertEqual(andGate.inputs.length, 2, 'AND gate has 2 default inputs');
+    assertEqual(andGate.outputs.length, 1, 'AND gate has 1 output');
+
+    const notGate = factory.createComponent('NOT');
+    assertEqual(notGate.inputs.length, 1, 'NOT gate has 1 input');
+    assertEqual(notGate.outputs.length, 1, 'NOT gate has 1 output');
+
+    const dff = factory.createComponent('D');
+    assertEqual(dff.type, 'D', 'D Flip-Flop type is correct');
+    assert(dff.inputs.length >= 2, 'D Flip-Flop has at least 2 inputs (D, CLK)');
+
+    const toggle = factory.createComponent('ToggleSwitch');
+    assertEqual(toggle.type, 'ToggleSwitch', 'ToggleSwitch type is correct');
+
+    // ─── Engine: Add/Remove Components ───
+    results.innerHTML += '<h2>Engine: Add/Remove Components</h2>';
+
+    const eng2 = new Engine();
+    const g1 = factory.createComponent('AND');
+    g1.id = 'test_and1';
+    eng2.addComponent(g1);
+    assertEqual(eng2.components.size, 1, 'Component added to engine');
+
+    const g2 = factory.createComponent('OR');
+    g2.id = 'test_or1';
+    eng2.addComponent(g2);
+    assertEqual(eng2.components.size, 2, 'Second component added');
+
+    eng2.removeComponent('test_and1');
+    assertEqual(eng2.components.size, 1, 'Component removed from engine');
+    assert(eng2.components.has('test_or1'), 'Correct component was removed');
+
+    // ─── Engine: Wire Connection ───
+    results.innerHTML += '<h2>Engine: Wire Connection</h2>';
+
+    const eng3 = new Engine();
+    const sw = factory.createComponent('ToggleSwitch');
+    sw.id = 'sw1';
+    const bulb = factory.createComponent('LightBulb');
+    bulb.id = 'bulb1';
+    eng3.addComponent(sw);
+    eng3.addComponent(bulb);
+
+    const fromNode = sw.outputs[0].id;
+    const toNode = bulb.inputs[0].id;
+    const wireId = eng3.connect(fromNode, toNode);
+    assert(wireId !== null, 'Wire connection succeeded');
+    assertEqual(eng3.wires.length, 1, 'Wire appears in circuit');
+
+    eng3.disconnect(wireId);
+    assertEqual(eng3.wires.length, 0, 'Wire disconnected');
+
+    // ─── Engine: Signal Propagation ───
+    results.innerHTML += '<h2>Engine: Signal Propagation</h2>';
+
+    const eng4 = new Engine();
+    const hi = factory.createComponent('HighConstant');
+    hi.id = 'hi1';
+    const lo = factory.createComponent('LowConstant');
+    lo.id = 'lo1';
+    const andG = factory.createComponent('AND');
+    andG.id = 'and1';
+    const outBulb = factory.createComponent('LightBulb');
+    outBulb.id = 'out1';
+    eng4.addComponent(hi);
+    eng4.addComponent(lo);
+    eng4.addComponent(andG);
+    eng4.addComponent(outBulb);
+
+    // Connect: High → AND input 0, Low → AND input 1, AND output → LightBulb
+    eng4.connect(hi.outputs[0].id, andG.inputs[0].id);
+    eng4.connect(lo.outputs[0].id, andG.inputs[1].id);
+    eng4.connect(andG.outputs[0].id, outBulb.inputs[0].id);
+
+    eng4.step();
+    // AND(1, 0) = 0
+    assertEqual(andG.outputs[0].value, false, 'AND(HIGH, LOW) = LOW');
+
+    // Now connect both inputs HIGH
+    const eng5 = new Engine();
+    const hi2 = factory.createComponent('HighConstant');
+    hi2.id = 'hi2';
+    const hi3 = factory.createComponent('HighConstant');
+    hi3.id = 'hi3';
+    const andG2 = factory.createComponent('AND');
+    andG2.id = 'and2';
+    eng5.addComponent(hi2);
+    eng5.addComponent(hi3);
+    eng5.addComponent(andG2);
+
+    eng5.connect(hi2.outputs[0].id, andG2.inputs[0].id);
+    eng5.connect(hi3.outputs[0].id, andG2.inputs[1].id);
+    eng5.step();
+
+    assertEqual(andG2.outputs[0].value, true, 'AND(HIGH, HIGH) = HIGH');
+
+    // ─── Engine: Self-connection prevention ───
+    results.innerHTML += '<h2>Engine: Self-connection Prevention</h2>';
+
+    const eng6 = new Engine();
+    const g3 = factory.createComponent('OR');
+    g3.id = 'g3';
+    eng6.addComponent(g3);
+    const selfConnect = eng6.connect(g3.outputs[0].id, g3.inputs[0].id);
+    assertEqual(selfConnect, null, 'Self-connection is rejected');
+
+    // ─── Circuit: Optimized Lookups ───
+    results.innerHTML += '<h2>Circuit: Optimized Lookups</h2>';
+
+    const circuit = new Circuit();
+    const wire1 = { id: 'w1', from: { componentId: 'c1', nodeId: 'c1.output.0' }, to: { componentId: 'c2', nodeId: 'c2.input.0' } };
+    const wire2 = { id: 'w2', from: { componentId: 'c3', nodeId: 'c3.output.0' }, to: { componentId: 'c4', nodeId: 'c4.input.0' } };
+    circuit.addWire(wire1);
+    circuit.addWire(wire2);
+
+    assertEqual(circuit.getWireById('w1'), wire1, 'getWireById returns correct wire (O(1))');
+    assertEqual(circuit.getWireById('w2'), wire2, 'getWireById returns second wire');
+    assertEqual(circuit.getWireById('w999'), undefined, 'getWireById returns undefined for missing wire');
+    assertEqual(circuit.getWireByToNode('c2.input.0'), wire1, 'getWireByToNode returns correct wire (O(1))');
+    assertEqual(circuit.getWireByToNode('c4.input.0'), wire2, 'getWireByToNode returns second wire');
+
+    circuit.removeWire('w1');
+    assertEqual(circuit.wires.length, 1, 'Wire removed from circuit');
+    assertEqual(circuit.getWireById('w1'), undefined, 'Removed wire no longer in index');
+
+    // ─── EventBus ───
+    results.innerHTML += '<h2>EventBus</h2>';
+
+    const bus = new EventBus();
+    let received = null;
+    bus.on('test-event', (data) => { received = data; });
+    bus.emit('test-event', 42);
+    assertEqual(received, 42, 'EventBus emits and receives data');
+
+    let onceReceived = 0;
+    bus.once('once-event', () => { onceReceived++; });
+    bus.emit('once-event');
+    bus.emit('once-event');
+    assertEqual(onceReceived, 1, 'EventBus.once fires only once');
+
+    // ─── UndoManager ───
+    results.innerHTML += '<h2>UndoManager</h2>';
+
+    const um = new UndoManager();
+    let state = 0;
+    const incCmd = {
+      execute: () => { state++; return true; },
+      undo: () => { state--; }
+    };
+    um.execute(incCmd);
+    assertEqual(state, 1, 'Execute increments state');
+    um.undo();
+    assertEqual(state, 0, 'Undo decrements state');
+    um.redo();
+    assertEqual(state, 1, 'Redo increments state again');
+    assert(um.canUndo(), 'Can undo after redo');
+    assert(!um.canRedo(), 'Cannot redo after just redoing');
+
+    // ─── Verilog Exporter ───
+    results.innerHTML += '<h2>Verilog Exporter</h2>';
+
+    const vEng = new Engine();
+    const vAnd = factory.createComponent('AND');
+    vAnd.id = 'and_v';
+    const vHi = factory.createComponent('HighConstant');
+    vHi.id = 'hi_v';
+    const vLo = factory.createComponent('LowConstant');
+    vLo.id = 'lo_v';
+    const vBulb = factory.createComponent('LightBulb');
+    vBulb.id = 'bulb_v';
+    vEng.addComponent(vAnd);
+    vEng.addComponent(vHi);
+    vEng.addComponent(vLo);
+    vEng.addComponent(vBulb);
+    vEng.connect(vHi.outputs[0].id, vAnd.inputs[0].id);
+    vEng.connect(vLo.outputs[0].id, vAnd.inputs[1].id);
+    vEng.connect(vAnd.outputs[0].id, vBulb.inputs[0].id);
+
+    const verilog = VerilogExporter.export(vEng);
+    assert(verilog.includes('module'), 'Verilog output contains module');
+    assert(verilog.includes('and'), 'Verilog output contains and gate');
+    assert(verilog.includes('endmodule'), 'Verilog output contains endmodule');
+
+    const emptyVerilog = VerilogExporter.export(new Engine());
+    assert(emptyVerilog.includes('Empty Circuit'), 'Empty circuit Verilog notes no components');
+
+    // ─── Engine: Oscillation Detection ───
+    results.innerHTML += '<h2>Engine: Oscillation Detection</h2>';
+
+    let oscEventFired = false;
+    document.addEventListener('simulation-error', () => { oscEventFired = true; });
+
+    // Create a NOT gate feedback loop (classic oscillator)
+    const oscEng = new Engine();
+    const notG = factory.createComponent('NOT');
+    notG.id = 'not_osc';
+    oscEng.addComponent(notG);
+    // Connect NOT output back to its own input — should be prevented
+    // Actually self-connection is prevented, so we need two NOT gates
+    const notG2 = factory.createComponent('NOT');
+    notG2.id = 'not_osc2';
+    oscEng.addComponent(notG2);
+    oscEng.connect(notG.outputs[0].id, notG2.inputs[0].id);
+    oscEng.connect(notG2.outputs[0].id, notG.inputs[0].id);
+    oscEng.step();
+    // After step, oscillation should be detected
+    assert(oscEng._oscillationDetected, 'Oscillation detected in feedback loop');
+
+    // ─── Summary ───
+    const summary = document.getElementById('summary');
+    const total = passed + failed;
+    const allPassed = failed === 0;
+    summary.innerHTML = `<span class="${allPassed ? 'pass' : 'fail'}">${passed}/${total} tests passed${allPassed ? ' — ALL PASSED!' : ` — ${failed} FAILED`}</span>`;
+  </script>
+</body>
+</html>

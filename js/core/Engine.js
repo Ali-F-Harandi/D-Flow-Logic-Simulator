@@ -90,9 +90,8 @@ export class Engine {
     }
 
     if (toInput.connectedTo) {
-      const oldWireIndex = this.wires.findIndex(w => w.to.nodeId === toNodeId);
-      if (oldWireIndex !== -1) {
-        const oldWire = this.wires[oldWireIndex];
+      const oldWire = this.circuit.getWireByToNode(toNodeId);
+      if (oldWire) {
         this.circuit.removeWire(oldWire.id);
         document.dispatchEvent(new CustomEvent('wire-removed', { detail: { wireId: oldWire.id } }));
       }
@@ -111,9 +110,8 @@ export class Engine {
   }
 
   disconnect(wireId) {
-    const index = this.wires.findIndex(w => w.id === wireId);
-    if (index === -1) return false;
-    const wire = this.wires[index];
+    const wire = this.circuit.getWireById(wireId);
+    if (!wire) return false;
     const toComp = this.components.get(wire.to.componentId);
     if (toComp) {
       const input = toComp.inputs.find(inp => inp.id === wire.to.nodeId);
@@ -153,8 +151,8 @@ export class Engine {
         comp.applyNextState(nextState);
         for (let i = 0; i < comp.outputs.length; i++) {
           const out = comp.outputs[i];
-          const connectedWires = this.wires.filter(w => w.from.nodeId === out.id);
-          for (const w of connectedWires) {
+        const connectedWires = this.circuit.getWiresFromNode(out.id);
+        for (const w of connectedWires) {
             const targetComp = this.components.get(w.to.componentId);
             if (targetComp) {
               const inputIndex = targetComp.inputs.findIndex(inp => inp.id === w.to.nodeId);

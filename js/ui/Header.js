@@ -1,6 +1,8 @@
 import { Serializer } from '../utils/Serializer.js';
 import { ExampleCircuits } from '../utils/ExampleCircuits.js';
 import { icon, replaceIcons } from '../utils/IconHelper.js';
+import { ConfirmDialog } from '../utils/ConfirmDialog.js';
+import { VerilogExporter } from '../utils/VerilogExporter.js';
 
 export class Header {
   constructor(container, eventBus, engine, canvas) {
@@ -68,6 +70,9 @@ export class Header {
         <button class="header-btn import-btn" title="Import circuit from JSON file" aria-label="Import circuit">
           ${icon('upload', 'Import', { size: 14 })}
         </button>
+        <button class="header-btn verilog-btn" title="Export circuit as Verilog HDL" aria-label="Export Verilog">
+          ${icon('file-code', 'Verilog', { size: 14 })}
+        </button>
         <button class="header-btn theme-toggle-btn" title="Toggle theme (dark/light/high-contrast)" aria-label="Toggle theme">
           ${icon('moon', '', { size: 14 })}
         </button>
@@ -97,6 +102,7 @@ export class Header {
     this.undoBtn = this.element.querySelector('.undo-btn');
     this.redoBtn = this.element.querySelector('.redo-btn');
     this.truthTableBtn = this.element.querySelector('.truth-table-btn');
+    this.verilogBtn = this.element.querySelector('.verilog-btn');
 
     this.runBtn.addEventListener('click', () => {
       this.engine.run();
@@ -170,28 +176,32 @@ export class Header {
     this.saveBtn.addEventListener('click', () => {
       const state = Serializer.exportState(this.engine);
       localStorage.setItem('dflow-project', JSON.stringify(state));
+      this.eventBus.emit('project-saved');
       if (this.canvas) this.canvas.showToast('Project saved!', 'success');
       else alert('Project saved to localStorage.');
     });
 
-    // Load
-    this.loadBtn.addEventListener('click', () => {
+    // Load (uses themed ConfirmDialog)
+    this.loadBtn.addEventListener('click', async () => {
       const saved = localStorage.getItem('dflow-project');
       if (!saved) {
         if (this.canvas) this.canvas.showToast('No saved project found', 'warning');
         else alert('No saved project found.');
         return;
       }
-      if (confirm('Load saved project? This will replace the current circuit.')) {
-        try {
-          const data = JSON.parse(saved);
-          Serializer.importState(data, this.engine, this.canvas, this.factory);
-          if (this.canvas) this.canvas.showToast('Project loaded!', 'success');
-        } catch (e) {
-          console.error(e);
-          if (this.canvas) this.canvas.showToast('Failed to load project', 'error');
-          else alert('Failed to load project.');
-        }
+      const confirmed = await ConfirmDialog.show(
+        'Load saved project? This will replace the current circuit.',
+        { title: 'Load Project', confirmText: 'Load', confirmClass: 'confirm-dialog-btn-danger' }
+      );
+      if (!confirmed) return;
+      try {
+        const data = JSON.parse(saved);
+        Serializer.importState(data, this.engine, this.canvas, this.factory);
+        if (this.canvas) this.canvas.showToast('Project loaded!', 'success');
+      } catch (e) {
+        console.error(e);
+        if (this.canvas) this.canvas.showToast('Failed to load project', 'error');
+        else alert('Failed to load project.');
       }
     });
 
@@ -232,6 +242,23 @@ export class Header {
       };
       input.click();
     });
+
+    // Export Verilog
+    if (this.verilogBtn) {
+      this.verilogBtn.addEventListener('click', () => {
+        if (this.engine.components.size === 0) {
+          if (this.canvas) this.canvas.showToast('No circuit to export', 'warning');
+          return;
+        }
+        try {
+          VerilogExporter.download(this.engine);
+          if (this.canvas) this.canvas.showToast('Verilog file exported!', 'success');
+        } catch (err) {
+          console.error('Verilog export failed:', err);
+          if (this.canvas) this.canvas.showToast('Verilog export failed', 'error');
+        }
+      });
+    }
   }
 
   _initTheme() {
@@ -320,9 +347,13 @@ export class Header {
       item.appendChild(name);
       item.appendChild(desc);
 
-      item.addEventListener('click', () => {
+      item.addEventListener('click', async () => {
         if (this.engine.components.size > 0) {
-          if (!confirm('Loading this example will replace your current circuit. Continue?')) return;
+          const confirmed = await ConfirmDialog.show(
+            'Loading this example will replace your current circuit. Continue?',
+            { title: 'Load Example', confirmText: 'Load', confirmClass: 'confirm-dialog-btn-danger' }
+          );
+          if (!confirmed) return;
         }
         try {
           const data = ex.data();
