@@ -71,7 +71,8 @@ export class ComponentLayoutPolicy {
   static getInputPosition(comp, inputIndex) {
     const dims = this.computeDimensions(comp.inputs.length, comp.outputs.length, comp.type);
     const localY = this.getInputY(inputIndex, comp.inputs.length, dims.height);
-    return this._localToWorld(comp, 0, localY);
+    // Input connectors are offset 1 grid size to the left of the component body
+    return this._localToWorld(comp, -this.GRID, localY);
   }
 
   /**
@@ -85,7 +86,8 @@ export class ComponentLayoutPolicy {
   static getOutputPosition(comp, outputIndex) {
     const dims = this.computeDimensions(comp.inputs.length, comp.outputs.length, comp.type);
     const localY = this.getOutputY(outputIndex, comp.outputs.length, dims.height);
-    return this._localToWorld(comp, dims.width, localY);
+    // Output connectors are offset 1 grid size to the right of the component body
+    return this._localToWorld(comp, dims.width + this.GRID, localY);
   }
 
   /**

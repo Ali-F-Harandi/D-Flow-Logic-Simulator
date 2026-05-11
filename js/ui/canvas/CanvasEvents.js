@@ -38,6 +38,10 @@ export class CanvasEvents {
     this._lastClickTime = 0;
     this._lastClickTarget = null;
 
+    // Track pending add-point from mousedown to prevent double-add on dblclick
+    this._pendingAddPointTimer = null;
+    this._pointAddedViaMousedown = false;
+
     // Track hovered wire for highlight effects
     this._hoveredWireId = null;
 
@@ -75,7 +79,17 @@ export class CanvasEvents {
           if (hit.type === 'control') {
             this.wiring._wireEditHandler.startDrag(hit.wireId, hit.pointIndex, e.clientX, e.clientY);
           } else if (hit.type === 'add') {
-            this.wiring._wireEditHandler.addPointAtSegment(hit.wireId, hit.afterIndex, e.clientX, e.clientY);
+            // Delay add-point by 300ms to allow dblclick to cancel it
+            // This prevents double-add when user double-clicks near a "+" handle
+            const wireId = hit.wireId;
+            const afterIndex = hit.afterIndex;
+            const cx = e.clientX;
+            const cy = e.clientY;
+            if (this._pendingAddPointTimer) clearTimeout(this._pendingAddPointTimer);
+            this._pendingAddPointTimer = setTimeout(() => {
+              this.wiring._wireEditHandler.addPointAtSegment(wireId, afterIndex, cx, cy);
+              this._pendingAddPointTimer = null;
+            }, 300);
           }
           return;
         }
@@ -273,6 +287,12 @@ export class CanvasEvents {
 
     // Double-click on wire to add waypoint or trace net
     this.element.addEventListener('dblclick', (e) => {
+      // Cancel any pending add-point from mousedown (prevent double-add)
+      if (this._pendingAddPointTimer) {
+        clearTimeout(this._pendingAddPointTimer);
+        this._pendingAddPointTimer = null;
+      }
+
       const wireEl = e.target.closest('g[data-wire-id]');
       if (!wireEl) return;
 

@@ -28,7 +28,7 @@ export class Toolbar {
     });
 
     // Auto-reroute on drop toggle
-    this._autoReroute = true;
+    this._autoReroute = false;
     this.element.querySelector('#auto-reroute-btn').addEventListener('click', () => {
       this._autoReroute = !this._autoReroute;
       const btn = this.element.querySelector('#auto-reroute-btn');
@@ -66,7 +66,7 @@ export class Toolbar {
       <button id="nl-btn" class="toolbar-btn">Netlist</button>
       <div class="toolbar-separator"></div>
       <button id="reroute-btn" class="toolbar-btn toolbar-btn-accent" title="Reroute all wires (Bézier)">Reroute Wires</button>
-      <button id="auto-reroute-btn" class="toolbar-btn toolbar-btn-accent" title="Toggle automatic wire rerouting after component drop">Auto-Reroute: ON</button>
+      <button id="auto-reroute-btn" class="toolbar-btn toolbar-btn-muted" title="Toggle automatic wire rerouting after component drop">Auto-Reroute: OFF</button>
       <button id="validate-btn" class="toolbar-btn" title="Validate circuit for common issues">Validate</button>
       <button id="clear-all-btn" class="toolbar-btn" title="Clear all components and wires from the canvas">Clear All</button>
       <label class="speed-label" for="speed-slider">Speed: <input type="range" id="speed-slider" name="speed-slider" min="50" max="1000" value="850" step="50"></label>

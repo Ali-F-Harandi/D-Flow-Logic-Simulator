@@ -33,7 +33,7 @@ export class CanvasWiring {
     this._previewThrottleTimer    = null;
     this._previewThrottleInterval = 50;
 
-    this.autoRerouteOnDrop = true;
+    this.autoRerouteOnDrop = false;
 
     // Wire edit handler
     this._wireEditHandler = null;

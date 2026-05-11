@@ -11,6 +11,7 @@
   user-select: none;
   cursor: grab;
   transition: box-shadow 0.2s, border-color 0.2s;
+  overflow: visible; /* Allow connector lines/dots to extend beyond component bounds */
   /* width & height set dynamically by each component */
   /* Feature 1 & 2: Rotation/Mirror transform support */
   transform-origin: center center;
@@ -67,8 +68,14 @@
   z-index: 2;
   transition: transform 0.1s, box-shadow 0.1s;
 }
-.connector.input  { left: -4px; }
-.connector.output { right: -4px; }
+/* Note: .connector.input/output positions are set via inline styles in _createConnectorBlock,
+   which now offsets them by 1 grid size from the component body edge. */
+
+/* Connector line — short line connecting dot to component body */
+.connector-line {
+  pointer-events: none;
+  z-index: 1;
+}
 
 /*
  * Touch-friendly hit area: on touch devices the visual dot stays small (8px)

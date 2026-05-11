@@ -151,7 +151,20 @@ export class Component {
     dots.forEach(dot => {
       const nid = dot.dataset.node;
       const node = [...this.inputs, ...this.outputs].find(n => n.id === nid);
-      if (node) dot.style.backgroundColor = this._getStateColor(node.value);
+      if (node) {
+        const color = this._getStateColor(node.value);
+        dot.style.backgroundColor = color;
+        // Also update the connector line color to match the dot state
+        const block = dot.parentElement;
+        if (block) {
+          const line = block.querySelector('.connector-line');
+          if (line) {
+            line.style.backgroundColor = node.value === true
+              ? 'var(--color-success, #00cc66)'
+              : 'var(--color-border, #888)';
+          }
+        }
+      }
     });
     this._updateBorderState();
   }
@@ -214,67 +227,105 @@ export class Component {
     }
   }
 
+  /**
+   * Create a connector block with dot, label, and a short line connecting
+   * the dot to the component body edge.
+   *
+   * Layout:
+   *   Input:  [dot]---line---| component body |  label
+   *   Output:        label  | component body |---line---[dot]
+   *
+   * The dot is offset 1 grid size (GRID_SIZE) from the component body,
+   * connected by a visible line. The label stays near the component body.
+   */
   _createConnectorBlock(node, isInput, labelText, dotCenterY) {
     const block = document.createElement('div');
     block.style.position = 'absolute';
     block.style.top = `${dotCenterY - 4}px`;
-    if (isInput) block.style.left = '0px';
-    else block.style.right = '0px';
 
     // Feature 4: Check if this input is negated — widen block for inversion bubble
     const isNegated = isInput && this.isInputNegated && this.isInputNegated(
       this.inputs.findIndex(inp => inp.id === node.id)
     );
-    const blockWidth = isNegated ? 48 : 36;
-    block.style.width = `${blockWidth}px`;
+
+    // Base width for label area + GRID_SIZE for the offset line
+    const baseWidth = isNegated ? 48 : 36;
+    const totalWidth = baseWidth + GRID_SIZE;
+
+    if (isInput) {
+      block.style.left = `-${GRID_SIZE}px`;
+    } else {
+      block.style.right = `-${GRID_SIZE}px`;
+    }
+    block.style.width = `${totalWidth}px`;
     block.style.height = '8px';
 
-    // Feature 4: Add inversion bubble if this input is negated
+    // ─── Connector line (from component body edge to dot area) ───
+    const line = document.createElement('div');
+    line.className = 'connector-line';
+    line.style.position = 'absolute';
+    line.style.top = '3px';   // vertically center in 8px height (line is 2px)
+    line.style.height = '2px';
+    line.style.backgroundColor = 'var(--color-border, #888)';
+    line.style.pointerEvents = 'none';
+
+    if (isInput) {
+      if (isNegated) {
+        // Negated: dot at left: -10px → right edge at x=-2; bubble at left: GRID_SIZE-10
+        // Line from dot right edge to bubble left edge
+        line.style.left = '0px';
+        line.style.width = `${GRID_SIZE - 10}px`;
+      } else {
+        // Standard: dot at left: -4px → right edge at x=4; component edge at GRID_SIZE
+        line.style.left = '4px';
+        line.style.width = `${GRID_SIZE - 4}px`;
+      }
+    } else {
+      // Output line from component body edge to dot area
+      // Component body edge at x = baseWidth relative to block
+      // Dot at right: -4px → left edge at totalWidth - 4
+      line.style.left = `${baseWidth}px`;
+      line.style.width = `${GRID_SIZE - 4}px`;
+    }
+    block.appendChild(line);
+
+    // ─── Inversion bubble (if negated input) ───
     if (isNegated) {
       const bubble = document.createElement('div');
       bubble.className = 'inversion-bubble input-bubble';
+      // Position bubble at the component body edge (GRID_SIZE from block left)
+      bubble.style.left = `${GRID_SIZE - 10}px`;
       block.appendChild(bubble);
-
-      // Shift the dot outward to make room for the bubble
-      const dot = document.createElement('div');
-      dot.className = `connector ${isInput ? 'input' : 'output'}`;
-      dot.dataset.node = node.id;
-      dot.style.backgroundColor = this._getStateColor(node.value);
-      dot.style.position = 'absolute';
-      dot.style.top = '0px';
-      if (isInput) dot.style.left = '-10px';
-      else dot.style.right = '-4px';
-      block.appendChild(dot);
-
-      const label = document.createElement('span');
-      label.className = 'connector-label';
-      label.textContent = labelText;
-      label.style.position = 'absolute';
-      label.style.top = '-1px';
-      if (isInput) label.style.left = '18px';
-      else label.style.right = '8px';
-      block.appendChild(label);
-    } else {
-      // Standard (non-negated) connector
-      const dot = document.createElement('div');
-      dot.className = `connector ${isInput ? 'input' : 'output'}`;
-      dot.dataset.node = node.id;
-      dot.style.backgroundColor = this._getStateColor(node.value);
-      dot.style.position = 'absolute';
-      dot.style.top = '0px';
-      if (isInput) dot.style.left = '-4px';
-      else dot.style.right = '-4px';
-      block.appendChild(dot);
-
-      const label = document.createElement('span');
-      label.className = 'connector-label';
-      label.textContent = labelText;
-      label.style.position = 'absolute';
-      label.style.top = '-1px';
-      if (isInput) label.style.left = '8px';
-      else label.style.right = '8px';
-      block.appendChild(label);
     }
+
+    // ─── Connector dot ───
+    const dot = document.createElement('div');
+    dot.className = `connector ${isInput ? 'input' : 'output'}`;
+    dot.dataset.node = node.id;
+    dot.style.backgroundColor = this._getStateColor(node.value);
+    dot.style.position = 'absolute';
+    dot.style.top = '0px';
+    if (isInput) {
+      dot.style.left = isNegated ? '-10px' : '-4px';
+    } else {
+      dot.style.right = '-4px';
+    }
+    block.appendChild(dot);
+
+    // ─── Label ───
+    const label = document.createElement('span');
+    label.className = 'connector-label';
+    label.textContent = labelText;
+    label.style.position = 'absolute';
+    label.style.top = '-1px';
+    if (isInput) {
+      // Label stays near the component body (after the line area)
+      label.style.left = `${GRID_SIZE + (isNegated ? 18 : 8)}px`;
+    } else {
+      // Label stays near the component body (before the line area)
+      label.style.right = `${GRID_SIZE + 8}px`;
+    }
+    block.appendChild(label);
 
     return block;
   }
