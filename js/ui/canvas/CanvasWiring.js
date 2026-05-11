@@ -21,7 +21,8 @@ import { SpatialHash } from '../../utils/SpatialHash.js';
 import { generateId } from '../../utils/IdGenerator.js';
 import { ConnectWireCommand, DisconnectWireCommand } from '../../utils/UndoManager.js';
 import {
-  GRID_SIZE, WIRE_DRAW_PREVIEW_COLOR, WIRE_PIN_MAGNET_RADIUS, SPATIAL_HASH_CELL_SIZE
+  GRID_SIZE, WIRE_DRAW_PREVIEW_COLOR, WIRE_PIN_MAGNET_RADIUS, SPATIAL_HASH_CELL_SIZE,
+  WIRE_DEFAULT_ROUTING_MODE
 } from '../../config.js';
 
 export class CanvasWiring {
@@ -197,7 +198,7 @@ export class CanvasWiring {
 
   addVisualWire(engineId, fromNodeId, toNodeId) {
     const visualId = generateId('wire');
-    const wire = new Wire(visualId, { nodeId: fromNodeId }, { nodeId: toNodeId });
+    const wire = new Wire(visualId, { nodeId: fromNodeId }, { nodeId: toNodeId }, Wire.MODE_BEZIER);
     wire.engineId = engineId;
     this._renderWire(wire);
     this.wires.push(wire);
@@ -312,6 +313,44 @@ export class CanvasWiring {
         continue;
       }
 
+      // Skip Bézier wires — just recompute their curve (fast, no A* needed)
+      if (wire.routingMode === Wire.MODE_BEZIER) {
+        const fromDir = Wire.getPortDirection(sourceId);
+        const toDir   = Wire.getPortDirection(targetId);
+        const bezierPoints = this._router.routeBezier(fromPos, toPos, { fromDir, toDir });
+        wire.pathPoints = bezierPoints;
+
+        const d = Wire.pointsToSVGPath(bezierPoints, true);
+
+        if (wire.element && bezierPoints.length >= 2) {
+          wire.element.querySelector('.wire-visual').setAttribute('d', d);
+          wire.element.querySelector('.wire-hitarea').setAttribute('d', d);
+
+          const glowPath = wire.element.querySelector('.wire-glow');
+          if (glowPath) glowPath.setAttribute('d', d);
+
+          const junctionDot = wire.element.querySelector('.wire-junction');
+          if (junctionDot) {
+            junctionDot.setAttribute('cx', fromPos.x);
+            junctionDot.setAttribute('cy', fromPos.y);
+          }
+
+          const sourceDot = wire.element.querySelector('.wire-endpoint-source');
+          if (sourceDot) {
+            sourceDot.setAttribute('cx', fromPos.x);
+            sourceDot.setAttribute('cy', fromPos.y);
+          }
+          const targetDot = wire.element.querySelector('.wire-endpoint-target');
+          if (targetDot) {
+            targetDot.setAttribute('cx', toPos.x);
+            targetDot.setAttribute('cy', toPos.y);
+          }
+
+          wire.updateOccupiedCells(d);
+        }
+        continue;
+      }
+
       // Channel is now keyed by wire.id (fan-out fix: each wire gets a distinct channel)
       const opts = {
         channelX: channelMap.get(wire.id),
@@ -421,15 +460,29 @@ export class CanvasWiring {
     path.classList.add('wire-preview');
 
     const fromPos = this.positionCache.getPosition(nodeId);
-    path.setAttribute('d', Wire.computePath(fromPos, fromPos, {
-      minClearY: this.core.getBusBarY(this._getComponents())
-    }));
+    // Use Bézier path for preview
+    if (WIRE_DEFAULT_ROUTING_MODE === 'bezier') {
+      const fromDir = Wire.getPortDirection(nodeId);
+      path.setAttribute('d', Wire.computeBezierPath(fromPos, fromPos, fromDir, { x: -1, y: 0 }));
+    } else {
+      path.setAttribute('d', Wire.computePath(fromPos, fromPos, {
+        minClearY: this.core.getBusBarY(this._getComponents())
+      }));
+    }
 
     this.core.svgLayer.appendChild(path);
     this.wiring.tempPath = path;
   }
 
   computePreviewPath(fromPos, toPos) {
+    // Use Bézier routing for preview when in Bézier mode
+    if (WIRE_DEFAULT_ROUTING_MODE === 'bezier') {
+      const sourceId = this.wiring?.fromNodeId;
+      const fromDir = Wire.getPortDirection(sourceId);
+      const toDir   = { x: -1, y: 0 }; // Preview target is typically an input pin
+      return Wire.computeBezierPath(fromPos, toPos, fromDir, toDir);
+    }
+
     const components = this._getComponents();
     const busY  = this.core.getBusBarY(components);
     const topY  = this.core.getTopClearY(components);
@@ -484,6 +537,13 @@ export class CanvasWiring {
         this.wiring.tempPath.setAttribute('d', d);
       }
     }, this._previewThrottleInterval);
+
+    // Immediate update for Bézier (fast computation, no A* overhead)
+    if (WIRE_DEFAULT_ROUTING_MODE === 'bezier') {
+      const sourceId = this.wiring?.fromNodeId;
+      const fromDir = Wire.getPortDirection(sourceId);
+      return Wire.computeBezierPath(fromPos, toPos, fromDir, { x: -1, y: 0 });
+    }
 
     const busY = this.core.getBusBarY(this._getComponents());
     return Wire.computePath(fromPos, toPos, { minClearY: busY });
@@ -867,5 +927,25 @@ export class CanvasWiring {
       return Array.from(this.engine.components.values());
     }
     return [];
+  }
+
+  /* ================================================================
+   *  Port Direction Helper
+   * ================================================================ */
+
+  /**
+   * Get port direction vectors for a source-target pair.
+   * Output pins have direction (1, 0) → wire exits going RIGHT
+   * Input pins have direction (-1, 0) → wire arrives from the LEFT
+   *
+   * @param {string} sourceNodeId
+   * @param {string} targetNodeId
+   * @returns {{ fromDir: {x:number,y:number}, toDir: {x:number,y:number} }}
+   */
+  getPortDirections(sourceNodeId, targetNodeId) {
+    return {
+      fromDir: Wire.getPortDirection(sourceNodeId),
+      toDir:   Wire.getPortDirection(targetNodeId)
+    };
   }
 }

@@ -5,7 +5,7 @@ import {
   DeleteComponentCommand
 } from '../../utils/UndoManager.js';
 import { ComponentLayoutPolicy } from '../../core/ComponentLayoutPolicy.js';
-import { WIRE_PIN_MAGNET_RADIUS, GRID_SIZE } from '../../config.js';
+import { WIRE_PIN_MAGNET_RADIUS, GRID_SIZE, WIRE_DEFAULT_ROUTING_MODE } from '../../config.js';
 
 export class CanvasEvents {
   constructor(
@@ -194,17 +194,26 @@ export class CanvasEvents {
           this._highlightConnector(this._lastMagnetNodeId, false);
         }
         this._lastMagnetNodeId = magnetResult?.nodeId || null;
-        const busY = this.core.getBusBarY(this.compManager.components);
-        try {
-          const router = this.wiring._getRouter();
-          const previewD = Wire.computePath(fromPos, toPos, {
-            minClearY: busY,
-            router,
-            sourceNodeId: this.wiring.wiring.fromNodeId
-          });
+
+        // Use Bézier path for preview when in Bézier mode
+        if (WIRE_DEFAULT_ROUTING_MODE === 'bezier') {
+          const fromDir = Wire.getPortDirection(this.wiring.wiring.fromNodeId);
+          const toDir = magnetResult ? Wire.getPortDirection(magnetResult.nodeId) : { x: -1, y: 0 };
+          const previewD = Wire.computeBezierPath(fromPos, toPos, fromDir, toDir);
           this.wiring.wiring.tempPath.setAttribute('d', previewD);
-        } catch (e) {
-          this.wiring.wiring.tempPath.setAttribute('d', Wire.computePath(fromPos, toPos, { minClearY: busY }));
+        } else {
+          const busY = this.core.getBusBarY(this.compManager.components);
+          try {
+            const router = this.wiring._getRouter();
+            const previewD = Wire.computePath(fromPos, toPos, {
+              minClearY: busY,
+              router,
+              sourceNodeId: this.wiring.wiring.fromNodeId
+            });
+            this.wiring.wiring.tempPath.setAttribute('d', previewD);
+          } catch (e) {
+            this.wiring.wiring.tempPath.setAttribute('d', Wire.computePath(fromPos, toPos, { minClearY: busY }));
+          }
         }
       }
 

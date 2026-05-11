@@ -82,7 +82,7 @@
 
 /* Wire visual path styling */
 .wire-visual {
-  transition: stroke-width 0.1s ease, stroke 0.15s ease;
+  transition: stroke 0.15s ease, stroke-width 0.15s ease;
 }
 
 /* Wire hit area (invisible, wide for easy clicking) */

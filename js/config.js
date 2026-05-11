@@ -25,6 +25,12 @@ export const WIRE_HOVER_HIGHLIGHT     = '#7fffd4';
 export const WIRE_ERROR_COLOR         = '#ff4444';
 export const WIRE_PIN_MAGNET_RADIUS   = 30;    // Auto-magnet snap distance (pixels)
 
+// ─── Bézier Wire Routing Constants (OpenCircuits-style) ───
+export const WIRE_BEZIER_CONTROL_FACTOR = 0.5;   // Control distance as fraction of port distance
+export const WIRE_BEZIER_MIN_CONTROL    = 40;     // Minimum control point distance (px)
+export const WIRE_BEZIER_MAX_CONTROL    = 200;    // Maximum control point distance (px)
+export const WIRE_DEFAULT_ROUTING_MODE  = 'bezier'; // 'bezier' | 'manhattan' | 'direct'
+
 // ─── Spatial Hash Constants ───
 export const SPATIAL_HASH_CELL_SIZE   = GRID_SIZE * 4;
 

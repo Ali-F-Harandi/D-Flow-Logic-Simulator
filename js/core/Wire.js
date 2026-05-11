@@ -3,7 +3,7 @@
  *
  * Each wire stores:
  *   - sourceNode / targetNode : the connected node references
- *   - routingMode             : 'direct' | 'manhattan' | 'manual'
+ *   - routingMode             : 'direct' | 'manhattan' | 'manual' | 'bezier'
  *   - controlPoints           : user-defined intermediate points (Manual mode)
  *   - pathPoints              : the computed / rendered path points
  *   - isAutoRouted            : whether this wire was auto-routed by A*
@@ -23,7 +23,9 @@
 
 import {
   WIRE_VISUAL_WIDTH, WIRE_HIT_WIDTH, JUNCTION_RADIUS, GRID_SIZE,
-  WIRE_DRAW_GLOW_COLOR, WIRE_DRAW_GLOW_WIDTH, WIRE_ERROR_COLOR
+  WIRE_DRAW_GLOW_COLOR, WIRE_DRAW_GLOW_WIDTH, WIRE_ERROR_COLOR,
+  WIRE_BEZIER_CONTROL_FACTOR, WIRE_BEZIER_MIN_CONTROL, WIRE_BEZIER_MAX_CONTROL,
+  WIRE_DEFAULT_ROUTING_MODE
 } from '../config.js';
 
 export class Wire {
@@ -32,12 +34,13 @@ export class Wire {
   static MODE_DIRECT   = 'direct';
   static MODE_MANHATTAN = 'manhattan';
   static MODE_MANUAL   = 'manual';
+  static MODE_BEZIER   = 'bezier';
 
   /* ================================================================
    *  Constructor
    * ================================================================ */
 
-  constructor(id, sourceNode, targetNode, routingMode = Wire.MODE_MANHATTAN) {
+  constructor(id, sourceNode, targetNode, routingMode = Wire.MODE_BEZIER) {
     this.id           = id;
     this.sourceNode   = sourceNode;           // { nodeId }
     this.targetNode   = targetNode;           // { nodeId }
@@ -52,8 +55,8 @@ export class Wire {
     this._lastSourceValue = undefined;        // For signal transition detection
 
     // ─── New: Auto-route tracking ───
-    this.isAutoRouted = (routingMode === Wire.MODE_MANHATTAN);
-    this._routedMethod = 'manhattan';         // 'manhattan' | 'astar' | 'fallback'
+    this.isAutoRouted = (routingMode === Wire.MODE_MANHATTAN || routingMode === Wire.MODE_BEZIER);
+    this._routedMethod = routingMode === Wire.MODE_BEZIER ? 'bezier' : 'manhattan'; // 'bezier' | 'manhattan' | 'astar' | 'fallback'
     this._isRoutingFallback = false;          // True when A* failed and fell back
 
     // ─── New: Visual states ───
@@ -137,6 +140,17 @@ export class Wire {
    * @returns {Array<{x:number,y:number}>}
    */
   computePathPoints(fromPos, toPos, router, opts = {}) {
+    if (this.routingMode === Wire.MODE_BEZIER) {
+      const fromDir = opts.fromDir || Wire.getPortDirection(this.sourceNode.nodeId);
+      const toDir   = opts.toDir   || Wire.getPortDirection(this.targetNode.nodeId);
+      const points  = router.route(fromPos, toPos, 'bezier', {
+        ...opts,
+        fromDir,
+        toDir
+      });
+      this.pathPoints = points;
+      return points;
+    }
     const points = router.route(fromPos, toPos, this.routingMode, {
       ...opts,
       controlPoints: this.controlPoints
@@ -157,10 +171,19 @@ export class Wire {
    * @param {string}  [opts.targetNodeId]
    * @param {number}  [opts.minClearY]    – bus-bar Y (backward compat)
    * @param {number}  [opts.maxClearY]    – top-bar Y (backward compat)
+   * @param {{x:number,y:number}} [opts.fromDir] – Source port direction
+   * @param {{x:number,y:number}} [opts.toDir]   – Target port direction
    * @returns {string} SVG path "d" attribute
    */
   static computePath(fromPos, toPos, opts = {}) {
-    const { router, sourceNodeId, targetNodeId, minClearY, maxClearY } = opts;
+    const { router, sourceNodeId, targetNodeId, minClearY, maxClearY, fromDir, toDir } = opts;
+
+    // ── Bézier mode: compute cubic Bézier curve ──
+    if (WIRE_DEFAULT_ROUTING_MODE === 'bezier') {
+      const fd = fromDir || Wire.getPortDirection(sourceNodeId);
+      const td = toDir   || Wire.getPortDirection(targetNodeId);
+      return Wire.computeBezierPath(fromPos, toPos, fd, td);
+    }
 
     // Try using the injected Router instance
     if (router) {
@@ -215,14 +238,73 @@ export class Wire {
   }
 
   /* ================================================================
+   *  Bézier Path Computation (OpenCircuits-style)
+   * ================================================================ */
+
+  /**
+   * Get port direction vector based on node ID.
+   * Output pins have direction (1, 0) → wire exits going RIGHT
+   * Input pins have direction (-1, 0) → wire arrives from the LEFT
+   *
+   * @param {string} nodeId
+   * @returns {{x:number, y:number}}
+   */
+  static getPortDirection(nodeId) {
+    if (nodeId && nodeId.includes('.output.')) return { x: 1, y: 0 };
+    return { x: -1, y: 0 };
+  }
+
+  /**
+   * Compute a cubic Bézier SVG path string from two port positions and their directions.
+   * If ports are approximately aligned on the same axis, use a straight line.
+   *
+   * @param {{x:number,y:number}} fromPos
+   * @param {{x:number,y:number}} toPos
+   * @param {{x:number,y:number}} [fromDir] – Source port direction (default {x:1, y:0})
+   * @param {{x:number,y:number}} [toDir]   – Target port direction (default {x:-1, y:0})
+   * @returns {string} SVG path "d" attribute
+   */
+  static computeBezierPath(fromPos, toPos, fromDir, toDir) {
+    const sx = fromPos.x, sy = fromPos.y;
+    const tx = toPos.x, ty = toPos.y;
+
+    // If approximately aligned, use straight line
+    if (Math.abs(sx - tx) < 1 || Math.abs(sy - ty) < 1) {
+      return `M ${sx} ${sy} L ${tx} ${ty}`;
+    }
+
+    // Calculate proportional control distance
+    const dist = Math.hypot(tx - sx, ty - sy);
+    const controlDist = Math.max(
+      WIRE_BEZIER_MIN_CONTROL,
+      Math.min(WIRE_BEZIER_MAX_CONTROL, dist * WIRE_BEZIER_CONTROL_FACTOR)
+    );
+
+    const fd = fromDir || { x: 1, y: 0 };
+    const td = toDir || { x: -1, y: 0 };
+
+    const cx1 = sx + fd.x * controlDist;
+    const cy1 = sy + fd.y * controlDist;
+    const cx2 = tx + td.x * controlDist;
+    const cy2 = ty + td.y * controlDist;
+
+    return `M ${sx} ${sy} C ${cx1} ${cy1} ${cx2} ${cy2} ${tx} ${ty}`;
+  }
+
+  /* ================================================================
    *  SVG Path Helpers
    * ================================================================ */
 
   /**
    * Convert an array of {x,y} points to an SVG path "d" string.
+   * For Bézier mode, if points have 4 elements, generates a cubic Bézier.
+   * For Manhattan/Direct/Manual, generates an L-based polyline.
    */
-  static pointsToSVGPath(points) {
+  static pointsToSVGPath(points, isBezier = false) {
     if (!points || points.length < 2) return '';
+    if (isBezier && points.length === 4) {
+      return `M ${points[0].x} ${points[0].y} C ${points[1].x} ${points[1].y} ${points[2].x} ${points[2].y} ${points[3].x} ${points[3].y}`;
+    }
     let d = `M ${points[0].x} ${points[0].y}`;
     for (let i = 1; i < points.length; i++) {
       d += ` L ${points[i].x} ${points[i].y}`;
@@ -272,7 +354,23 @@ export class Wire {
 
     // Compute path
     let d;
-    if (router && typeof router.route === 'function') {
+    if (this.routingMode === Wire.MODE_BEZIER) {
+      const fromDir = Wire.getPortDirection(this.sourceNode.nodeId);
+      const toDir   = Wire.getPortDirection(this.targetNode.nodeId);
+      d = Wire.computeBezierPath(fromPos, toPos, fromDir, toDir);
+      // Store Bézier control points as pathPoints
+      const dist = Math.hypot(toPos.x - fromPos.x, toPos.y - fromPos.y);
+      const controlDist = Math.max(
+        WIRE_BEZIER_MIN_CONTROL,
+        Math.min(WIRE_BEZIER_MAX_CONTROL, dist * WIRE_BEZIER_CONTROL_FACTOR)
+      );
+      this.pathPoints = [
+        { x: fromPos.x, y: fromPos.y },
+        { x: fromPos.x + fromDir.x * controlDist, y: fromPos.y + fromDir.y * controlDist },
+        { x: toPos.x + toDir.x * controlDist, y: toPos.y + toDir.y * controlDist },
+        { x: toPos.x, y: toPos.y }
+      ];
+    } else if (router && typeof router.route === 'function') {
       const points = this.computePathPoints(fromPos, toPos, router, { busY: busBarY });
       d = Wire.pointsToSVGPath(points);
     } else {
@@ -397,7 +495,23 @@ export class Wire {
 
     // Compute new path
     let d;
-    if (router && typeof router.route === 'function') {
+    if (this.routingMode === Wire.MODE_BEZIER) {
+      const fromDir = Wire.getPortDirection(this.sourceNode.nodeId);
+      const toDir   = Wire.getPortDirection(this.targetNode.nodeId);
+      d = Wire.computeBezierPath(fromPos, toPos, fromDir, toDir);
+      // Update pathPoints
+      const dist = Math.hypot(toPos.x - fromPos.x, toPos.y - fromPos.y);
+      const controlDist = Math.max(
+        WIRE_BEZIER_MIN_CONTROL,
+        Math.min(WIRE_BEZIER_MAX_CONTROL, dist * WIRE_BEZIER_CONTROL_FACTOR)
+      );
+      this.pathPoints = [
+        { x: fromPos.x, y: fromPos.y },
+        { x: fromPos.x + fromDir.x * controlDist, y: fromPos.y + fromDir.y * controlDist },
+        { x: toPos.x + toDir.x * controlDist, y: toPos.y + toDir.y * controlDist },
+        { x: toPos.x, y: toPos.y }
+      ];
+    } else if (router && typeof router.route === 'function') {
       const points = this.computePathPoints(fromPos, toPos, router, { busY: busBarY });
       d = Wire.pointsToSVGPath(points);
     } else {
@@ -444,6 +558,45 @@ export class Wire {
   updateEndpointsStable(fromPos, toPos) {
     if (!this.element) return;
     if (this._isLocked) return;
+
+    // For Bézier mode, just recompute the full Bézier path (fast, no pathfinding)
+    if (this.routingMode === Wire.MODE_BEZIER) {
+      const fromDir = Wire.getPortDirection(this.sourceNode.nodeId);
+      const toDir   = Wire.getPortDirection(this.targetNode.nodeId);
+      const d = Wire.computeBezierPath(fromPos, toPos, fromDir, toDir);
+      const dist = Math.hypot(toPos.x - fromPos.x, toPos.y - fromPos.y);
+      const controlDist = Math.max(
+        WIRE_BEZIER_MIN_CONTROL,
+        Math.min(WIRE_BEZIER_MAX_CONTROL, dist * WIRE_BEZIER_CONTROL_FACTOR)
+      );
+      this.pathPoints = [
+        { x: fromPos.x, y: fromPos.y },
+        { x: fromPos.x + fromDir.x * controlDist, y: fromPos.y + fromDir.y * controlDist },
+        { x: toPos.x + toDir.x * controlDist, y: toPos.y + toDir.y * controlDist },
+        { x: toPos.x, y: toPos.y }
+      ];
+      this.element.querySelector('.wire-visual').setAttribute('d', d);
+      this.element.querySelector('.wire-hitarea').setAttribute('d', d);
+      const glowPath = this.element.querySelector('.wire-glow');
+      if (glowPath) glowPath.setAttribute('d', d);
+
+      const junctionDot = this.element.querySelector('.wire-junction');
+      if (junctionDot) {
+        junctionDot.setAttribute('cx', fromPos.x);
+        junctionDot.setAttribute('cy', fromPos.y);
+      }
+      const sourceDot = this.element.querySelector('.wire-endpoint-source');
+      if (sourceDot) {
+        sourceDot.setAttribute('cx', fromPos.x);
+        sourceDot.setAttribute('cy', fromPos.y);
+      }
+      const targetDot = this.element.querySelector('.wire-endpoint-target');
+      if (targetDot) {
+        targetDot.setAttribute('cx', toPos.x);
+        targetDot.setAttribute('cy', toPos.y);
+      }
+      return;
+    }
 
     if (this.pathPoints.length < 2) {
       const d = `M ${fromPos.x} ${fromPos.y} L ${toPos.x} ${toPos.y}`;
@@ -504,7 +657,8 @@ export class Wire {
   _applyPathPointsToSVG() {
     if (!this.element || this.pathPoints.length < 2) return;
 
-    const d = Wire.pointsToSVGPath(this.pathPoints);
+    const isBezier = this.routingMode === Wire.MODE_BEZIER;
+    const d = Wire.pointsToSVGPath(this.pathPoints, isBezier);
     this.element.querySelector('.wire-visual').setAttribute('d', d);
     this.element.querySelector('.wire-hitarea').setAttribute('d', d);
 
@@ -1050,5 +1204,25 @@ export class Wire {
   /** Store path points from SVG path data (legacy compat). */
   storePathPoints(d) {
     this.pathPoints = Wire.svgPathToPoints(d);
+  }
+
+  /* ================================================================
+   *  Bézier SVG Path Computation
+   * ================================================================ */
+
+  /**
+   * Compute the full Bézier SVG path string for this wire.
+   *
+   * @param {Function} getNodePosition – nodeId → {x,y}
+   * @returns {string} SVG path "d" attribute
+   */
+  computeBezierSVGPath(getNodePosition) {
+    const fromPos = getNodePosition(this.sourceNode.nodeId);
+    const toPos   = getNodePosition(this.targetNode.nodeId);
+    if (!fromPos || !toPos) return '';
+
+    const fromDir = Wire.getPortDirection(this.sourceNode.nodeId);
+    const toDir   = Wire.getPortDirection(this.targetNode.nodeId);
+    return Wire.computeBezierPath(fromPos, toPos, fromDir, toDir);
   }
 }

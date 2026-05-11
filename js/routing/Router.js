@@ -1,10 +1,11 @@
 /**
  * Router.js — Unified Routing Strategy Container (Enhanced)
  *
- * Four routing modes:
+ * Five routing modes:
  *   Direct    — straight line from source to target
  *   Manhattan — orthogonal path with 90° bends (heuristic)
  *   A*        — grid-based A* pathfinding with obstacle avoidance (NEW)
+ *   Bézier    — cubic Bézier curves based on port direction vectors (OpenCircuits-style)
  *   Manual    — user-defined control points, wire follows them exactly
  *
  * The A* mode uses StarRouter for automatic obstacle-avoiding routing,
@@ -14,7 +15,7 @@
  * Integration: inject a Router instance into CanvasWiring / Wire.render().
  */
 
-import { GRID_SIZE, ASTAR_BEND_PENALTY, ASTAR_WIRE_PENALTY, ASTAR_MAX_ITERATIONS, ASTAR_STEP_BACK, WIRE_NUDGE_SPACING, WIRE_NUDGE_MAX } from '../config.js';
+import { GRID_SIZE, ASTAR_BEND_PENALTY, ASTAR_WIRE_PENALTY, ASTAR_MAX_ITERATIONS, ASTAR_STEP_BACK, WIRE_NUDGE_SPACING, WIRE_NUDGE_MAX, WIRE_BEZIER_CONTROL_FACTOR, WIRE_BEZIER_MIN_CONTROL, WIRE_BEZIER_MAX_CONTROL } from '../config.js';
 import { StarRouter } from './StarRouter.js';
 import { WireNudger } from './WireNudger.js';
 import { OccupancyGrid } from './OccupancyGrid.js';
@@ -68,7 +69,7 @@ export class Router {
    *
    * @param {{x:number,y:number}} fromPos  – Source connector position (px)
    * @param {{x:number,y:number}} toPos    – Target connector position (px)
-   * @param {'direct'|'manhattan'|'manual'|'astar'} mode
+   * @param {'direct'|'manhattan'|'manual'|'astar'|'bezier'} mode
    * @param {Object} [opts]                – Mode-specific options
    * @returns {Array<{x:number,y:number}>} Ordered path points
    */
@@ -78,12 +79,10 @@ export class Router {
       case 'manhattan': return this.routeManhattan(fromPos, toPos, opts);
       case 'manual':   return this.routeManual(fromPos, toPos, opts.controlPoints || []);
       case 'astar':    return this.routeAStar(fromPos, toPos, opts);
+      case 'bezier':   return this.routeBezier(fromPos, toPos, opts);
       default:
-        // Default: use A* if enabled, otherwise Manhattan
-        if (this.useAStar && this._gridBuilt) {
-          return this.routeAStar(fromPos, toPos, opts);
-        }
-        return this.routeManhattan(fromPos, toPos, opts);
+        // Default: use Bézier if available, otherwise A* or Manhattan
+        return this.routeBezier(fromPos, toPos, opts);
     }
   }
 
@@ -244,6 +243,48 @@ export class Router {
     this._lastStats = this._starRouter.getLastStats();
 
     return points;
+  }
+
+  /* ================================================================
+   *  BÉZIER STRATEGY (OpenCircuits-style)
+   * ================================================================ */
+
+  /**
+   * Route a wire using cubic Bézier curves based on port direction vectors.
+   * No obstacle avoidance — simple, elegant curves.
+   *
+   * Control points are derived from port directions:
+   *   c1 = sourcePos + sourceDir * controlDistance
+   *   c2 = targetPos + targetDir * controlDistance
+   *
+   * @param {{x:number,y:number}} fromPos
+   * @param {{x:number,y:number}} toPos
+   * @param {Object}  [opts]
+   * @param {{x:number,y:number}} [opts.fromDir] – Source port direction (default {x:1, y:0})
+   * @param {{x:number,y:number}} [opts.toDir]   – Target port direction (default {x:-1, y:0})
+   * @returns {Array<{x:number,y:number}>} 4 points: [start, cp1, cp2, end]
+   */
+  routeBezier(fromPos, toPos, opts = {}) {
+    const fromDir = opts.fromDir || { x: 1, y: 0 };
+    const toDir   = opts.toDir   || { x: -1, y: 0 };
+
+    // If aligned, return simple line points
+    if (Math.abs(fromPos.x - toPos.x) < 1 || Math.abs(fromPos.y - toPos.y) < 1) {
+      return [{ x: fromPos.x, y: fromPos.y }, { x: toPos.x, y: toPos.y }];
+    }
+
+    const dist = Math.hypot(toPos.x - fromPos.x, toPos.y - fromPos.y);
+    const controlDist = Math.max(
+      WIRE_BEZIER_MIN_CONTROL,
+      Math.min(WIRE_BEZIER_MAX_CONTROL, dist * WIRE_BEZIER_CONTROL_FACTOR)
+    );
+
+    return [
+      { x: fromPos.x, y: fromPos.y },
+      { x: fromPos.x + fromDir.x * controlDist, y: fromPos.y + fromDir.y * controlDist },
+      { x: toPos.x + toDir.x * controlDist, y: toPos.y + toDir.y * controlDist },
+      { x: toPos.x, y: toPos.y }
+    ];
   }
 
   /* ================================================================
