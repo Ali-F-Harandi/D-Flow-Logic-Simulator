@@ -18,6 +18,7 @@
  */
 
 import { GRID_SIZE } from '../../config.js';
+import { Wire } from '../../core/Wire.js';
 import { AddWirePointCommand, RemoveWirePointCommand, MoveWirePointCommand } from '../../utils/UndoManager.js';
 
 export class WireEditHandler {
@@ -50,6 +51,9 @@ export class WireEditHandler {
 
   /**
    * Show control handles for a wire and hide them for others.
+   * Bézier wires do NOT show control handles — their path points are
+   * cubic Bézier control handles (not on-curve points), so dragging
+   * them would distort the curve in confusing ways.
    * @param {Wire} wire – The wire to show handles for, or null to hide all
    */
   setActiveWire(wire) {
@@ -59,6 +63,11 @@ export class WireEditHandler {
     this._activeWire = wire;
 
     if (wire) {
+      // Bézier wires: control point editing doesn't make sense
+      // (pathPoints[1] and [2] are cubic control handles, not on-curve)
+      if (wire.routingMode === Wire.MODE_BEZIER) {
+        return;
+      }
       wire.showControlHandles();
       if (!WireEditHandler._instructionShown && this.wiring.wires.length > 0) {
         WireEditHandler._instructionShown = true;

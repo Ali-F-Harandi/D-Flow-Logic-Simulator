@@ -17,6 +17,7 @@
  */
 
 import { GRID_SIZE } from '../config.js';
+import { Wire } from '../core/Wire.js';
 
 export class WireNudger {
 
@@ -46,9 +47,16 @@ export class WireNudger {
   nudge(wires) {
     let nudgeCount = 0;
 
+    // BUG FIX: Also exclude Bézier wires — their pathPoints contain cubic
+    // control points that are NOT on the actual curve. Nudging would distort
+    // the Bézier curve. Direct wires have no segments to nudge either.
+    const eligibleWires = wires.filter(w =>
+      w.routingMode !== Wire.MODE_BEZIER && w.routingMode !== Wire.MODE_DIRECT
+    );
+
     // Separate auto-routed and manual wires
-    const autoWires  = wires.filter(w => !w.isManualMode && w.pathPoints.length >= 2);
-    const manualWires = wires.filter(w => w.isManualMode && w.pathPoints.length >= 2);
+    const autoWires  = eligibleWires.filter(w => !w.isManualMode && w.pathPoints.length >= 2);
+    const manualWires = eligibleWires.filter(w => w.isManualMode && w.pathPoints.length >= 2);
 
     // Phase 1: Nudge horizontal segments
     nudgeCount += this._nudgeHorizontal(autoWires, manualWires);

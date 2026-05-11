@@ -1,6 +1,15 @@
 /**
  * WireCrossingDetector — detects crossings between orthogonal wire segments
  * and generates SVG arc segments for bridge/jump visualization.
+ *
+ * IMPORTANT: This detector only works correctly with orthogonal (Manhattan /
+ * A-star / Manual) wires. Bézier wires should NOT be passed to detectCrossings()
+ * or applyBridges() because:
+ *   1. Their pathPoints contain cubic control points (cp1, cp2) that are
+ *      NOT on the actual rendered curve, so segment extraction produces
+ *      false segments.
+ *   2. applyBridges() reconstructs the SVG path using L-commands, which
+ *      would replace the C-commands and break Bézier rendering.
  */
 export class WireCrossingDetector {
   constructor() {

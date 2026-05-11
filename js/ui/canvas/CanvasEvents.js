@@ -6,8 +6,7 @@ import {
 } from '../../utils/UndoManager.js';
 import { ComponentLayoutPolicy } from '../../core/ComponentLayoutPolicy.js';
 import { WireTracer } from '../../utils/WireTracer.js';
-import { WireTooltip } from '../../utils/WireTooltip.js';
-import { WIRE_PIN_MAGNET_RADIUS, GRID_SIZE, WIRE_DEFAULT_ROUTING_MODE } from '../../config.js';
+import { WIRE_PIN_MAGNET_RADIUS } from '../../config.js';
 
 export class CanvasEvents {
   constructor(
@@ -39,16 +38,11 @@ export class CanvasEvents {
     this._lastClickTime = 0;
     this._lastClickTarget = null;
 
-    // Track hovered wire for highlight effects (new)
+    // Track hovered wire for highlight effects
     this._hoveredWireId = null;
 
     // Feature 3: Wire net tracer instance
     this._wireTracer = null;
-
-    // Feature 7: Wire value tooltip
-    this._wireTooltip = new WireTooltip();
-    this._tooltipShowTimer = null;
-    this._TOOLTIP_DELAY = 500; // ms before showing tooltip
 
     this._bindMouse();
     this._bindKeyboard();
@@ -65,14 +59,6 @@ export class CanvasEvents {
       if (e.button === 1 || (e.button === 0 && e.ctrlKey)) {
         e.preventDefault();
         this.panZoom.startPan(e.clientX, e.clientY);
-        return;
-      }
-
-      // ─── Manual drawing mode: click to add point ───
-      if (this.wiring.isManualDrawing && e.button === 0) {
-        e.preventDefault();
-        const canvasPos = this.core.canvasCoords(e.clientX, e.clientY);
-        this.wiring.addManualDrawPoint(canvasPos);
         return;
       }
 
@@ -186,13 +172,6 @@ export class CanvasEvents {
 
       if (this.dragHandler.isDragging) { this.dragHandler.moveDrag(e.clientX, e.clientY); }
 
-      // ─── Manual drawing mode: update preview ───
-      if (this.wiring.isManualDrawing) {
-        const canvasPos = this.core.canvasCoords(e.clientX, e.clientY);
-        this.wiring.updateManualDrawPreview(canvasPos);
-        return;
-      }
-
       if (this.wiring.wiring && this.wiring.wiring.tempPath) {
         const fromPos = this.positionCache.getPosition(this.wiring.wiring.fromNodeId);
         let toPos = this.core.canvasCoords(e.clientX, e.clientY);
@@ -207,31 +186,16 @@ export class CanvasEvents {
         }
         this._lastMagnetNodeId = magnetResult?.nodeId || null;
 
-        // Use Bézier path for preview when in Bézier mode
-        if (WIRE_DEFAULT_ROUTING_MODE === 'bezier') {
-          const compLookup = (id) => this.engine._findComponentByNode(id);
-          const fromDir = Wire.getPortDirection(this.wiring.wiring.fromNodeId, compLookup);
-          const toDir = magnetResult ? Wire.getPortDirection(magnetResult.nodeId, compLookup) : { x: -1, y: 0 };
-          const previewD = Wire.computeBezierPath(fromPos, toPos, fromDir, toDir);
-          this.wiring.wiring.tempPath.setAttribute('d', previewD);
-        } else {
-          const busY = this.core.getBusBarY(this.compManager.components);
-          try {
-            const router = this.wiring._getRouter();
-            const previewD = Wire.computePath(fromPos, toPos, {
-              minClearY: busY,
-              router,
-              sourceNodeId: this.wiring.wiring.fromNodeId
-            });
-            this.wiring.wiring.tempPath.setAttribute('d', previewD);
-          } catch (e) {
-            this.wiring.wiring.tempPath.setAttribute('d', Wire.computePath(fromPos, toPos, { minClearY: busY }));
-          }
-        }
+        // Use Bézier path for preview
+        const compLookup = (id) => this.engine._findComponentByNode(id);
+        const fromDir = Wire.getPortDirection(this.wiring.wiring.fromNodeId, compLookup);
+        const toDir = magnetResult ? Wire.getPortDirection(magnetResult.nodeId, compLookup) : { x: -1, y: 0 };
+        const previewD = Wire.computeBezierPath(fromPos, toPos, fromDir, toDir);
+        this.wiring.wiring.tempPath.setAttribute('d', previewD);
       }
 
-      // ─── Wire hover highlight (new) ───
-      if (!this.dragHandler.isDragging && !this.wiring.wiring && !this.wiring.isManualDrawing) {
+      // ─── Wire hover highlight ───
+      if (!this.dragHandler.isDragging && !this.wiring.wiring) {
         this._handleWireHover(e);
       }
 
@@ -248,18 +212,6 @@ export class CanvasEvents {
       }
 
       if (this.dragHandler.isDragging) { this.dragHandler.endDrag(); return; }
-
-      // ─── Manual drawing mode: check for pin connection ───
-      if (this.wiring.isManualDrawing) {
-        const magnetResult = this._findNearestConnector(e.clientX, e.clientY);
-        if (magnetResult) {
-          // Complete the manual drawing by connecting to the pin
-          this.wiring.completeManualDrawing(magnetResult.nodeId);
-          this._highlightConnector(magnetResult.nodeId, false);
-        }
-        // Don't cancel on mouseup — user needs to double-click to finish or Escape to cancel
-        return;
-      }
 
       if (this.wiring.wiring && this.wiring.wiring.tempPath) {
         const targetConn = e.target.closest('.connector');
@@ -320,29 +272,12 @@ export class CanvasEvents {
       if (this.selection.selectionRect) { this.selection.endSelection(e); }
     });
 
-    // Double-click on wire to add a control point
+    // Double-click on wire to trace net
     this.element.addEventListener('dblclick', (e) => {
-      // ─── Manual drawing mode: double-click to finish ───
-      if (this.wiring.isManualDrawing) {
-        e.preventDefault();
-        // Try to complete by finding nearest pin
-        const magnetResult = this._findNearestConnector(e.clientX, e.clientY);
-        if (magnetResult) {
-          this.wiring.completeManualDrawing(magnetResult.nodeId);
-          this._highlightConnector(magnetResult.nodeId, false);
-        } else {
-          this.wiring.cancelManualDrawing();
-          if (this.toaster) {
-            this.toaster.show('Wire must connect to a pin. Drawing cancelled.', 'warning');
-          }
-        }
-        return;
-      }
-
       const wireEl = e.target.closest('g[data-wire-id]');
       if (!wireEl) return;
 
-      // Feature 3: Double-click on wire triggers net tracing
+      // Double-click on wire triggers net tracing
       const wireId = wireEl.dataset.wireId;
       const traceWire = this.wiring.wires.find(w => w.id === wireId);
       if (traceWire) {
@@ -358,26 +293,11 @@ export class CanvasEvents {
           return;
         }
       }
-
-      // Otherwise, add a new control point at the click position
-      const wire = this.wiring.wires.find(w => w.id === wireId);
-      if (wire && this.wiring._wireEditHandler) {
-        const canvasPos = this.core.canvasCoords(e.clientX, e.clientY);
-        this.wiring._wireEditHandler.addPointAtPosition(canvasPos, wire);
-        this.wiring._wireEditHandler.setActiveWire(wire);
-      }
     });
   }
 
-  /* ─── Wire Hover Highlight (New) ─── */
+  /* ─── Wire Hover Highlight ─── */
 
-  /**
-   * Handle wire hover detection for visual feedback.
-   * Shows glow effect and endpoint indicators when hovering over a wire.
-   *
-   * Feature 7: Also manages a 500ms delay before showing WireTooltip
-   * with signal state and connection info.
-   */
   _handleWireHover(e) {
     const target = e.target;
 
@@ -392,88 +312,23 @@ export class CanvasEvents {
         if (prevWire) prevWire.setHovered(false);
       }
 
-      // Feature 7: Cancel pending tooltip and hide current
-      this._cancelTooltipTimer();
-      this._wireTooltip.hide();
-
       // Hover new wire
       if (wireId) {
         const wire = this.wiring.wires.find(w => w.id === wireId);
         if (wire) wire.setHovered(true);
-
-        // Feature 7: Start tooltip delay timer
-        this._startTooltipTimer(wireId, e.clientX, e.clientY);
       }
 
       this._hoveredWireId = wireId || null;
-    } else if (wireId && this._tooltipShowTimer) {
-      // Update mouse position for pending tooltip
-      this._pendingTooltipX = e.clientX;
-      this._pendingTooltipY = e.clientY;
-    }
-  }
-
-  /* ─── Feature 7: Wire Tooltip Timer Management ─── */
-
-  /**
-   * Start the tooltip show delay timer.
-   * After TOOLTIP_DELAY ms, the tooltip will appear.
-   *
-   * @param {string} wireId
-   * @param {number} clientX
-   * @param {number} clientY
-   */
-  _startTooltipTimer(wireId, clientX, clientY) {
-    this._cancelTooltipTimer();
-    this._pendingTooltipWireId = wireId;
-    this._pendingTooltipX = clientX;
-    this._pendingTooltipY = clientY;
-
-    this._tooltipShowTimer = setTimeout(() => {
-      this._tooltipShowTimer = null;
-      const wire = this.wiring.wires.find(w => w.id === wireId);
-      if (wire) {
-        const compLookup = (nodeId) => this.engine._findComponentByNode(nodeId);
-        this._wireTooltip.show(wire, this._pendingTooltipX, this._pendingTooltipY, { compLookup });
-      }
-    }, this._TOOLTIP_DELAY);
-  }
-
-  /**
-   * Cancel the tooltip show delay timer.
-   */
-  _cancelTooltipTimer() {
-    if (this._tooltipShowTimer) {
-      clearTimeout(this._tooltipShowTimer);
-      this._tooltipShowTimer = null;
     }
   }
 
   /* ---------- Keyboard ---------- */
   _bindKeyboard() {
     window.addEventListener('keydown', (e) => {
-      // Cancel regular wiring with Escape
+      // Cancel wiring with Escape
       if (this.wiring.wiring && e.key === 'Escape') {
         e.preventDefault();
         this.wiring.cancelWiring();
-        return;
-      }
-
-      // ─── Manual drawing mode keyboard shortcuts ───
-      if (this.wiring.isManualDrawing) {
-        if (e.key === 'Escape') {
-          e.preventDefault();
-          this.wiring.cancelManualDrawing();
-          return;
-        }
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          // Try to complete by connecting to nearest pin
-          // If no pin nearby, cancel
-          this.wiring.cancelManualDrawing();
-          return;
-        }
-        // Don't process other shortcuts while drawing
         return;
       }
 
@@ -485,7 +340,6 @@ export class CanvasEvents {
       else if (e.ctrlKey && e.key === 'v') { e.preventDefault(); this.selection.pasteCopied(); }
       else if (e.key === 'Escape') {
         this.selection.clearSelection();
-        // Feature 3: Escape also clears net trace
         this._clearNetTrace();
       }
       else if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -553,14 +407,12 @@ export class CanvasEvents {
         const rect = this.core.element.getBoundingClientRect();
         this.core.zoomAnimated(1, rect.width / 2, rect.height / 2);
       }
-      // Feature 1: 'R' key to rotate selected components
       else if (e.key === 'r' || e.key === 'R') {
         if (this.selection.selectedComponents.size > 0) {
           e.preventDefault();
           this._rotateSelected();
         }
       }
-      // Feature 2: 'M' key to mirror selected components
       else if (e.key === 'm' || e.key === 'M') {
         if (this.selection.selectedComponents.size > 0) {
           e.preventDefault();
@@ -587,41 +439,36 @@ export class CanvasEvents {
     }
   }
 
-  /* ---------- Feature 1: Rotate Selected Components ---------- */
+  /* ---------- Rotate Selected Components ---------- */
   _rotateSelected() {
     for (const compId of this.selection.selectedComponents) {
       const comp = this.compManager.getComponentById(compId);
       if (comp) {
         comp.rotate();
-        // Invalidate position cache and update wires
         this.positionCache.invalidate();
         this.wiring.updateWiresForComponent(comp);
       }
     }
   }
 
-  /* ---------- Feature 2: Mirror Selected Components ---------- */
+  /* ---------- Mirror Selected Components ---------- */
   _mirrorSelected() {
     for (const compId of this.selection.selectedComponents) {
       const comp = this.compManager.getComponentById(compId);
       if (comp) {
         comp.toggleMirror();
-        // Invalidate position cache and update wires
         this.positionCache.invalidate();
         this.wiring.updateWiresForComponent(comp);
       }
     }
   }
 
-  /* ---------- Feature 3: Wire Net Tracing ---------- */
+  /* ---------- Wire Net Tracing ---------- */
   _traceNet(startWireId) {
-    // Create tracer if needed
     if (!this._wireTracer) {
       this._wireTracer = new WireTracer(this.wiring.wires, this.engine);
     }
-    // Clear any previous trace
     this._clearNetTrace();
-    // Perform BFS trace
     const netIds = this._wireTracer.traceNet(startWireId);
     this._wireTracer.highlightNet(netIds);
   }
@@ -637,15 +484,6 @@ export class CanvasEvents {
     this.element.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       const items = [];
-
-      // ─── Manual drawing: right-click cancels ───
-      if (this.wiring.isManualDrawing) {
-        items.push({ label: 'Cancel Wire Drawing', action: () => {
-          this.wiring.cancelManualDrawing();
-        }});
-        this.contextMenu.show(e.clientX, e.clientY, items);
-        return;
-      }
 
       // Check for wire control point right-click (remove point)
       if (this.wiring._wireEditHandler) {
@@ -664,13 +502,11 @@ export class CanvasEvents {
         const comp = this.compManager.getComponentById(compEl.dataset.compId);
         if (comp) {
           items.push({ label: 'Properties', action: () => this.propertyEditor.open(comp) });
-          // Feature 1: Rotate option in context menu
           items.push({ label: 'Rotate (R)', action: () => {
             comp.rotate();
             this.positionCache.invalidate();
             this.wiring.updateWiresForComponent(comp);
           }});
-          // Feature 2: Mirror option in context menu
           items.push({ label: 'Mirror Horizontally (M)', action: () => {
             comp.toggleMirror();
             this.positionCache.invalidate();
@@ -694,25 +530,7 @@ export class CanvasEvents {
             const cmd = new DisconnectWireCommand(this.engine, this.canvas, wire.engineId);
             this.undoManager.execute(cmd);
           }});
-          items.push({ label: 'Reroute This Wire (A*)', action: () => {
-            this.wiring._gridNeedsRebuild = true;
-            const busY = this.core.getBusBarY(this.compManager.components);
-            const router = this.wiring._getRouter();
-            wire.forceReroute(
-              (nodeId) => this.positionCache.getPosition(nodeId),
-              busY,
-              router
-            );
-            wire.refreshControlHandles();
-            this.wiring.updateWireCrossings();
-          }});
-          items.push({ label: 'Add Control Point Here', action: () => {
-            const canvasPos = this.core.canvasCoords(e.clientX, e.clientY);
-            if (this.wiring._wireEditHandler) {
-              this.wiring._wireEditHandler.addPointAtPosition(canvasPos, wire);
-              this.wiring._wireEditHandler.setActiveWire(wire);
-            }
-          }});
+
           items.push({ label: wire.isLocked ? 'Unlock Wire' : 'Lock Wire', action: () => {
             if (wire.isLocked) {
               wire.unlock();
@@ -721,29 +539,8 @@ export class CanvasEvents {
               wire.hideControlHandles();
             }
           }});
-          // Show wire state info
-          const stateLabel = wire.wireState === 'auto' ? 'Auto-routed' :
-                            wire.wireState === 'manual' ? 'Manually edited' : 'Locked';
-          const methodLabel = wire._routedMethod || 'unknown';
-          items.push({ label: `State: ${stateLabel} (${methodLabel})`, action: () => {} });
 
-          // Draw Wire Manually option
-          items.push({ label: 'Redraw Wire Manually', action: () => {
-            const fromPos = this.positionCache.getPosition(wire.sourceNode.nodeId);
-            const fromNodeId = wire.sourceNode.nodeId;
-            if (fromPos) {
-              // First delete the existing wire
-              const cmd = new DisconnectWireCommand(this.engine, this.canvas, wire.engineId);
-              this.undoManager.execute(cmd);
-              // Start manual drawing from the source pin
-              this.wiring.startManualDrawing(fromPos, fromNodeId, true);
-              if (this.toaster) {
-                this.toaster.show('Click to add bend points. Double-click on a pin to complete. Escape to cancel.', 'info', 5000);
-              }
-            }
-          }});
-
-          // Feature 3: Trace Net option in wire context menu
+          // Trace Net option in wire context menu
           items.push({ label: 'Trace Net', action: () => {
             this._traceNet(wire.id);
           }});
@@ -753,19 +550,9 @@ export class CanvasEvents {
         }
       }
 
-      // Right-click on empty canvas — offer manual wire drawing
+      // Right-click on empty canvas
       const conn = e.target.closest('.connector');
       if (!conn && !compEl && !wireEl) {
-        items.push({ label: 'Draw Wire Manually', action: () => {
-          const canvasPos = this.core.canvasCoords(e.clientX, e.clientY);
-          this.wiring.startManualDrawing(canvasPos);
-          if (this.toaster) {
-            this.toaster.show('Click to add bend points. Double-click on a pin to complete. Escape to cancel.', 'info', 5000);
-          }
-        }});
-        items.push({ label: 'Reroute All Wires (A*)', action: () => {
-          this.wiring.rerouteAllWires();
-        }});
         items.push({ label: 'Save Selection as Subcircuit', action: () => {
           this.eventBus.emit('save-subcircuit');
         }});
@@ -777,13 +564,12 @@ export class CanvasEvents {
       }
 
       if (conn && conn.dataset.node) {
-        // Feature 4: "Invert Input" option for input connectors on gates
+        // "Invert Input" option for input connectors on gates
         const nodeId = conn.dataset.node;
         const isOutput = conn.classList.contains('output');
         if (!isOutput) {
           const comp = this.engine._findComponentByNode(nodeId);
           if (comp && comp.isInputNegated) {
-            // Find which input index this is
             const inputIndex = comp.inputs.findIndex(inp => inp.id === nodeId);
             if (inputIndex >= 0) {
               const isCurrentlyInverted = comp.isInputNegated(inputIndex);
@@ -803,17 +589,6 @@ export class CanvasEvents {
         }
         items.push({ label: 'Set as TestBench Output', action: () => {
           this.eventBus.emit('set-testbench-output', conn.dataset.node);
-        }});
-        items.push({ label: 'Draw Wire from Here (Manual)', action: () => {
-          const nodeId = conn.dataset.node;
-          const isOutput = conn.classList.contains('output');
-          const pos = this.positionCache.getPosition(nodeId);
-          if (pos) {
-            this.wiring.startManualDrawing(pos, nodeId, isOutput);
-            if (this.toaster) {
-              this.toaster.show('Click to add bend points. Double-click on a pin to complete. Escape to cancel.', 'info', 5000);
-            }
-          }
         }});
         this.contextMenu.show(e.clientX, e.clientY, items);
       }
@@ -850,10 +625,8 @@ export class CanvasEvents {
 
   _findNearestConnector(clientX, clientY) {
     const MAGNET_RADIUS = WIRE_PIN_MAGNET_RADIUS;
-    const fromIsOutput = this.wiring.wiring?.fromIsOutput
-      ?? this.wiring._manualDrawIsOutput
-      ?? (this.wiring._manualDrawSourceNodeId ? true : null);
-    const fromNodeId = this.wiring.wiring?.fromNodeId || this.wiring._manualDrawSourceNodeId;
+    const fromIsOutput = this.wiring.wiring?.fromIsOutput;
+    const fromNodeId = this.wiring.wiring?.fromNodeId;
     let closest = null;
     let closestDist = MAGNET_RADIUS;
 
@@ -864,14 +637,7 @@ export class CanvasEvents {
       ];
 
       for (const nodeInfo of allNodes) {
-        // During manual drawing, allow connecting to any compatible pin
-        if (this.wiring.isManualDrawing) {
-          // Simple check: prefer connecting output→input or input→output
-          if (fromNodeId && fromIsOutput !== undefined && fromIsOutput === nodeInfo.isOutput) {
-            // Skip same-type pins (output→output or input→input)
-            if (comp.id === this.engine._findComponentByNode(fromNodeId)?.id) continue;
-          }
-        } else if (this.wiring.wiring) {
+        if (this.wiring.wiring) {
           if (fromIsOutput === nodeInfo.isOutput) continue;
           if (comp.id === this.engine._findComponentByNode(fromNodeId)?.id) continue;
           if (!nodeInfo.isOutput) {

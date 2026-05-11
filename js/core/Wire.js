@@ -148,10 +148,19 @@ export class Wire {
    */
   setRoutingMode(mode) {
     if (mode === Wire.MODE_MANUAL && this.routingMode !== Wire.MODE_MANUAL) {
-      // Preserve current bends as editable control points
-      this.controlPoints = this.pathPoints
-        .slice(1, -1)
-        .map(p => ({ x: p.x, y: p.y }));
+      // BUG FIX: When switching from Bézier to Manual, pathPoints contains
+      // [start, cp1, cp2, end] where cp1/cp2 are cubic Bézier control points
+      // that are NOT on the actual curve. Using them as manual control points
+      // would create a polyline through wrong positions. Instead, we sample
+      // points along the actual Bézier curve to get meaningful bend points.
+      if (this.routingMode === Wire.MODE_BEZIER && this.pathPoints.length === 4) {
+        const sampled = Wire.sampleBezierPoints(this.pathPoints, 8);
+        this.controlPoints = sampled.slice(1, -1).map(p => ({ x: p.x, y: p.y }));
+      } else {
+        this.controlPoints = this.pathPoints
+          .slice(1, -1)
+          .map(p => ({ x: p.x, y: p.y }));
+      }
       this.isAutoRouted = false;
     }
     this.routingMode = mode;
@@ -383,23 +392,87 @@ export class Wire {
   }
 
   /**
+   * Sample points along a cubic Bézier curve defined by 4 control points.
+   * Used when converting a Bézier wire to Manual mode — we need actual
+   * on-curve points, not the Bézier control handles.
+   *
+   * @param {Array<{x:number,y:number}>} bezierPoints - [P0, P1, P2, P3] (start, cp1, cp2, end)
+   * @param {number} numSamples - Number of samples (including endpoints)
+   * @returns {Array<{x:number,y:number}>} Sampled points on the curve
+   */
+  static sampleBezierPoints(bezierPoints, numSamples = 8) {
+    if (!bezierPoints || bezierPoints.length < 4) return bezierPoints || [];
+    const [p0, p1, p2, p3] = bezierPoints;
+    const points = [];
+    for (let i = 0; i <= numSamples; i++) {
+      const t = i / numSamples;
+      const t2 = t * t;
+      const t3 = t2 * t;
+      const mt = 1 - t;
+      const mt2 = mt * mt;
+      const mt3 = mt2 * mt;
+      points.push({
+        x: mt3 * p0.x + 3 * mt2 * t * p1.x + 3 * mt * t2 * p2.x + t3 * p3.x,
+        y: mt3 * p0.y + 3 * mt2 * t * p1.y + 3 * mt * t2 * p2.y + t3 * p3.y
+      });
+    }
+    return points;
+  }
+
+  /**
    * Parse an SVG "d" attribute into an array of {x,y} points.
    * Tolerant of missing whitespace after M/L commands (handles minified SVGs).
-   * Correctly captures all coordinate pairs per command.
+   * BUG FIX: Now also handles C (cubic Bézier) commands by sampling
+   * points along the curve.
    */
   static svgPathToPoints(d) {
     const points = [];
     if (!d) return points;
-    // Match M or L followed by optional whitespace, then one or more coordinate pairs
-    // The \s* (instead of \s+) makes it tolerant of missing whitespace after command letter
-    const commands = d.match(/[ML]\s*(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?[\s,]+-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?(?:[\s,]+-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)*)/gi);
-    if (!commands) return points;
-    for (const cmd of commands) {
-      const nums = cmd.slice(1).trim().split(/[\s,]+/).map(Number).filter(n => !isNaN(n));
-      for (let i = 0; i + 1 < nums.length; i += 2) {
-        points.push({ x: nums[i], y: nums[i + 1] });
+
+    // Parse the path string command by command
+    let currentX = 0, currentY = 0;
+    const commandRegex = /([MLC])\s*([\s\S]*?)(?=[MLC]|$)/gi;
+    const matches = d.matchAll(commandRegex);
+
+    for (const match of matches) {
+      const cmd = match[1].toUpperCase();
+      const argsStr = match[2].trim();
+      if (!argsStr) continue;
+
+      const nums = argsStr.split(/[\s,]+/).map(Number).filter(n => !isNaN(n));
+
+      if (cmd === 'M' || cmd === 'L') {
+        for (let i = 0; i + 1 < nums.length; i += 2) {
+          currentX = nums[i];
+          currentY = nums[i + 1];
+          points.push({ x: currentX, y: currentY });
+        }
+      } else if (cmd === 'C') {
+        // Cubic Bézier: C cx1 cy1 cx2 cy2 x y
+        // Sample points along the curve for approximate occupied cells
+        for (let i = 0; i + 5 < nums.length; i += 6) {
+          const cp1x = nums[i], cp1y = nums[i + 1];
+          const cp2x = nums[i + 2], cp2y = nums[i + 3];
+          const endX = nums[i + 4], endY = nums[i + 5];
+
+          // Sample 8 points along the Bézier curve
+          const bezierPoints = [
+            { x: currentX, y: currentY },
+            { x: cp1x, y: cp1y },
+            { x: cp2x, y: cp2y },
+            { x: endX, y: endY }
+          ];
+          const sampled = Wire.sampleBezierPoints(bezierPoints, 8);
+          // Skip first point (already added by previous M/L)
+          for (let j = 1; j < sampled.length; j++) {
+            points.push(sampled[j]);
+          }
+          currentX = endX;
+          currentY = endY;
+        }
       }
     }
+
     return points;
   }
 
@@ -542,13 +615,8 @@ export class Wire {
     targetDot.classList.add('wire-endpoint-target');
     targetDot.style.display = 'none';
 
-    // ─── Title (native SVG tooltip) ───
-    const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-    title.textContent = `Wire ${this.id} (${this.wireState})`;
-    title.classList.add('wire-title-native');
-
     // Assemble group (order matters: glow → visual → hit → dots)
-    group.appendChild(title);
+    // Native SVG tooltip removed — was annoying and useless
     group.appendChild(glowPath);
     group.appendChild(visualPath);
     group.appendChild(hitPath);
@@ -754,7 +822,11 @@ export class Wire {
   _applyPathPointsToSVG() {
     if (!this.element || this.pathPoints.length < 2) return;
 
-    const isBezier = this.routingMode === Wire.MODE_BEZIER;
+    // BUG FIX: For Bézier wires, if pathPoints has been modified to != 4 points
+    // (e.g., after manual conversion or point insertion), we must NOT use the
+    // Bézier C-command path — use polyline instead. Only use C-command when
+    // we have exactly the 4 points required for a cubic Bézier.
+    const isBezier = this.routingMode === Wire.MODE_BEZIER && this.pathPoints.length === 4;
     const d = Wire.pointsToSVGPath(this.pathPoints, isBezier);
     this.element.querySelector('.wire-visual').setAttribute('d', d);
     this.element.querySelector('.wire-hitarea').setAttribute('d', d);
@@ -1225,7 +1297,7 @@ export class Wire {
     } else {
       this.element.querySelector('.wire-visual')?.removeAttribute('stroke-dasharray');
     }
-    this.element.querySelector('.wire-junction')?.setAttribute('fill', color);
+    // Junction dots are hidden in Bézier-only mode — no need to update fill
   }
 
   showJunction() {
@@ -1248,15 +1320,7 @@ export class Wire {
    * ================================================================ */
 
   _updateTooltip() {
-    if (!this.element) return;
-    const title = this.element.querySelector('.wire-title-native');
-    if (title) {
-      const stateLabel = this.wireState === 'auto' ? 'Auto-routed' :
-                        this.wireState === 'manual' ? 'Manually edited' : 'Locked';
-      const methodLabel = this._routedMethod || 'unknown';
-      const fallbackLabel = this._isRoutingFallback ? ' | Fallback routing (A* failed)' : '';
-      title.textContent = `Wire ${this.id} | ${stateLabel} | Method: ${methodLabel}${fallbackLabel}`;
-    }
+    // Tooltip removed — was annoying and useless
   }
 
   /* ================================================================
@@ -1270,13 +1334,19 @@ export class Wire {
     this.occupiedCells.clear();
   }
 
-  /** Force a full re-route, ignoring manual mode. */
+  /** Force a full re-route. For Bézier wires, just recomputes the curve. */
   forceReroute(getNodePosition, busBarY = null, router = null) {
     if (this.routingMode === Wire.MODE_MANUAL) {
-      this.routingMode = Wire.MODE_MANHATTAN;
+      this.routingMode = Wire.MODE_BEZIER;
       this.controlPoints = [];
+    } else if (this.routingMode === Wire.MODE_MANHATTAN || this.routingMode === Wire.MODE_DIRECT) {
+      this.routingMode = Wire.MODE_BEZIER;
+      this._isRoutingFallback = false;
+      const visualPath = this.element?.querySelector('.wire-visual');
+      if (visualPath) visualPath.classList.remove('routing-fallback');
     }
     this.isAutoRouted = true;
+    this._routedMethod = 'bezier';
     this.updatePath(getNodePosition, busBarY, router);
   }
 
@@ -1288,33 +1358,38 @@ export class Wire {
     this.occupiedCells.clear();
     if (!d) return;
     const gs = GRID_SIZE;
-    // Match M or L followed by optional whitespace, then one or more coordinate pairs
-    const commands = d.match(/[ML]\s*(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?[\s,]+-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?(?:[\s,]+-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)*)/gi);
-    if (!commands) return;
-    let cx = 0, cy = 0;
-    for (const cmd of commands) {
-      const type = cmd[0];
-      const nums = cmd.slice(1).trim().split(/[\s,]+/).map(Number).filter(n => !isNaN(n));
-      if (nums.length >= 2) {
-        const nx = nums[0], ny = nums[1];
-        if (type === 'L') {
-          const isH = Math.abs(ny - cy) < 1;
-          const isV = Math.abs(nx - cx) < 1;
-          if (isH) {
-            const y = Math.round(cy / gs);
-            for (let x = Math.round(Math.min(cx, nx) / gs); x <= Math.round(Math.max(cx, nx) / gs); x++) {
-              this.occupiedCells.add(`${x},${y}`);
-            }
-          } else if (isV) {
-            const x = Math.round(cx / gs);
-            for (let y = Math.round(Math.min(cy, ny) / gs); y <= Math.round(Math.max(cy, ny) / gs); y++) {
-              this.occupiedCells.add(`${x},${y}`);
-            }
-          }
+    // BUG FIX: Now handles C (cubic Bézier) commands by sampling points
+    // along the curve, in addition to M and L commands.
+    // First, convert the path to points (which now supports C commands),
+    // then compute occupied cells from the resulting polyline points.
+    const points = Wire.svgPathToPoints(d);
+    if (points.length < 2) return;
+
+    for (let i = 0; i < points.length - 1; i++) {
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      const isH = Math.abs(p2.y - p1.y) < 1;
+      const isV = Math.abs(p2.x - p1.x) < 1;
+      if (isH) {
+        const y = Math.round(p1.y / gs);
+        for (let x = Math.round(Math.min(p1.x, p2.x) / gs); x <= Math.round(Math.max(p1.x, p2.x) / gs); x++) {
+          this.occupiedCells.add(`${x},${y}`);
         }
-        cx = nx; cy = ny;
-        for (let i = 2; i + 1 < nums.length; i += 2) { cx = nums[i]; cy = nums[i + 1]; }
-        if (type === 'M') { cx = nums[0]; cy = nums[1]; }
+      } else if (isV) {
+        const x = Math.round(p1.x / gs);
+        for (let y = Math.round(Math.min(p1.y, p2.y) / gs); y <= Math.round(Math.max(p1.y, p2.y) / gs); y++) {
+          this.occupiedCells.add(`${x},${y}`);
+        }
+      }
+      // For diagonal segments (from Bézier sampling), add cells along the path
+      else {
+        const steps = Math.max(1, Math.ceil(Math.hypot(p2.x - p1.x, p2.y - p1.y) / gs));
+        for (let s = 0; s <= steps; s++) {
+          const t = s / steps;
+          const cx = p1.x + (p2.x - p1.x) * t;
+          const cy = p1.y + (p2.y - p1.y) * t;
+          this.occupiedCells.add(`${Math.round(cx / gs)},${Math.round(cy / gs)}`);
+        }
       }
     }
   }
@@ -1339,8 +1414,8 @@ export class Wire {
     const toPos   = getNodePosition(this.targetNode.nodeId);
     if (!fromPos || !toPos) return '';
 
-    const fromDir = Wire.getPortDirection(this.sourceNode.nodeId);
-    const toDir   = Wire.getPortDirection(this.targetNode.nodeId);
+    const fromDir = Wire.getPortDirection(this.sourceNode.nodeId, this._compLookup);
+    const toDir   = Wire.getPortDirection(this.targetNode.nodeId, this._compLookup);
     return Wire.computeBezierPath(fromPos, toPos, fromDir, toDir);
   }
 }

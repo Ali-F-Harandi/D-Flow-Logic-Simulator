@@ -296,18 +296,11 @@ export class CanvasTouch {
       }
       this._lastMagnetNodeId = magnetResult?.nodeId || null;
 
-      const busY = this.core.getBusBarY(this.compManager.components);
-      // Use A* routing for touch preview (fast with obstacle cache)
-      try {
-        const router = this.wiring._getRouter();
-        this.wiring.wiring.tempPath.setAttribute('d', Wire.computePath(fromPos, toPos, {
-          minClearY: busY,
-          router,
-          sourceNodeId: this.wiring.wiring.fromNodeId
-        }));
-      } catch (e) {
-        this.wiring.wiring.tempPath.setAttribute('d', Wire.computePath(fromPos, toPos, { minClearY: busY }));
-      }
+      // Use Bézier routing for touch preview
+      const compLookup = (id) => this.engine._findComponentByNode(id);
+      const fromDir = Wire.getPortDirection(this.wiring.wiring.fromNodeId, compLookup);
+      const toDir = magnetResult ? Wire.getPortDirection(magnetResult.nodeId, compLookup) : { x: -1, y: 0 };
+      this.wiring.wiring.tempPath.setAttribute('d', Wire.computeBezierPath(fromPos, toPos, fromDir, toDir));
     }
   }
 
@@ -469,23 +462,6 @@ export class CanvasTouch {
       { label: 'Delete Wire', action: () => {
         const cmd = new DisconnectWireCommand(this.engine, this.canvas, wire.engineId);
         this.undoManager.execute(cmd);
-      }},
-      { label: 'Reroute This Wire', action: () => {
-        const busY = this.core.getBusBarY(this.compManager.components);
-        const router = this.wiring._getRouter();
-        wire.forceReroute(
-          (nodeId) => this.wiring.positionCache.getPosition(nodeId),
-          busY,
-          router
-        );
-        wire.refreshControlHandles();
-      }},
-      { label: 'Add Control Point', action: () => {
-        const canvasPos = this.core.canvasCoords(clientX, clientY);
-        if (this.wiring._wireEditHandler) {
-          this.wiring._wireEditHandler.addPointAtPosition(canvasPos, wire);
-          this.wiring._wireEditHandler.setActiveWire(wire);
-        }
       }},
       { label: 'Select Wire', action: () => {
         this.selection._clearWireSelection();

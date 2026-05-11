@@ -251,15 +251,6 @@
   background: #0072b2;
 }
 
-/* Color-blind overrides for wire tooltip signal colors */
-[data-color-scheme="colorblind"] .wire-tooltip-signal-high {
-  color: #0072b2;
-  background: rgba(0, 114, 178, 0.15);
-}
-[data-color-scheme="colorblind"] .wire-tooltip-signal-unknown {
-  color: #e69f00;
-  background: rgba(230, 159, 0, 0.15);
-}
 
 /* Color-blind overrides for netlist colors */
 [data-color-scheme="colorblind"] .netlist-high {

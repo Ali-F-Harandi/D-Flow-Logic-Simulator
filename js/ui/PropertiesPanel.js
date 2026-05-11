@@ -228,21 +228,10 @@ export class PropertiesPanel {
     modeLabel.className = 'properties-label';
     modeGroup.appendChild(modeLabel);
 
-    const modeSelect = document.createElement('select');
-    modeSelect.className = 'properties-input';
-    const modes = [
-      { value: 'manhattan', label: 'Manhattan (Auto)' },
-      { value: 'manual', label: 'Manual' },
-      { value: 'direct', label: 'Direct' }
-    ];
-    modes.forEach(m => {
-      const opt = document.createElement('option');
-      opt.value = m.value;
-      opt.textContent = m.label;
-      if (wire.routingMode === m.value) opt.selected = true;
-      modeSelect.appendChild(opt);
-    });
-    modeGroup.appendChild(modeSelect);
+    const modeValue = document.createElement('span');
+    modeValue.className = 'properties-input';
+    modeValue.textContent = 'Bézier (Auto)';
+    modeGroup.appendChild(modeValue);
     this.panel.appendChild(modeGroup);
 
     // Wire state info
