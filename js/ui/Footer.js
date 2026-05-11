@@ -1,3 +1,5 @@
+import { icon, replaceIcons } from '../utils/IconHelper.js';
+
 export class Footer {
   constructor(container, eventBus) {
     this.container = container;
@@ -44,16 +46,17 @@ export class Footer {
       </div>
       <span class="footer-stats" id="footer-stats">0 components · 0 wires</span>
       <div class="footer-zoom-controls">
-        <button class="footer-zoom-btn footer-zoom-out" title="Zoom out" aria-label="Zoom out">−</button>
+        <button class="footer-zoom-btn footer-zoom-out" title="Zoom out" aria-label="Zoom out">${icon('zoom-out', '', { size: 14 })}</button>
         <span class="footer-zoom" id="footer-zoom">100%</span>
-        <button class="footer-zoom-btn footer-zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
-        <button class="footer-zoom-btn footer-zoom-fit" title="Zoom to fit" aria-label="Zoom to fit">⊡</button>
+        <button class="footer-zoom-btn footer-zoom-in" title="Zoom in" aria-label="Zoom in">${icon('zoom-in', '', { size: 14 })}</button>
+        <button class="footer-zoom-btn footer-zoom-fit" title="Zoom to fit" aria-label="Zoom to fit">${icon('maximize', '', { size: 14 })}</button>
       </div>
       <span class="footer-step" id="footer-step">Step: 0</span>
       <span class="autosave-indicator" id="autosave-indicator"></span>
       <span>© 2026 D-Flow</span>
     `;
     this.versionSpan = footer.querySelector('.version');
+    replaceIcons(footer);
     return footer;
   }
 

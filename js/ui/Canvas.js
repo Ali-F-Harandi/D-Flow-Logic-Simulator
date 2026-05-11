@@ -15,6 +15,7 @@ import { CanvasEvents } from './canvas/CanvasEvents.js';
 import { WireEditHandler } from './canvas/WireEditHandler.js';
 import { ComponentLayoutPolicy } from '../core/ComponentLayoutPolicy.js';
 import { MiniMap } from './canvas/MiniMap.js';
+import { icon, replaceIcons } from '../utils/IconHelper.js';
 
 export class Canvas {
   constructor(container, eventBus, engine, factory, undoManager) {
@@ -134,7 +135,8 @@ export class Canvas {
   _createMobileDeleteButton() {
     const btn = document.createElement('button');
     btn.id = 'mobile-delete-btn';
-    btn.textContent = '✕';
+    btn.innerHTML = icon('trash-2', '', { size: 18 });
+    replaceIcons(btn);
     btn.title = 'Delete selected components/wires';
     btn.setAttribute('aria-label', 'Delete selected');
     btn.style.display = 'none';

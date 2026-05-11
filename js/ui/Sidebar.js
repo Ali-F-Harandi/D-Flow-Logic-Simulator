@@ -1,3 +1,5 @@
+import { icon, replaceIcons } from '../utils/IconHelper.js';
+
 export class Sidebar {
   constructor(container, eventBus, factory) {
     this.container = container;
@@ -78,12 +80,12 @@ export class Sidebar {
 
     const categories = ['Gates', 'Flip-Flops', 'Chips', 'Inputs', 'Outputs', 'Other'];
     const categoryIcons = {
-      'Gates': '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 3h5a4 4 0 0 1 0 8H1"/><line x1="9" y1="5" x2="13" y2="5"/><line x1="9" y1="9" x2="13" y2="9"/><line x1="7" y1="7" x2="13" y2="7"/></svg>',
-      'Flip-Flops': '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="10" height="10" rx="1"/><path d="M5 5v4M9 5v4"/><polyline points="4,6 5,7 6,6"/></svg>',
-      'Chips': '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="8" height="8" rx="1"/><line x1="0" y1="5" x2="3" y2="5"/><line x1="0" y1="9" x2="3" y2="9"/><line x1="11" y1="5" x2="14" y2="5"/><line x1="11" y1="9" x2="14" y2="9"/><line x1="5" y1="0" x2="5" y2="3"/><line x1="9" y1="0" x2="9" y2="3"/></svg>',
-      'Inputs': '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/><circle cx="7" cy="7" r="2" fill="currentColor"/></svg>',
-      'Outputs': '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/><circle cx="7" cy="7" r="2.5" fill="currentColor"/></svg>',
-      'Other': '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="2"/><path d="M7 1v2M7 11v2M1 7h2M11 7h2M3.05 3.05l1.41 1.41M9.54 9.54l1.41 1.41M3.05 10.95l1.41-1.41M9.54 4.46l1.41-1.41"/></svg>'
+      'Gates': icon('git-branch', '', { size: 14 }),
+      'Flip-Flops': icon('memory-stick', '', { size: 14 }),
+      'Chips': icon('cpu', '', { size: 14 }),
+      'Inputs': icon('toggle-left', '', { size: 14 }),
+      'Outputs': icon('lightbulb', '', { size: 14 }),
+      'Other': icon('settings', '', { size: 14 })
     };
 
     // ─── "Getting Started" category: basic components for beginners ───
@@ -98,7 +100,7 @@ export class Sidebar {
 
       const gsHeader = document.createElement('div');
       gsHeader.className = 'group-header';
-      gsHeader.innerHTML = '⭐ Getting Started';
+      gsHeader.innerHTML = `${icon('star', '', { size: 14 })} Getting Started`;
       gsHeader.style.cursor = 'pointer';
 
       const gsItemsDiv = document.createElement('div');
@@ -144,7 +146,7 @@ export class Sidebar {
 
         const recentHeader = document.createElement('div');
         recentHeader.className = 'group-header';
-        recentHeader.innerHTML = '🕐 Recently Used';
+        recentHeader.innerHTML = `${icon('clock', '', { size: 14 })} Recently Used`;
         recentHeader.style.cursor = 'pointer';
 
         const recentItemsDiv = document.createElement('div');
@@ -236,6 +238,9 @@ export class Sidebar {
     if (list.children.length === 0) {
       list.innerHTML = '<div class="no-results">No components found</div>';
     }
+
+    // Replace all <i data-lucide> placeholders with actual SVG icons
+    replaceIcons(list);
   }
 
   /* ========== Touch Drag Handlers ========== */

@@ -3,6 +3,8 @@
  * Press "?" or F1 to toggle. Shows all keyboard shortcuts
  * in a clean, organized overlay.
  */
+import { icon, replaceIcons } from '../utils/IconHelper.js';
+
 export class HelpOverlay {
   constructor() {
     this.element = null;
@@ -20,7 +22,7 @@ export class HelpOverlay {
       <div class="help-content">
         <div class="help-header">
           <h2>Keyboard Shortcuts</h2>
-          <button class="help-close-btn" title="Close">&times;</button>
+          <button class="help-close-btn" title="Close">${icon('x', '', { size: 18 })}</button>
         </div>
         <div class="help-body">
           <div class="help-section">
@@ -97,6 +99,9 @@ export class HelpOverlay {
         </div>
       </div>
     `;
+
+    // Replace lucide icon placeholders with actual SVGs
+    replaceIcons(this.element);
 
     // Close button
     this.element.querySelector('.help-close-btn').addEventListener('click', () => this.hide());

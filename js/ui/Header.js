@@ -1,5 +1,6 @@
 import { Serializer } from '../utils/Serializer.js';
 import { ExampleCircuits } from '../utils/ExampleCircuits.js';
+import { icon, replaceIcons } from '../utils/IconHelper.js';
 
 export class Header {
   constructor(container, eventBus, engine, canvas) {
@@ -22,59 +23,60 @@ export class Header {
     header.id = 'header';
     header.innerHTML = `
       <button class="hamburger-btn" title="Toggle sidebar" aria-label="Toggle sidebar">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M1 3h14v2H1zm0 4h14v2H1zm0 4h14v2H1z"/></svg>
+        ${icon('menu', '', { size: 16 })}
       </button>
       <span class="app-title">D-Flow</span>
       <div class="header-controls">
         <button class="header-btn run-btn" title="Run simulation (continuous)" aria-label="Run simulation">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><polygon points="3,1 12,7 3,13"/></svg> Run
+          ${icon('play', 'Run', { size: 14 })}
         </button>
         <button class="header-btn stop-btn" title="Stop simulation" aria-label="Stop simulation">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="2" y="2" width="10" height="10" rx="1"/></svg> Stop
+          ${icon('square', 'Stop', { size: 14 })}
         </button>
         <button class="header-btn step-btn" title="Advance one step" aria-label="Step simulation">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><polygon points="2,1 10,7 2,13"/><rect x="11" y="1" width="2" height="12"/></svg> Step
+          ${icon('skip-forward', 'Step', { size: 14 })}
         </button>
         <button class="header-btn reset-btn" title="Reset all component states" aria-label="Reset simulation">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 7a5 5 0 1 1 1.5 3.6"/><polyline points="2,11 2,7 6,7"/></svg> Reset
+          ${icon('rotate-ccw', 'Reset', { size: 14 })}
         </button>
         <div class="toolbar-separator" style="display:inline-block;width:1px;height:20px;background:var(--color-border);margin:0 4px;vertical-align:middle;"></div>
         <button class="header-btn undo-btn" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h8a3 3 0 0 1 0 6H7"/><polyline points="6,4 3,7 6,10"/></svg>
+          ${icon('undo-2', '', { size: 14 })}
         </button>
         <button class="header-btn redo-btn" title="Redo (Ctrl+Y)" aria-label="Redo" disabled>
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 7H3a3 3 0 0 0 0 6h4"/><polyline points="8,4 11,7 8,10"/></svg>
+          ${icon('redo-2', '', { size: 14 })}
         </button>
         <div class="toolbar-separator" style="display:inline-block;width:1px;height:20px;background:var(--color-border);margin:0 4px;vertical-align:middle;"></div>
         <button class="header-btn truth-table-btn" title="Generate Truth Table" aria-label="Truth Table">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="12" height="12" rx="1"/><line x1="5" y1="1" x2="5" y2="13"/><line x1="1" y1="5" x2="13" y2="5"/></svg> Truth Table
+          ${icon('table', 'Truth Table', { size: 14 })}
         </button>
         <button class="header-btn zoom-fit-btn" title="Zoom to fit all components" aria-label="Zoom to fit">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="12" height="12" rx="1"/><line x1="5" y1="1" x2="5" y2="13"/><line x1="1" y1="5" x2="13" y2="5"/></svg>
+          ${icon('maximize', '', { size: 14 })}
         </button>
         <button class="header-btn center-btn" title="Center canvas view" aria-label="Center view">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="3"/><line x1="7" y1="1" x2="7" y2="4"/><line x1="7" y1="10" x2="7" y2="13"/><line x1="1" y1="7" x2="4" y2="7"/><line x1="10" y1="7" x2="13" y2="7"/></svg>
+          ${icon('crosshair', '', { size: 14 })}
         </button>
         <button class="header-btn save-btn" title="Save to browser storage" aria-label="Save project">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><path d="M11 1H3a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1zM4 1v4h6V1M4 9h6v4H4z"/></svg>
+          ${icon('save', '', { size: 14 })}
         </button>
         <button class="header-btn load-btn" title="Restore last saved project" aria-label="Load project">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><path d="M2 2h3v1H3v8h8V3h-2V2h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1zm5-2l3 3H7V0z"/></svg>
+          ${icon('folder-open', '', { size: 14 })}
         </button>
         <button class="header-btn export-btn" title="Export circuit as JSON file" aria-label="Export circuit">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><path d="M7 1v8M4 6l3 3 3-3M2 11v1a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1"/></svg> Export
+          ${icon('download', 'Export', { size: 14 })}
         </button>
         <button class="header-btn import-btn" title="Import circuit from JSON file" aria-label="Import circuit">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><path d="M7 9V1M4 4l3-3 3 3M2 11v1a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1"/></svg> Import
+          ${icon('upload', 'Import', { size: 14 })}
         </button>
         <button class="header-btn theme-toggle-btn" title="Toggle theme (dark/light/high-contrast)" aria-label="Toggle theme">
-          <svg class="theme-icon-dark" width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><path d="M7 1a6 6 0 1 0 0 12A6 6 0 0 0 7 1zm0 1.5v9a4.5 4.5 0 0 1 0-9z"/></svg>
+          ${icon('moon', '', { size: 14 })}
         </button>
         <button class="header-btn examples-btn" title="Load example circuit" aria-label="Example circuits">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="5" height="5" rx="1"/><rect x="8" y="1" width="5" height="5" rx="1"/><rect x="1" y="8" width="5" height="5" rx="1"/><rect x="8" y="8" width="5" height="5" rx="1"/></svg> Examples
+          ${icon('layout-grid', 'Examples', { size: 14 })}
         </button>
       </div>
     `;
+    replaceIcons(header);
     return header;
   }
 
@@ -240,12 +242,14 @@ export class Header {
 
   _updateThemeIcon(theme) {
     if (this.themeToggleBtn) {
-      const icons = {
-        dark: '<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><path d="M7 1a6 6 0 1 0 0 12A6 6 0 0 0 7 1zm0 1.5v9a4.5 4.5 0 0 1 0-9z"/></svg>',
-        light: '<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><circle cx="7" cy="7" r="3"/><g stroke="currentColor" stroke-width="1.5" fill="none"><line x1="7" y1="1" x2="7" y2="3"/><line x1="7" y1="11" x2="7" y2="13"/><line x1="1" y1="7" x2="3" y2="7"/><line x1="11" y1="7" x2="13" y2="7"/><line x1="2.8" y1="2.8" x2="4.2" y2="4.2"/><line x1="9.8" y1="9.8" x2="11.2" y2="11.2"/><line x1="2.8" y1="11.2" x2="4.2" y2="9.8"/><line x1="9.8" y1="4.2" x2="11.2" y2="2.8"/></g></svg>',
-        'high-contrast': '<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><circle cx="7" cy="7" r="6"/><path fill="var(--color-surface, #111)" d="M7 1a6 6 0 0 0 0 12z"/></svg>'
+      const iconMap = {
+        dark: 'moon',
+        light: 'sun',
+        'high-contrast': 'contrast'
       };
-      this.themeToggleBtn.innerHTML = icons[theme] || icons.dark;
+      const iconName = iconMap[theme] || 'moon';
+      this.themeToggleBtn.innerHTML = icon(iconName, '', { size: 14 });
+      replaceIcons(this.themeToggleBtn);
     }
   }
 
@@ -275,24 +279,25 @@ export class Header {
       max-height: 80vh; overflow-y: auto; box-shadow: var(--shadow-lg);
     `;
 
-    const header = document.createElement('div');
-    header.style.cssText = `
+    const headerEl = document.createElement('div');
+    headerEl.style.cssText = `
       display: flex; justify-content: space-between; align-items: center;
       margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--color-border);
     `;
-    header.innerHTML = `<h3 style="margin:0;color:var(--color-accent)">Example Circuits</h3>`;
+    headerEl.innerHTML = `<h3 style="margin:0;color:var(--color-accent)">Example Circuits</h3>`;
 
     const closeBtn = document.createElement('button');
-    closeBtn.textContent = '✕';
+    closeBtn.innerHTML = icon('x', '', { size: 16 });
     closeBtn.style.cssText = `
       background: var(--color-surface-alt); border: 1px solid var(--color-border);
       color: var(--color-text); width: 28px; height: 28px; border-radius: 50%;
       cursor: pointer; font-size: 14px; display: flex; align-items: center;
       justify-content: center;
     `;
+    replaceIcons(closeBtn);
     closeBtn.addEventListener('click', () => dialog.remove());
-    header.appendChild(closeBtn);
-    content.appendChild(header);
+    headerEl.appendChild(closeBtn);
+    content.appendChild(headerEl);
 
     for (const ex of examples) {
       const item = document.createElement('div');

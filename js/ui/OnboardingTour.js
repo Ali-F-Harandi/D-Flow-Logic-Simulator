@@ -9,6 +9,8 @@
  * Persists `dflow-has-seen-tour` in localStorage so it only shows once.
  */
 
+import { icon, replaceIcons } from '../utils/IconHelper.js';
+
 export class OnboardingTour {
   constructor(eventBus) {
     this.eventBus = eventBus;
@@ -16,22 +18,22 @@ export class OnboardingTour {
       {
         title: 'Welcome to D-Flow!',
         description: 'Build digital logic circuits by dragging components and connecting them with wires. Let\'s get started!',
-        icon: '⚡'
+        lucideIcon: 'zap'
       },
       {
         title: 'Step 1: Add a Component',
-        description: 'Click the hamburger menu (☰) to open the sidebar, then drag a gate onto the canvas. Try an AND gate!',
-        icon: '🖱️'
+        description: 'Click the hamburger menu to open the sidebar, then drag a gate onto the canvas. Try an AND gate!',
+        lucideIcon: 'mouse-pointer'
       },
       {
         title: 'Step 2: Connect with Wires',
         description: 'Click on an output connector (dot) and drag to an input connector to create a wire. The wire will auto-route using A* pathfinding!',
-        icon: '🔗'
+        lucideIcon: 'link'
       },
       {
         title: 'Step 3: Run the Simulation',
         description: 'Press the Run button in the header to start the simulation. Toggle switches and watch signals propagate through your circuit!',
-        icon: '▶️'
+        lucideIcon: 'play'
       }
     ];
     this.currentStep = 0;
@@ -63,11 +65,11 @@ export class OnboardingTour {
     const card = document.createElement('div');
     card.className = 'onboarding-card';
 
-    // Icon
-    const icon = document.createElement('div');
-    icon.style.fontSize = '32px';
-    icon.style.marginBottom = '8px';
-    icon.textContent = step.icon;
+    // Icon — using lucide instead of emoji
+    const iconDiv = document.createElement('div');
+    iconDiv.style.cssText = 'font-size: 32px; margin-bottom: 8px; color: var(--color-accent, #007acc); display: flex; align-items: center; justify-content: center;';
+    iconDiv.innerHTML = icon(step.lucideIcon, '', { size: 32 });
+    replaceIcons(iconDiv);
 
     // Title
     const title = document.createElement('h3');
@@ -105,7 +107,7 @@ export class OnboardingTour {
     btnRow.appendChild(skipBtn);
     btnRow.appendChild(nextBtn);
 
-    card.appendChild(icon);
+    card.appendChild(iconDiv);
     card.appendChild(title);
     card.appendChild(desc);
     card.appendChild(dots);

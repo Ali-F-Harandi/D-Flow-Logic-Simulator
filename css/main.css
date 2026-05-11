@@ -143,3 +143,50 @@ html, body {
     scroll-behavior: auto !important;
   }
 }
+
+/* ===== Lucide Icon Styling ===== */
+.lucide-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+}
+
+.lucide-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* Ensure header buttons with lucide icons are properly aligned */
+.header-btn .lucide-icon {
+  margin-right: 3px;
+}
+
+/* Footer zoom buttons: lucide icon sizing */
+.footer-zoom-btn .lucide-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Mobile delete button: lucide icon sizing */
+#mobile-delete-btn .lucide-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Minimap toggle button: lucide icon sizing */
+.minimap-toggle .lucide-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Help overlay close button: lucide icon sizing */
+.help-close-btn .lucide-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Group headers: lucide icon alignment */
+.group-header .lucide-icon {
+  margin-right: 4px;
+}

@@ -4,6 +4,8 @@
  * Allows clicking on the minimap to navigate to that position.
  */
 
+import { icon, replaceIcons } from '../../utils/IconHelper.js';
+
 export class MiniMap {
   constructor(canvas, core, compManager) {
     this.canvas = canvas;
@@ -26,7 +28,7 @@ export class MiniMap {
     container.innerHTML = `
       <div class="minimap-header">
         <span>Minimap</span>
-        <button class="minimap-toggle" title="Toggle minimap">−</button>
+        <button class="minimap-toggle" title="Toggle minimap">${icon('minus', '', { size: 14 })}</button>
       </div>
       <canvas class="minimap-canvas" width="180" height="120"></canvas>
     `;
@@ -34,6 +36,7 @@ export class MiniMap {
     this.element = container;
     this._canvas = container.querySelector('.minimap-canvas');
     this._ctx = this._canvas.getContext('2d');
+    replaceIcons(container);
   }
 
   _bindEvents() {
@@ -41,7 +44,9 @@ export class MiniMap {
     this.element.querySelector('.minimap-toggle').addEventListener('click', () => {
       this._visible = !this._visible;
       this._canvas.style.display = this._visible ? 'block' : 'none';
-      this.element.querySelector('.minimap-toggle').textContent = this._visible ? '−' : '+';
+      const toggleBtn = this.element.querySelector('.minimap-toggle');
+      toggleBtn.innerHTML = this._visible ? icon('minus', '', { size: 14 }) : icon('plus', '', { size: 14 });
+      replaceIcons(toggleBtn);
     });
 
     // Click to navigate
