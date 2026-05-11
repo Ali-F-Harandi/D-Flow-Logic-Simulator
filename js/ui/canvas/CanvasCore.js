@@ -74,14 +74,55 @@ export class CanvasCore {
 
   /**
    * Zoom by delta steps. centerX/Y are relative to the canvas container.
-   * Used for mouse wheel zoom (discrete steps).
-   * Now with smooth animated zoom transition.
+   * Used for mouse wheel zoom (discrete steps) — instant, no animation.
    */
   zoom(delta, centerX, centerY) {
     const oldScale = this.scale;
     const newScale = Math.min(this.maxScale, Math.max(this.minScale,
       oldScale * (delta > 0 ? 1.1 : 0.9)));
     this._applyZoom(newScale, centerX, centerY);
+  }
+
+  /**
+   * Smooth animated zoom toward a target scale.
+   * Interpolates toward targetZoom over ~10 frames using 30% per frame easing.
+   * Used for keyboard/button zoom only — NOT for mouse wheel (which stays instant).
+   * @param {number} targetScale - The desired final scale value
+   * @param {number} centerX - X position relative to canvas container
+   * @param {number} centerY - Y position relative to canvas container
+   */
+  zoomAnimated(targetScale, centerX, centerY) {
+    // Clamp target to valid range
+    targetScale = Math.min(this.maxScale, Math.max(this.minScale, targetScale));
+
+    // Cancel any in-progress animated zoom
+    if (this._zoomAnimFrame) {
+      cancelAnimationFrame(this._zoomAnimFrame);
+      this._zoomAnimFrame = null;
+    }
+
+    // Check if reduced motion is preferred — skip animation
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (prefersReducedMotion) {
+      this._applyZoom(targetScale, centerX, centerY);
+      return;
+    }
+
+    const animate = () => {
+      const diff = targetScale - this.scale;
+      // If we're close enough, snap to target and stop
+      if (Math.abs(diff) < 0.001) {
+        this._applyZoom(targetScale, centerX, centerY);
+        this._zoomAnimFrame = null;
+        return;
+      }
+      // Move 30% toward the target each frame
+      const newScale = this.scale + diff * 0.3;
+      this._applyZoom(newScale, centerX, centerY);
+      this._zoomAnimFrame = requestAnimationFrame(animate);
+    };
+
+    this._zoomAnimFrame = requestAnimationFrame(animate);
   }
 
   /**

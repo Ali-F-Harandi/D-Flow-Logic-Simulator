@@ -6,7 +6,7 @@ export class NorGate extends GateBase {
     super(id, 'NOR', inputsCount, 1);
   }
 
-  computeNextState() {
+  _computeGateLogic() {
     return { outputs: [!this.inputs.some(inp => inp.value)] };
   }
 

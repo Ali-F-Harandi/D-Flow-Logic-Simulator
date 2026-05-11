@@ -1,5 +1,6 @@
 /**
  * Static methods for creating connector dots + labels.
+ * Updated with Feature 4: inversion bubble support.
  */
 export class ConnectorRenderer {
   /**
@@ -17,28 +18,60 @@ export class ConnectorRenderer {
     block.style.top = `${dotCenterY - 4}px`;
     if (isInput) block.style.left = '0px';
     else block.style.right = '0px';
-    block.style.width = '36px';
+
+    // Feature 4: Check if this input is negated — widen block for inversion bubble
+    const isNegated = isInput && comp.isInputNegated && comp.isInputNegated(
+      comp.inputs.findIndex(inp => inp.id === node.id)
+    );
+    const blockWidth = isNegated ? 48 : 36;
+    block.style.width = `${blockWidth}px`;
     block.style.height = '8px';
 
-    const dot = document.createElement('div');
-    dot.className = `connector ${isInput ? 'input' : 'output'}`;
-    dot.dataset.node = node.id;
-    dot.style.backgroundColor = comp._getStateColor(node.value);
-    dot.style.position = 'absolute';
-    dot.style.top = '0px';
-    if (isInput) dot.style.left = '-4px';
-    else dot.style.right = '-4px';
+    // Feature 4: Add inversion bubble if this input is negated
+    if (isNegated) {
+      const bubble = document.createElement('div');
+      bubble.className = 'inversion-bubble input-bubble';
+      block.appendChild(bubble);
 
-    const label = document.createElement('span');
-    label.className = 'connector-label';
-    label.textContent = labelText;
-    label.style.position = 'absolute';
-    label.style.top = '-1px';
-    if (isInput) label.style.left = '8px';
-    else label.style.right = '8px';
+      const dot = document.createElement('div');
+      dot.className = `connector ${isInput ? 'input' : 'output'}`;
+      dot.dataset.node = node.id;
+      dot.style.backgroundColor = comp._getStateColor(node.value);
+      dot.style.position = 'absolute';
+      dot.style.top = '0px';
+      if (isInput) dot.style.left = '-10px';
+      else dot.style.right = '-4px';
+      block.appendChild(dot);
 
-    block.appendChild(dot);
-    block.appendChild(label);
+      const label = document.createElement('span');
+      label.className = 'connector-label';
+      label.textContent = labelText;
+      label.style.position = 'absolute';
+      label.style.top = '-1px';
+      if (isInput) label.style.left = '18px';
+      else label.style.right = '8px';
+      block.appendChild(label);
+    } else {
+      const dot = document.createElement('div');
+      dot.className = `connector ${isInput ? 'input' : 'output'}`;
+      dot.dataset.node = node.id;
+      dot.style.backgroundColor = comp._getStateColor(node.value);
+      dot.style.position = 'absolute';
+      dot.style.top = '0px';
+      if (isInput) dot.style.left = '-4px';
+      else dot.style.right = '-4px';
+      block.appendChild(dot);
+
+      const label = document.createElement('span');
+      label.className = 'connector-label';
+      label.textContent = labelText;
+      label.style.position = 'absolute';
+      label.style.top = '-1px';
+      if (isInput) label.style.left = '8px';
+      else label.style.right = '8px';
+      block.appendChild(label);
+    }
+
     return block;
   }
 }

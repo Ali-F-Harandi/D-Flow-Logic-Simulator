@@ -79,6 +79,16 @@ export class CanvasWiring {
 
   getWires() { return this.wires; }
 
+  /**
+   * Component lookup function for facing-aware port directions.
+   * Passed to Wire.getPortDirection() as the compLookup parameter.
+   * @param {string} nodeId
+   * @returns {Component|null}
+   */
+  _compLookupByNode(nodeId) {
+    return this.engine._findComponentByNode(nodeId);
+  }
+
   /* ─── Color-only update (no path change) ─── */
 
   updateWireColorsOnly() {
@@ -200,6 +210,8 @@ export class CanvasWiring {
     const visualId = generateId('wire');
     const wire = new Wire(visualId, { nodeId: fromNodeId }, { nodeId: toNodeId }, Wire.MODE_BEZIER);
     wire.engineId = engineId;
+    // Feature 5: Set component lookup for facing-aware port directions
+    wire.setCompLookup((nodeId) => this._compLookupByNode(nodeId));
     this._renderWire(wire);
     this.wires.push(wire);
     this._updateJunctions();
@@ -321,8 +333,8 @@ export class CanvasWiring {
 
       // Skip Bézier wires — just recompute their curve (fast, no A* needed)
       if (wire.routingMode === Wire.MODE_BEZIER) {
-        const fromDir = Wire.getPortDirection(sourceId);
-        const toDir   = Wire.getPortDirection(targetId);
+        const fromDir = Wire.getPortDirection(sourceId, (id) => this._compLookupByNode(id));
+        const toDir   = Wire.getPortDirection(targetId, (id) => this._compLookupByNode(id));
         const bezierPoints = this._router.routeBezier(fromPos, toPos, { fromDir, toDir });
         wire.pathPoints = bezierPoints;
 
@@ -468,7 +480,7 @@ export class CanvasWiring {
     const fromPos = this.positionCache.getPosition(nodeId);
     // Use Bézier path for preview
     if (WIRE_DEFAULT_ROUTING_MODE === 'bezier') {
-      const fromDir = Wire.getPortDirection(nodeId);
+      const fromDir = Wire.getPortDirection(nodeId, (id) => this._compLookupByNode(id));
       path.setAttribute('d', Wire.computeBezierPath(fromPos, fromPos, fromDir, { x: -1, y: 0 }));
     } else {
       path.setAttribute('d', Wire.computePath(fromPos, fromPos, {
@@ -484,7 +496,7 @@ export class CanvasWiring {
     // Use Bézier routing for preview when in Bézier mode
     if (WIRE_DEFAULT_ROUTING_MODE === 'bezier') {
       const sourceId = this.wiring?.fromNodeId;
-      const fromDir = Wire.getPortDirection(sourceId);
+      const fromDir = Wire.getPortDirection(sourceId, (id) => this._compLookupByNode(id));
       const toDir   = { x: -1, y: 0 }; // Preview target is typically an input pin
       return Wire.computeBezierPath(fromPos, toPos, fromDir, toDir);
     }
@@ -547,7 +559,7 @@ export class CanvasWiring {
     // Immediate update for Bézier (fast computation, no A* overhead)
     if (WIRE_DEFAULT_ROUTING_MODE === 'bezier') {
       const sourceId = this.wiring?.fromNodeId;
-      const fromDir = Wire.getPortDirection(sourceId);
+      const fromDir = Wire.getPortDirection(sourceId, (id) => this._compLookupByNode(id));
       return Wire.computeBezierPath(fromPos, toPos, fromDir, { x: -1, y: 0 });
     }
 
@@ -949,9 +961,10 @@ export class CanvasWiring {
    * @returns {{ fromDir: {x:number,y:number}, toDir: {x:number,y:number} }}
    */
   getPortDirections(sourceNodeId, targetNodeId) {
+    const lookup = (id) => this._compLookupByNode(id);
     return {
-      fromDir: Wire.getPortDirection(sourceNodeId),
-      toDir:   Wire.getPortDirection(targetNodeId)
+      fromDir: Wire.getPortDirection(sourceNodeId, lookup),
+      toDir:   Wire.getPortDirection(targetNodeId, lookup)
     };
   }
 }

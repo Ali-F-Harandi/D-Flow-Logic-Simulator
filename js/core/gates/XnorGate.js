@@ -6,7 +6,7 @@ export class XnorGate extends GateBase {
     super(id, 'XNOR', inputsCount, 1);
   }
 
-  computeNextState() {
+  _computeGateLogic() {
     const parity = this.inputs.reduce((acc, inp) => acc ^ (inp.value ? 1 : 0), 0);
     return { outputs: [Boolean(parity === 0)] };
   }

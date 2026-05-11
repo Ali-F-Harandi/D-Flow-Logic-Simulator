@@ -5,6 +5,8 @@ import {
   DeleteComponentCommand
 } from '../../utils/UndoManager.js';
 import { ComponentLayoutPolicy } from '../../core/ComponentLayoutPolicy.js';
+import { WireTracer } from '../../utils/WireTracer.js';
+import { WireTooltip } from '../../utils/WireTooltip.js';
 import { WIRE_PIN_MAGNET_RADIUS, GRID_SIZE, WIRE_DEFAULT_ROUTING_MODE } from '../../config.js';
 
 export class CanvasEvents {
@@ -39,6 +41,14 @@ export class CanvasEvents {
 
     // Track hovered wire for highlight effects (new)
     this._hoveredWireId = null;
+
+    // Feature 3: Wire net tracer instance
+    this._wireTracer = null;
+
+    // Feature 7: Wire value tooltip
+    this._wireTooltip = new WireTooltip();
+    this._tooltipShowTimer = null;
+    this._TOOLTIP_DELAY = 500; // ms before showing tooltip
 
     this._bindMouse();
     this._bindKeyboard();
@@ -113,6 +123,8 @@ export class CanvasEvents {
       if (target.closest('g[data-wire-id]')) {
         const wireEl = target.closest('g[data-wire-id]');
         const wireId = wireEl.dataset.wireId;
+        // Feature 3: Clear any active net trace on single click
+        this._clearNetTrace();
         this.selection._clearWireSelection();
         this.selection.clearSelection();
         const wire = this.wiring.wires.find(w => w.id === wireId);
@@ -197,8 +209,9 @@ export class CanvasEvents {
 
         // Use Bézier path for preview when in Bézier mode
         if (WIRE_DEFAULT_ROUTING_MODE === 'bezier') {
-          const fromDir = Wire.getPortDirection(this.wiring.wiring.fromNodeId);
-          const toDir = magnetResult ? Wire.getPortDirection(magnetResult.nodeId) : { x: -1, y: 0 };
+          const compLookup = (id) => this.engine._findComponentByNode(id);
+          const fromDir = Wire.getPortDirection(this.wiring.wiring.fromNodeId, compLookup);
+          const toDir = magnetResult ? Wire.getPortDirection(magnetResult.nodeId, compLookup) : { x: -1, y: 0 };
           const previewD = Wire.computeBezierPath(fromPos, toPos, fromDir, toDir);
           this.wiring.wiring.tempPath.setAttribute('d', previewD);
         } else {
@@ -329,6 +342,14 @@ export class CanvasEvents {
       const wireEl = e.target.closest('g[data-wire-id]');
       if (!wireEl) return;
 
+      // Feature 3: Double-click on wire triggers net tracing
+      const wireId = wireEl.dataset.wireId;
+      const traceWire = this.wiring.wires.find(w => w.id === wireId);
+      if (traceWire) {
+        this._traceNet(wireId);
+        return;
+      }
+
       // If double-clicking on a control point, remove it
       if (this.wiring._wireEditHandler) {
         const hit = this.wiring._wireEditHandler.hitTestControlPoint(e.target);
@@ -339,7 +360,6 @@ export class CanvasEvents {
       }
 
       // Otherwise, add a new control point at the click position
-      const wireId = wireEl.dataset.wireId;
       const wire = this.wiring.wires.find(w => w.id === wireId);
       if (wire && this.wiring._wireEditHandler) {
         const canvasPos = this.core.canvasCoords(e.clientX, e.clientY);
@@ -354,6 +374,9 @@ export class CanvasEvents {
   /**
    * Handle wire hover detection for visual feedback.
    * Shows glow effect and endpoint indicators when hovering over a wire.
+   *
+   * Feature 7: Also manages a 500ms delay before showing WireTooltip
+   * with signal state and connection info.
    */
   _handleWireHover(e) {
     const target = e.target;
@@ -369,13 +392,60 @@ export class CanvasEvents {
         if (prevWire) prevWire.setHovered(false);
       }
 
+      // Feature 7: Cancel pending tooltip and hide current
+      this._cancelTooltipTimer();
+      this._wireTooltip.hide();
+
       // Hover new wire
       if (wireId) {
         const wire = this.wiring.wires.find(w => w.id === wireId);
         if (wire) wire.setHovered(true);
+
+        // Feature 7: Start tooltip delay timer
+        this._startTooltipTimer(wireId, e.clientX, e.clientY);
       }
 
       this._hoveredWireId = wireId || null;
+    } else if (wireId && this._tooltipShowTimer) {
+      // Update mouse position for pending tooltip
+      this._pendingTooltipX = e.clientX;
+      this._pendingTooltipY = e.clientY;
+    }
+  }
+
+  /* ─── Feature 7: Wire Tooltip Timer Management ─── */
+
+  /**
+   * Start the tooltip show delay timer.
+   * After TOOLTIP_DELAY ms, the tooltip will appear.
+   *
+   * @param {string} wireId
+   * @param {number} clientX
+   * @param {number} clientY
+   */
+  _startTooltipTimer(wireId, clientX, clientY) {
+    this._cancelTooltipTimer();
+    this._pendingTooltipWireId = wireId;
+    this._pendingTooltipX = clientX;
+    this._pendingTooltipY = clientY;
+
+    this._tooltipShowTimer = setTimeout(() => {
+      this._tooltipShowTimer = null;
+      const wire = this.wiring.wires.find(w => w.id === wireId);
+      if (wire) {
+        const compLookup = (nodeId) => this.engine._findComponentByNode(nodeId);
+        this._wireTooltip.show(wire, this._pendingTooltipX, this._pendingTooltipY, { compLookup });
+      }
+    }, this._TOOLTIP_DELAY);
+  }
+
+  /**
+   * Cancel the tooltip show delay timer.
+   */
+  _cancelTooltipTimer() {
+    if (this._tooltipShowTimer) {
+      clearTimeout(this._tooltipShowTimer);
+      this._tooltipShowTimer = null;
     }
   }
 
@@ -413,7 +483,11 @@ export class CanvasEvents {
       else if (e.ctrlKey && e.key === 'y') { e.preventDefault(); this.undoManager.redo(); }
       else if (e.ctrlKey && e.key === 'c') { e.preventDefault(); this.selection.copySelected(); }
       else if (e.ctrlKey && e.key === 'v') { e.preventDefault(); this.selection.pasteCopied(); }
-      else if (e.key === 'Escape') { this.selection.clearSelection(); }
+      else if (e.key === 'Escape') {
+        this.selection.clearSelection();
+        // Feature 3: Escape also clears net trace
+        this._clearNetTrace();
+      }
       else if (e.key === 'Delete' || e.key === 'Backspace') {
         if (this.selection.selectedComponents.size > 0 || this.selection.selectedWires.size > 0) {
           e.preventDefault();
@@ -462,20 +536,36 @@ export class CanvasEvents {
         if (e.ctrlKey) {
           e.preventDefault();
           const rect = this.core.element.getBoundingClientRect();
-          this.core.zoom(1, rect.width / 2, rect.height / 2);
+          const targetScale = Math.min(this.core.scale * 1.2, this.core.maxScale);
+          this.core.zoomAnimated(targetScale, rect.width / 2, rect.height / 2);
         }
       }
       else if (e.key === '-') {
         if (e.ctrlKey) {
           e.preventDefault();
           const rect = this.core.element.getBoundingClientRect();
-          this.core.zoom(-1, rect.width / 2, rect.height / 2);
+          const targetScale = Math.max(this.core.scale / 1.2, this.core.minScale);
+          this.core.zoomAnimated(targetScale, rect.width / 2, rect.height / 2);
         }
       }
       else if (e.key === '0' && e.ctrlKey) {
         e.preventDefault();
-        this.core.scale = 1;
-        this.core.applyTransform();
+        const rect = this.core.element.getBoundingClientRect();
+        this.core.zoomAnimated(1, rect.width / 2, rect.height / 2);
+      }
+      // Feature 1: 'R' key to rotate selected components
+      else if (e.key === 'r' || e.key === 'R') {
+        if (this.selection.selectedComponents.size > 0) {
+          e.preventDefault();
+          this._rotateSelected();
+        }
+      }
+      // Feature 2: 'M' key to mirror selected components
+      else if (e.key === 'm' || e.key === 'M') {
+        if (this.selection.selectedComponents.size > 0) {
+          e.preventDefault();
+          this._mirrorSelected();
+        }
       }
     });
   }
@@ -494,6 +584,51 @@ export class CanvasEvents {
       this.selection.selectedComponents.add(comp.id);
       comp.element.classList.add('selected');
       comp.element.focus();
+    }
+  }
+
+  /* ---------- Feature 1: Rotate Selected Components ---------- */
+  _rotateSelected() {
+    for (const compId of this.selection.selectedComponents) {
+      const comp = this.compManager.getComponentById(compId);
+      if (comp) {
+        comp.rotate();
+        // Invalidate position cache and update wires
+        this.positionCache.invalidate();
+        this.wiring.updateWiresForComponent(comp);
+      }
+    }
+  }
+
+  /* ---------- Feature 2: Mirror Selected Components ---------- */
+  _mirrorSelected() {
+    for (const compId of this.selection.selectedComponents) {
+      const comp = this.compManager.getComponentById(compId);
+      if (comp) {
+        comp.toggleMirror();
+        // Invalidate position cache and update wires
+        this.positionCache.invalidate();
+        this.wiring.updateWiresForComponent(comp);
+      }
+    }
+  }
+
+  /* ---------- Feature 3: Wire Net Tracing ---------- */
+  _traceNet(startWireId) {
+    // Create tracer if needed
+    if (!this._wireTracer) {
+      this._wireTracer = new WireTracer(this.wiring.wires, this.engine);
+    }
+    // Clear any previous trace
+    this._clearNetTrace();
+    // Perform BFS trace
+    const netIds = this._wireTracer.traceNet(startWireId);
+    this._wireTracer.highlightNet(netIds);
+  }
+
+  _clearNetTrace() {
+    if (this._wireTracer && this._wireTracer.isTracing) {
+      this._wireTracer.clearTrace();
     }
   }
 
@@ -529,6 +664,18 @@ export class CanvasEvents {
         const comp = this.compManager.getComponentById(compEl.dataset.compId);
         if (comp) {
           items.push({ label: 'Properties', action: () => this.propertyEditor.open(comp) });
+          // Feature 1: Rotate option in context menu
+          items.push({ label: 'Rotate (R)', action: () => {
+            comp.rotate();
+            this.positionCache.invalidate();
+            this.wiring.updateWiresForComponent(comp);
+          }});
+          // Feature 2: Mirror option in context menu
+          items.push({ label: 'Mirror Horizontally (M)', action: () => {
+            comp.toggleMirror();
+            this.positionCache.invalidate();
+            this.wiring.updateWiresForComponent(comp);
+          }});
           items.push({ label: 'Delete', action: () => {
             const cmd = new DeleteComponentCommand(this.engine, this.canvas, comp);
             this.undoManager.execute(cmd);
@@ -596,6 +743,11 @@ export class CanvasEvents {
             }
           }});
 
+          // Feature 3: Trace Net option in wire context menu
+          items.push({ label: 'Trace Net', action: () => {
+            this._traceNet(wire.id);
+          }});
+
           this.contextMenu.show(e.clientX, e.clientY, items);
           return;
         }
@@ -625,7 +777,25 @@ export class CanvasEvents {
       }
 
       if (conn && conn.dataset.node) {
-        if (conn.classList.contains('output')) {
+        // Feature 4: "Invert Input" option for input connectors on gates
+        const nodeId = conn.dataset.node;
+        const isOutput = conn.classList.contains('output');
+        if (!isOutput) {
+          const comp = this.engine._findComponentByNode(nodeId);
+          if (comp && comp.isInputNegated) {
+            // Find which input index this is
+            const inputIndex = comp.inputs.findIndex(inp => inp.id === nodeId);
+            if (inputIndex >= 0) {
+              const isCurrentlyInverted = comp.isInputNegated(inputIndex);
+              items.push({ label: isCurrentlyInverted ? 'Remove Input Inversion' : 'Invert Input', action: () => {
+                comp.toggleInputInversion(inputIndex);
+                this.positionCache.invalidate();
+                this.wiring.updateWiresForComponent(comp);
+              }});
+            }
+          }
+        }
+        if (isOutput) {
           items.push({ label: 'Generate Truth Table', action: () => {
             this.eventBus.emit('show-panel', 'truth');
             this.eventBus.emit('generate-truth-table', conn.dataset.node);

@@ -84,14 +84,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Initial update
   updateUndoRedo();
 
-  // Wire up footer zoom controls
+  // Wire up footer zoom controls (animated zoom for buttons)
   eventBus.on('zoom-in', () => {
-    canvas.core.scale = Math.min(canvas.core.scale * 1.2, canvas.core.maxScale);
-    canvas.core.applyTransform();
+    const rect = canvas.core.element.getBoundingClientRect();
+    const targetScale = Math.min(canvas.core.scale * 1.2, canvas.core.maxScale);
+    canvas.core.zoomAnimated(targetScale, rect.width / 2, rect.height / 2);
   });
   eventBus.on('zoom-out', () => {
-    canvas.core.scale = Math.max(canvas.core.scale / 1.2, canvas.core.minScale);
-    canvas.core.applyTransform();
+    const rect = canvas.core.element.getBoundingClientRect();
+    const targetScale = Math.max(canvas.core.scale / 1.2, canvas.core.minScale);
+    canvas.core.zoomAnimated(targetScale, rect.width / 2, rect.height / 2);
   });
   eventBus.on('zoom-fit', () => {
     canvas.zoomToFit();

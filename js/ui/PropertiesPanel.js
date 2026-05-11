@@ -139,6 +139,20 @@ export class PropertiesPanel {
     posGroup.textContent = `Position: (${comp.position.x}, ${comp.position.y})`;
     this.panel.appendChild(posGroup);
 
+    // Feature 1 & 2: Facing and Mirror info
+    if (comp.facing && comp.facing !== 'east') {
+      const facingGroup = document.createElement('div');
+      facingGroup.className = 'properties-field';
+      facingGroup.textContent = `Facing: ${comp.facing}`;
+      this.panel.appendChild(facingGroup);
+    }
+    if (comp.mirrored) {
+      const mirrorGroup = document.createElement('div');
+      mirrorGroup.className = 'properties-field';
+      mirrorGroup.textContent = 'Mirrored: Yes';
+      this.panel.appendChild(mirrorGroup);
+    }
+
     // Connections info
     const connGroup = document.createElement('div');
     connGroup.className = 'properties-connections';
@@ -147,6 +161,51 @@ export class PropertiesPanel {
     const connectedInputs = comp.inputs.filter(i => i.connectedTo).length;
     connGroup.textContent = `Inputs: ${connectedInputs}/${inputs} connected · Outputs: ${outputs}`;
     this.panel.appendChild(connGroup);
+
+    // Feature 4: Per-input inversion checkboxes for gate components
+    if (comp.isInputNegated && comp.inputs.length > 0) {
+      const invHeader = document.createElement('div');
+      invHeader.className = 'properties-label';
+      invHeader.style.marginTop = '8px';
+      invHeader.style.marginBottom = '4px';
+      invHeader.textContent = 'Input Inversion';
+      this.panel.appendChild(invHeader);
+
+      for (let i = 0; i < comp.inputs.length; i++) {
+        const invRow = document.createElement('div');
+        invRow.className = 'properties-field';
+        invRow.style.flexDirection = 'row';
+        invRow.style.alignItems = 'center';
+        invRow.style.gap = '8px';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.id = `pprop-invert-${i}`;
+        checkbox.checked = comp.isInputNegated(i);
+        checkbox.style.cursor = 'pointer';
+
+        const invLabel = document.createElement('label');
+        invLabel.htmlFor = `pprop-invert-${i}`;
+        invLabel.textContent = `I${i} (invert)`;
+        invLabel.className = 'properties-label';
+        invLabel.style.cursor = 'pointer';
+        invLabel.style.marginBottom = '0';
+
+        invRow.appendChild(checkbox);
+        invRow.appendChild(invLabel);
+        this.panel.appendChild(invRow);
+
+        // Closure to capture index
+        ((index) => {
+          checkbox.addEventListener('change', () => {
+            comp.toggleInputInversion(index);
+            // Refresh panel after toggle
+            this._currentComponent = comp;
+            this._renderComponentPanel();
+          });
+        })(i);
+      }
+    }
   }
 
   _renderWirePanel() {

@@ -6,7 +6,7 @@ export class OrGate extends GateBase {
     super(id, 'OR', inputsCount, 1);
   }
 
-  computeNextState() {
+  _computeGateLogic() {
     const out = this.inputs.some(inp => inp.value);
     return { outputs: [out] };
   }

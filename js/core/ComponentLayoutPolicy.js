@@ -55,4 +55,106 @@ export class ComponentLayoutPolicy {
     const { width, height } = this.computeDimensions(inputCount, outputCount, type);
     return { x: width / 2, y: height / 2 };
   }
+
+  /* ================================================================
+   *  Feature 1: Facing-Aware Connector Positions
+   * ================================================================ */
+
+  /**
+   * Get the world position of an input connector for a component,
+   * adjusted for the component's facing direction.
+   *
+   * @param {Component} comp
+   * @param {number} inputIndex
+   * @returns {{ x: number, y: number }}
+   */
+  static getInputPosition(comp, inputIndex) {
+    const dims = this.computeDimensions(comp.inputs.length, comp.outputs.length, comp.type);
+    const localY = this.getInputY(inputIndex, comp.inputs.length, dims.height);
+    return this._localToWorld(comp, 0, localY);
+  }
+
+  /**
+   * Get the world position of an output connector for a component,
+   * adjusted for the component's facing direction.
+   *
+   * @param {Component} comp
+   * @param {number} outputIndex
+   * @returns {{ x: number, y: number }}
+   */
+  static getOutputPosition(comp, outputIndex) {
+    const dims = this.computeDimensions(comp.inputs.length, comp.outputs.length, comp.type);
+    const localY = this.getOutputY(outputIndex, comp.outputs.length, dims.height);
+    return this._localToWorld(comp, dims.width, localY);
+  }
+
+  /**
+   * Convert a local (un-rotated) coordinate to world coordinates
+   * by applying rotation around the component center.
+   *
+   * @param {Component} comp
+   * @param {number} localX — x relative to component top-left (un-rotated)
+   * @param {number} localY — y relative to component top-left (un-rotated)
+   * @returns {{ x: number, y: number }}
+   */
+  static _localToWorld(comp, localX, localY) {
+    const dims = this.computeDimensions(comp.inputs.length, comp.outputs.length, comp.type);
+    const cx = dims.width / 2;
+    const cy = dims.height / 2;
+
+    // Translate so center is at origin
+    let dx = localX - cx;
+    let dy = localY - cy;
+
+    // Apply rotation based on facing
+    const angle = this._facingToRadians(comp.facing);
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const rx = dx * cos - dy * sin;
+    const ry = dx * sin + dy * cos;
+
+    // Apply mirror if needed (scaleX(-1) around center)
+    const mx = comp.mirrored ? -rx : rx;
+
+    return {
+      x: comp.position.x + cx + mx,
+      y: comp.position.y + cy + ry
+    };
+  }
+
+  /**
+   * Get the port direction vector for a node, considering the component's facing.
+   * Output pins exit right (east), input pins arrive from left (west) by default.
+   * These rotate with the component's facing direction.
+   *
+   * @param {Component} comp
+   * @param {string} nodeId
+   * @returns {{ x: number, y: number }}
+   */
+  static getPortDirectionForNode(comp, nodeId) {
+    const isOutput = nodeId.includes('.output.');
+    // Base direction: output → right, input → left
+    let dx = isOutput ? 1 : -1;
+    let dy = 0;
+
+    // Apply mirror (flip horizontal direction)
+    if (comp.mirrored) dx = -dx;
+
+    // Apply rotation
+    const angle = this._facingToRadians(comp.facing);
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    return {
+      x: dx * cos - dy * sin,
+      y: dx * sin + dy * cos
+    };
+  }
+
+  /**
+   * Convert facing direction to radians.
+   */
+  static _facingToRadians(facing) {
+    const map = { east: 0, south: Math.PI / 2, west: Math.PI, north: -Math.PI / 2 };
+    return map[facing] || 0;
+  }
 }

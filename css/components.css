@@ -12,6 +12,8 @@
   cursor: grab;
   transition: box-shadow 0.2s, border-color 0.2s;
   /* width & height set dynamically by each component */
+  /* Feature 1 & 2: Rotation/Mirror transform support */
+  transform-origin: center center;
 }
 .component:active {
   cursor: grabbing;
@@ -275,6 +277,11 @@
   padding: var(--space-md);
 }
 
+/* Feature 9: Smooth snap-to-grid transition after drag */
+.component.snapping {
+  transition: left 0.15s ease-out, top 0.15s ease-out;
+}
+
 .component.selected {
   outline: var(--component-selected-outline);
   box-shadow: var(--component-selected-shadow);
@@ -398,6 +405,114 @@
   box-shadow: 0 0 8px var(--color-accent);
   z-index: 10;
   transition: transform 0.1s, box-shadow 0.1s;
+}
+
+/* ===== Feature 6: Snap-to-Connection Highlight ===== */
+.connector.snap-highlight {
+  transform: scale(1.6);
+  box-shadow: 0 0 10px var(--color-success);
+  z-index: 10;
+  background: var(--color-success) !important;
+  transition: transform 0.15s ease-out, box-shadow 0.15s ease-out, background 0.15s ease-out;
+}
+
+/* ===== Feature 7: Wire Value Tooltip ===== */
+.wire-tooltip {
+  position: fixed;
+  z-index: 3000;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 0;
+  pointer-events: none;
+  font-family: var(--font-family);
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  min-width: 160px;
+  max-width: 320px;
+  opacity: 0;
+  transition: opacity 0.15s ease-out;
+  overflow: hidden;
+}
+
+.wire-tooltip[aria-hidden="false"] {
+  opacity: 1;
+}
+
+.wire-tooltip-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 10px;
+  background: var(--color-surface-alt);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.wire-tooltip-id {
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wire-tooltip-signal {
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.wire-tooltip-signal-high {
+  color: #00cc66;
+  background: rgba(0, 204, 102, 0.15);
+}
+
+.wire-tooltip-signal-low {
+  color: var(--color-text-muted);
+  background: rgba(136, 136, 136, 0.15);
+}
+
+.wire-tooltip-signal-unknown {
+  color: #ff9800;
+  background: rgba(255, 152, 0, 0.15);
+}
+
+.wire-tooltip-body {
+  padding: 6px 10px;
+}
+
+.wire-tooltip-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+
+.wire-tooltip-row:last-child {
+  margin-bottom: 0;
+}
+
+.wire-tooltip-label {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  min-width: 48px;
+  flex-shrink: 0;
+}
+
+.wire-tooltip-value {
+  color: var(--color-text);
+  font-family: monospace;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ===== Help Overlay ===== */
@@ -722,4 +837,45 @@ g[data-wire-id]:hover .wire-visual {
 /* ===== SVG Selection Rectangle ===== */
 .selection-rect-svg {
   pointer-events: none;
+}
+
+/* ===== Feature 3: Wire Net Trace Glow ===== */
+.wire-visual.traced {
+  stroke: #4ec9b0 !important;
+  stroke-width: 4 !important;
+  filter: drop-shadow(0 0 6px rgba(78, 201, 176, 0.8));
+  animation: traced-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes traced-pulse {
+  0%, 100% {
+    filter: drop-shadow(0 0 4px rgba(78, 201, 176, 0.6));
+    stroke-width: 3;
+  }
+  50% {
+    filter: drop-shadow(0 0 10px rgba(78, 201, 176, 1));
+    stroke-width: 5;
+  }
+}
+
+/* ===== Feature 4: Inversion Bubble ===== */
+.inversion-bubble {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--color-text);
+  border-radius: 50%;
+  background: var(--color-surface);
+  pointer-events: none;
+  z-index: 3;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.inversion-bubble.input-bubble {
+  left: 2px;
+}
+
+.inversion-bubble.output-bubble {
+  right: 2px;
 }

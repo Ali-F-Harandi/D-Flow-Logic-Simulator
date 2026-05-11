@@ -1,5 +1,9 @@
 import { GRID_SIZE } from '../config.js';
 
+// Rotation facing direction constants
+const FACING_ORDER = ['east', 'south', 'west', 'north'];
+const FACING_ANGLES = { east: 0, south: 90, west: 180, north: 270 };
+
 export class Component {
   constructor(id, type, inputsCount = 0, outputsCount = 1) {
     this.id = id;
@@ -18,6 +22,12 @@ export class Component {
     this.GRID = GRID_SIZE;
     this.isWrapped = false;
     this._errorState = false;
+
+    // Feature 1: Gate Rotation — facing direction
+    this.facing = 'east'; // 'east' | 'south' | 'west' | 'north'
+
+    // Feature 2: Gate Mirroring — Y-axis flip
+    this.mirrored = false;
   }
 
   getType() { return this.type; }
@@ -76,6 +86,59 @@ export class Component {
   getProperties() { return []; }
   setProperty(name, value) { return false; }
 
+  /* ================================================================
+   *  Feature 1: Gate Rotation
+   * ================================================================ */
+
+  /**
+   * Rotate the component 90° clockwise.
+   * Cycles through east → south → west → north.
+   */
+  rotate() {
+    const idx = FACING_ORDER.indexOf(this.facing);
+    this.facing = FACING_ORDER[(idx + 1) % 4];
+    this._applyTransform();
+  }
+
+  /**
+   * Get the CSS rotation angle for the current facing direction.
+   * @returns {number} degrees
+   */
+  getFacingAngle() {
+    return FACING_ANGLES[this.facing] || 0;
+  }
+
+  /* ================================================================
+   *  Feature 2: Gate Mirroring
+   * ================================================================ */
+
+  /**
+   * Toggle the Y-axis mirror (horizontal flip) of the component.
+   */
+  toggleMirror() {
+    this.mirrored = !this.mirrored;
+    this._applyTransform();
+  }
+
+  /* ================================================================
+   *  Combined Transform (Rotation + Mirror)
+   * ================================================================ */
+
+  /**
+   * Apply CSS transform combining rotation and optional mirror.
+   * Uses transform-origin at the center of the component.
+   */
+  _applyTransform() {
+    if (!this.element) return;
+    const angle = this.getFacingAngle();
+    let transform = `rotate(${angle}deg)`;
+    if (this.mirrored) {
+      transform += ' scaleX(-1)';
+    }
+    this.element.style.transformOrigin = 'center center';
+    this.element.style.transform = transform;
+  }
+
   _getStateColor(value) {
     if (value === true)  return 'var(--color-success)';
     if (value === false) return 'var(--color-text-muted)';
@@ -133,6 +196,8 @@ export class Component {
         this.container.insertBefore(this.element, nextSibling);
       }
       oldEl.remove();
+      // Re-apply rotation/mirror transform after re-render
+      this._applyTransform();
       return true;
     }
     return false;
@@ -155,28 +220,62 @@ export class Component {
     block.style.top = `${dotCenterY - 4}px`;
     if (isInput) block.style.left = '0px';
     else block.style.right = '0px';
-    block.style.width = '36px';
+
+    // Feature 4: Check if this input is negated — widen block for inversion bubble
+    const isNegated = isInput && this.isInputNegated && this.isInputNegated(
+      this.inputs.findIndex(inp => inp.id === node.id)
+    );
+    const blockWidth = isNegated ? 48 : 36;
+    block.style.width = `${blockWidth}px`;
     block.style.height = '8px';
 
-    const dot = document.createElement('div');
-    dot.className = `connector ${isInput ? 'input' : 'output'}`;
-    dot.dataset.node = node.id;
-    dot.style.backgroundColor = this._getStateColor(node.value);
-    dot.style.position = 'absolute';
-    dot.style.top = '0px';
-    if (isInput) dot.style.left = '-4px';
-    else dot.style.right = '-4px';
+    // Feature 4: Add inversion bubble if this input is negated
+    if (isNegated) {
+      const bubble = document.createElement('div');
+      bubble.className = 'inversion-bubble input-bubble';
+      block.appendChild(bubble);
 
-    const label = document.createElement('span');
-    label.className = 'connector-label';
-    label.textContent = labelText;
-    label.style.position = 'absolute';
-    label.style.top = '-1px';
-    if (isInput) label.style.left = '8px';
-    else label.style.right = '8px';
+      // Shift the dot outward to make room for the bubble
+      const dot = document.createElement('div');
+      dot.className = `connector ${isInput ? 'input' : 'output'}`;
+      dot.dataset.node = node.id;
+      dot.style.backgroundColor = this._getStateColor(node.value);
+      dot.style.position = 'absolute';
+      dot.style.top = '0px';
+      if (isInput) dot.style.left = '-10px';
+      else dot.style.right = '-4px';
+      block.appendChild(dot);
 
-    block.appendChild(dot);
-    block.appendChild(label);
+      const label = document.createElement('span');
+      label.className = 'connector-label';
+      label.textContent = labelText;
+      label.style.position = 'absolute';
+      label.style.top = '-1px';
+      if (isInput) label.style.left = '18px';
+      else label.style.right = '8px';
+      block.appendChild(label);
+    } else {
+      // Standard (non-negated) connector
+      const dot = document.createElement('div');
+      dot.className = `connector ${isInput ? 'input' : 'output'}`;
+      dot.dataset.node = node.id;
+      dot.style.backgroundColor = this._getStateColor(node.value);
+      dot.style.position = 'absolute';
+      dot.style.top = '0px';
+      if (isInput) dot.style.left = '-4px';
+      else dot.style.right = '-4px';
+      block.appendChild(dot);
+
+      const label = document.createElement('span');
+      label.className = 'connector-label';
+      label.textContent = labelText;
+      label.style.position = 'absolute';
+      label.style.top = '-1px';
+      if (isInput) label.style.left = '8px';
+      else label.style.right = '8px';
+      block.appendChild(label);
+    }
+
     return block;
   }
 }

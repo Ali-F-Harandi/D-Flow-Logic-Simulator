@@ -27,6 +27,7 @@ import {
   WIRE_BEZIER_CONTROL_FACTOR, WIRE_BEZIER_MIN_CONTROL, WIRE_BEZIER_MAX_CONTROL,
   WIRE_DEFAULT_ROUTING_MODE
 } from '../config.js';
+import { ComponentLayoutPolicy } from './ComponentLayoutPolicy.js';
 
 export class Wire {
 
@@ -63,6 +64,9 @@ export class Wire {
     this._isHovered   = false;
     this._isError     = false;
     this._isGlowing   = false;
+
+    // Feature 5: Component lookup for facing-aware port directions
+    this._compLookup  = null;
   }
 
   /* ─── Backward Compatibility Aliases ─── */
@@ -100,6 +104,37 @@ export class Wire {
     if (this._isLocked) return 'locked';
     if (this.routingMode === Wire.MODE_MANUAL) return 'manual';
     return 'auto';
+  }
+
+  /* ─── Feature 5: Component Lookup for Facing-Aware Directions ─── */
+
+  /**
+   * Set the component lookup function for facing-aware port directions.
+   * When set, all Bézier path computations use the actual component
+   * facing direction instead of the default EAST/WEST assumption.
+   *
+   * @param {Function} lookup – (nodeId) => Component
+   */
+  setCompLookup(lookup) {
+    this._compLookup = lookup;
+  }
+
+  /**
+   * Get the facing-aware port direction for the source node.
+   * Uses the stored compLookup if available.
+   * @returns {{x:number, y:number}}
+   */
+  getSourceDirection() {
+    return Wire.getPortDirection(this.sourceNode.nodeId, this._compLookup);
+  }
+
+  /**
+   * Get the facing-aware port direction for the target node.
+   * Uses the stored compLookup if available.
+   * @returns {{x:number, y:number}}
+   */
+  getTargetDirection() {
+    return Wire.getPortDirection(this.targetNode.nodeId, this._compLookup);
   }
 
   /* ================================================================
@@ -141,12 +176,15 @@ export class Wire {
    */
   computePathPoints(fromPos, toPos, router, opts = {}) {
     if (this.routingMode === Wire.MODE_BEZIER) {
-      const fromDir = opts.fromDir || Wire.getPortDirection(this.sourceNode.nodeId);
-      const toDir   = opts.toDir   || Wire.getPortDirection(this.targetNode.nodeId);
+      const fromDir = opts.fromDir || this.getSourceDirection();
+      const toDir   = opts.toDir   || this.getTargetDirection();
       const points  = router.route(fromPos, toPos, 'bezier', {
         ...opts,
         fromDir,
-        toDir
+        toDir,
+        sourceNodeId: this.sourceNode.nodeId,
+        targetNodeId: this.targetNode.nodeId,
+        compLookup: this._compLookup
       });
       this.pathPoints = points;
       return points;
@@ -246,10 +284,20 @@ export class Wire {
    * Output pins have direction (1, 0) → wire exits going RIGHT
    * Input pins have direction (-1, 0) → wire arrives from the LEFT
    *
+   * When a component lookup function is provided, the direction is
+   * adjusted for the component's facing direction and mirror state.
+   *
    * @param {string} nodeId
+   * @param {Function} [compLookup] — (nodeId) => Component (optional, for facing-aware direction)
    * @returns {{x:number, y:number}}
    */
-  static getPortDirection(nodeId) {
+  static getPortDirection(nodeId, compLookup) {
+    if (compLookup) {
+      const comp = compLookup(nodeId);
+      if (comp) {
+        return ComponentLayoutPolicy.getPortDirectionForNode(comp, nodeId);
+      }
+    }
     if (nodeId && nodeId.includes('.output.')) return { x: 1, y: 0 };
     return { x: -1, y: 0 };
   }
@@ -257,6 +305,11 @@ export class Wire {
   /**
    * Compute a cubic Bézier SVG path string from two port positions and their directions.
    * If ports are approximately aligned on the same axis, use a straight line.
+   *
+   * Feature 5: Direction-driven control distances.
+   * Each control point distance is computed based on the projection of the
+   * source→target vector onto that port's direction, making curves adapt
+   * naturally when ports face different directions (e.g., rotated gates).
    *
    * @param {{x:number,y:number}} fromPos
    * @param {{x:number,y:number}} toPos
@@ -273,20 +326,37 @@ export class Wire {
       return `M ${sx} ${sy} L ${tx} ${ty}`;
     }
 
-    // Calculate proportional control distance
-    const dist = Math.hypot(tx - sx, ty - sy);
-    const controlDist = Math.max(
+    const fd = fromDir || { x: 1, y: 0 };
+    const td = toDir || { x: -1, y: 0 };
+
+    const dx = tx - sx;
+    const dy = ty - sy;
+    const dist = Math.hypot(dx, dy);
+
+    // Base control distance (proportional to total distance)
+    const baseControlDist = Math.max(
       WIRE_BEZIER_MIN_CONTROL,
       Math.min(WIRE_BEZIER_MAX_CONTROL, dist * WIRE_BEZIER_CONTROL_FACTOR)
     );
 
-    const fd = fromDir || { x: 1, y: 0 };
-    const td = toDir || { x: -1, y: 0 };
+    // Feature 5: Direction-driven per-port control distances
+    // Compute projection of source→target onto each port direction
+    const fromProjection = dx * fd.x + dy * fd.y;     // dot product with from direction
+    const toProjection   = -(dx * td.x + dy * td.y);  // negative: target direction points inward
 
-    const cx1 = sx + fd.x * controlDist;
-    const cy1 = sy + fd.y * controlDist;
-    const cx2 = tx + td.x * controlDist;
-    const cy2 = ty + td.y * controlDist;
+    // When projection is positive (port faces toward the other), use adaptive distance;
+    // otherwise fall back to base proportional distance
+    const fromScale = fromProjection > 0
+      ? Math.max(WIRE_BEZIER_MIN_CONTROL, Math.min(WIRE_BEZIER_MAX_CONTROL, fromProjection * WIRE_BEZIER_CONTROL_FACTOR))
+      : baseControlDist;
+    const toScale = toProjection > 0
+      ? Math.max(WIRE_BEZIER_MIN_CONTROL, Math.min(WIRE_BEZIER_MAX_CONTROL, toProjection * WIRE_BEZIER_CONTROL_FACTOR))
+      : baseControlDist;
+
+    const cx1 = sx + fd.x * fromScale;
+    const cy1 = sy + fd.y * fromScale;
+    const cx2 = tx + td.x * toScale;
+    const cy2 = ty + td.y * toScale;
 
     return `M ${sx} ${sy} C ${cx1} ${cy1} ${cx2} ${cy2} ${tx} ${ty}`;
   }
@@ -355,21 +425,35 @@ export class Wire {
     // Compute path
     let d;
     if (this.routingMode === Wire.MODE_BEZIER) {
-      const fromDir = Wire.getPortDirection(this.sourceNode.nodeId);
-      const toDir   = Wire.getPortDirection(this.targetNode.nodeId);
-      d = Wire.computeBezierPath(fromPos, toPos, fromDir, toDir);
-      // Store Bézier control points as pathPoints
-      const dist = Math.hypot(toPos.x - fromPos.x, toPos.y - fromPos.y);
-      const controlDist = Math.max(
-        WIRE_BEZIER_MIN_CONTROL,
-        Math.min(WIRE_BEZIER_MAX_CONTROL, dist * WIRE_BEZIER_CONTROL_FACTOR)
-      );
-      this.pathPoints = [
-        { x: fromPos.x, y: fromPos.y },
-        { x: fromPos.x + fromDir.x * controlDist, y: fromPos.y + fromDir.y * controlDist },
-        { x: toPos.x + toDir.x * controlDist, y: toPos.y + toDir.y * controlDist },
-        { x: toPos.x, y: toPos.y }
-      ];
+      // Feature 5: Use facing-aware port directions
+      const fromDir = this.getSourceDirection();
+      const toDir   = this.getTargetDirection();
+
+      // Use the Router for direction-driven Bézier if available
+      if (router && typeof router.routeBezier === 'function') {
+        const bezierPoints = router.routeBezier(fromPos, toPos, {
+          fromDir, toDir,
+          sourceNodeId: this.sourceNode.nodeId,
+          targetNodeId: this.targetNode.nodeId,
+          compLookup: this._compLookup
+        });
+        this.pathPoints = bezierPoints;
+        d = Wire.pointsToSVGPath(bezierPoints, true);
+      } else {
+        d = Wire.computeBezierPath(fromPos, toPos, fromDir, toDir);
+        // Store Bézier control points as pathPoints
+        const dist = Math.hypot(toPos.x - fromPos.x, toPos.y - fromPos.y);
+        const controlDist = Math.max(
+          WIRE_BEZIER_MIN_CONTROL,
+          Math.min(WIRE_BEZIER_MAX_CONTROL, dist * WIRE_BEZIER_CONTROL_FACTOR)
+        );
+        this.pathPoints = [
+          { x: fromPos.x, y: fromPos.y },
+          { x: fromPos.x + fromDir.x * controlDist, y: fromPos.y + fromDir.y * controlDist },
+          { x: toPos.x + toDir.x * controlDist, y: toPos.y + toDir.y * controlDist },
+          { x: toPos.x, y: toPos.y }
+        ];
+      }
     } else if (router && typeof router.route === 'function') {
       const points = this.computePathPoints(fromPos, toPos, router, { busY: busBarY });
       d = Wire.pointsToSVGPath(points);
@@ -458,10 +542,10 @@ export class Wire {
     targetDot.classList.add('wire-endpoint-target');
     targetDot.style.display = 'none';
 
-    // ─── Title (tooltip) ───
+    // ─── Title (native SVG tooltip) ───
     const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
     title.textContent = `Wire ${this.id} (${this.wireState})`;
-    title.classList.add('wire-tooltip');
+    title.classList.add('wire-title-native');
 
     // Assemble group (order matters: glow → visual → hit → dots)
     group.appendChild(title);
@@ -496,21 +580,33 @@ export class Wire {
     // Compute new path
     let d;
     if (this.routingMode === Wire.MODE_BEZIER) {
-      const fromDir = Wire.getPortDirection(this.sourceNode.nodeId);
-      const toDir   = Wire.getPortDirection(this.targetNode.nodeId);
+      // Feature 5: Use facing-aware port directions
+      const fromDir = this.getSourceDirection();
+      const toDir   = this.getTargetDirection();
       d = Wire.computeBezierPath(fromPos, toPos, fromDir, toDir);
-      // Update pathPoints
-      const dist = Math.hypot(toPos.x - fromPos.x, toPos.y - fromPos.y);
-      const controlDist = Math.max(
-        WIRE_BEZIER_MIN_CONTROL,
-        Math.min(WIRE_BEZIER_MAX_CONTROL, dist * WIRE_BEZIER_CONTROL_FACTOR)
-      );
-      this.pathPoints = [
-        { x: fromPos.x, y: fromPos.y },
-        { x: fromPos.x + fromDir.x * controlDist, y: fromPos.y + fromDir.y * controlDist },
-        { x: toPos.x + toDir.x * controlDist, y: toPos.y + toDir.y * controlDist },
-        { x: toPos.x, y: toPos.y }
-      ];
+      // Update pathPoints — use direction-driven control distances from router if available
+      if (router && typeof router.routeBezier === 'function') {
+        const bezierPoints = router.routeBezier(fromPos, toPos, {
+          fromDir, toDir,
+          sourceNodeId: this.sourceNode.nodeId,
+          targetNodeId: this.targetNode.nodeId,
+          compLookup: this._compLookup
+        });
+        this.pathPoints = bezierPoints;
+        d = Wire.pointsToSVGPath(bezierPoints, true);
+      } else {
+        const dist = Math.hypot(toPos.x - fromPos.x, toPos.y - fromPos.y);
+        const controlDist = Math.max(
+          WIRE_BEZIER_MIN_CONTROL,
+          Math.min(WIRE_BEZIER_MAX_CONTROL, dist * WIRE_BEZIER_CONTROL_FACTOR)
+        );
+        this.pathPoints = [
+          { x: fromPos.x, y: fromPos.y },
+          { x: fromPos.x + fromDir.x * controlDist, y: fromPos.y + fromDir.y * controlDist },
+          { x: toPos.x + toDir.x * controlDist, y: toPos.y + toDir.y * controlDist },
+          { x: toPos.x, y: toPos.y }
+        ];
+      }
     } else if (router && typeof router.route === 'function') {
       const points = this.computePathPoints(fromPos, toPos, router, { busY: busBarY });
       d = Wire.pointsToSVGPath(points);
@@ -561,8 +657,9 @@ export class Wire {
 
     // For Bézier mode, just recompute the full Bézier path (fast, no pathfinding)
     if (this.routingMode === Wire.MODE_BEZIER) {
-      const fromDir = Wire.getPortDirection(this.sourceNode.nodeId);
-      const toDir   = Wire.getPortDirection(this.targetNode.nodeId);
+      // Feature 5: Use facing-aware port directions
+      const fromDir = this.getSourceDirection();
+      const toDir   = this.getTargetDirection();
       const d = Wire.computeBezierPath(fromPos, toPos, fromDir, toDir);
       const dist = Math.hypot(toPos.x - fromPos.x, toPos.y - fromPos.y);
       const controlDist = Math.max(
@@ -797,6 +894,27 @@ export class Wire {
       if (glowPath) {
         glowPath.style.display = 'none';
         glowPath.setAttribute('stroke', 'transparent');
+      }
+    }
+  }
+
+  /* ================================================================
+   *  Feature 3: Wire Net Tracing (traced state)
+   * ================================================================ */
+
+  /**
+   * Set the traced (net-highlight) state on this wire.
+   * Adds/removes the `.traced` CSS class on the wire-visual path.
+   * @param {boolean} isTraced
+   */
+  setTraced(isTraced) {
+    if (!this.element) return;
+    const visualPath = this.element.querySelector('.wire-visual');
+    if (visualPath) {
+      if (isTraced) {
+        visualPath.classList.add('traced');
+      } else {
+        visualPath.classList.remove('traced');
       }
     }
   }
@@ -1131,7 +1249,7 @@ export class Wire {
 
   _updateTooltip() {
     if (!this.element) return;
-    const title = this.element.querySelector('.wire-tooltip');
+    const title = this.element.querySelector('.wire-title-native');
     if (title) {
       const stateLabel = this.wireState === 'auto' ? 'Auto-routed' :
                         this.wireState === 'manual' ? 'Manually edited' : 'Locked';

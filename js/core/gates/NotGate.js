@@ -6,7 +6,7 @@ export class NotGate extends GateBase {
     super(id, 'NOT', 1, 1);
   }
 
-  computeNextState() {
+  _computeGateLogic() {
     return { outputs: [!this.inputs[0].value] };
   }
 

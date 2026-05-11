@@ -19,6 +19,7 @@ import { GRID_SIZE, ASTAR_BEND_PENALTY, ASTAR_WIRE_PENALTY, ASTAR_MAX_ITERATIONS
 import { StarRouter } from './StarRouter.js';
 import { WireNudger } from './WireNudger.js';
 import { OccupancyGrid } from './OccupancyGrid.js';
+import { ComponentLayoutPolicy } from '../core/ComponentLayoutPolicy.js';
 
 export class Router {
 
@@ -253,36 +254,91 @@ export class Router {
    * Route a wire using cubic Bézier curves based on port direction vectors.
    * No obstacle avoidance — simple, elegant curves.
    *
-   * Control points are derived from port directions:
-   *   c1 = sourcePos + sourceDir * controlDistance
-   *   c2 = targetPos + targetDir * controlDistance
+   * Feature 5: Direction-Driven Bézier Control Points
+   * Control points are derived from port facing directions:
+   *   c1 = sourcePos + sourceDir * fromScale
+   *   c2 = targetPos + targetDir * toScale
+   *
+   * When port directions are provided, the control distance for each port
+   * is computed independently based on how much the source→target vector
+   * projects onto that port's direction. This makes wires exit/enter
+   * ports in their facing direction, producing dramatic curves when
+   * components are rotated (e.g., a south-facing output extends downward).
+   *
+   * For the default EAST-facing orientation (fromDir=(1,0), toDir=(-1,0)),
+   * this is equivalent to the previous proportional behavior.
    *
    * @param {{x:number,y:number}} fromPos
    * @param {{x:number,y:number}} toPos
    * @param {Object}  [opts]
-   * @param {{x:number,y:number}} [opts.fromDir] – Source port direction (default {x:1, y:0})
-   * @param {{x:number,y:number}} [opts.toDir]   – Target port direction (default {x:-1, y:0})
+   * @param {{x:number,y:number}} [opts.fromDir]       – Source port direction (default {x:1, y:0})
+   * @param {{x:number,y:number}} [opts.toDir]         – Target port direction (default {x:-1, y:0})
+   * @param {string}               [opts.sourceNodeId]  – Source node ID for auto-direction lookup
+   * @param {string}               [opts.targetNodeId]  – Target node ID for auto-direction lookup
+   * @param {Function}             [opts.compLookup]    – (nodeId) => Component for facing-aware direction
    * @returns {Array<{x:number,y:number}>} 4 points: [start, cp1, cp2, end]
    */
   routeBezier(fromPos, toPos, opts = {}) {
-    const fromDir = opts.fromDir || { x: 1, y: 0 };
-    const toDir   = opts.toDir   || { x: -1, y: 0 };
+    // ── Resolve port direction vectors ──
+    // Priority: explicit fromDir/toDir > compLookup-based > fallback default
+    let fromDir = opts.fromDir || null;
+    let toDir   = opts.toDir   || null;
+
+    // Auto-derive directions from component facing if compLookup is provided
+    if (!fromDir && opts.sourceNodeId && opts.compLookup) {
+      const comp = opts.compLookup(opts.sourceNodeId);
+      if (comp) {
+        fromDir = ComponentLayoutPolicy.getPortDirectionForNode(comp, opts.sourceNodeId);
+      }
+    }
+    if (!toDir && opts.targetNodeId && opts.compLookup) {
+      const comp = opts.compLookup(opts.targetNodeId);
+      if (comp) {
+        toDir = ComponentLayoutPolicy.getPortDirectionForNode(comp, opts.targetNodeId);
+      }
+    }
+
+    // Fallback defaults: output → right, input → left
+    if (!fromDir) fromDir = { x: 1, y: 0 };
+    if (!toDir)   toDir   = { x: -1, y: 0 };
 
     // If aligned, return simple line points
     if (Math.abs(fromPos.x - toPos.x) < 1 || Math.abs(fromPos.y - toPos.y) < 1) {
       return [{ x: fromPos.x, y: fromPos.y }, { x: toPos.x, y: toPos.y }];
     }
 
-    const dist = Math.hypot(toPos.x - fromPos.x, toPos.y - fromPos.y);
-    const controlDist = Math.max(
+    // ── Compute per-direction control distances ──
+    // The control distance for each port is based on how much the
+    // source→target vector projects onto that port's direction.
+    // This makes curves adapt naturally when ports face different directions.
+    const dx = toPos.x - fromPos.x;
+    const dy = toPos.y - fromPos.y;
+    const dist = Math.hypot(dx, dy);
+
+    // Projection of the source→target vector onto each port direction
+    const fromProjection = dx * fromDir.x + dy * fromDir.y;  // dot product
+    const toProjection   = -(dx * toDir.x + dy * toDir.y);   // negative: target direction points inward
+
+    // Base control distance (proportional to total distance, same as before)
+    const baseControlDist = Math.max(
       WIRE_BEZIER_MIN_CONTROL,
       Math.min(WIRE_BEZIER_MAX_CONTROL, dist * WIRE_BEZIER_CONTROL_FACTOR)
     );
 
+    // Per-direction scale: when the projection is positive (port faces toward the other),
+    // use a longer control distance; when negative (port faces away), use a shorter one.
+    // This ensures the Bézier curve exits/enters in the port's facing direction.
+    const fromScale = fromProjection > 0
+      ? Math.max(WIRE_BEZIER_MIN_CONTROL, Math.min(WIRE_BEZIER_MAX_CONTROL, fromProjection * WIRE_BEZIER_CONTROL_FACTOR))
+      : baseControlDist;
+    const toScale = toProjection > 0
+      ? Math.max(WIRE_BEZIER_MIN_CONTROL, Math.min(WIRE_BEZIER_MAX_CONTROL, toProjection * WIRE_BEZIER_CONTROL_FACTOR))
+      : baseControlDist;
+
     return [
       { x: fromPos.x, y: fromPos.y },
-      { x: fromPos.x + fromDir.x * controlDist, y: fromPos.y + fromDir.y * controlDist },
-      { x: toPos.x + toDir.x * controlDist, y: toPos.y + toDir.y * controlDist },
+      { x: fromPos.x + fromDir.x * fromScale, y: fromPos.y + fromDir.y * fromScale },
+      { x: toPos.x + toDir.x * toScale, y: toPos.y + toDir.y * toScale },
       { x: toPos.x, y: toPos.y }
     ];
   }

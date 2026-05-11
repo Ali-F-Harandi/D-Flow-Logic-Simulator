@@ -6,7 +6,7 @@ export class NandGate extends GateBase {
     super(id, 'NAND', inputsCount, 1);
   }
 
-  computeNextState() {
+  _computeGateLogic() {
     return { outputs: [!this.inputs.every(inp => inp.value)] };
   }
 

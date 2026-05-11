@@ -6,7 +6,7 @@ export class BufferGate extends GateBase {
     super(id, 'Buffer', 1, 1);
   }
 
-  computeNextState() {
+  _computeGateLogic() {
     return { outputs: [Boolean(this.inputs[0].value)] };
   }
 

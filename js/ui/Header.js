@@ -76,6 +76,9 @@ export class Header {
         <button class="header-btn theme-toggle-btn" title="Toggle theme (dark/light/high-contrast)" aria-label="Toggle theme">
           ${icon('moon', '', { size: 14 })}
         </button>
+        <button class="header-btn color-scheme-btn" title="Color scheme: Default — click to switch to Color-Blind Friendly" aria-label="Toggle color scheme">
+          ${icon('eye', '', { size: 14 })}
+        </button>
         <button class="header-btn examples-btn" title="Load example circuit" aria-label="Example circuits">
           ${icon('layout-grid', 'Examples', { size: 14 })}
         </button>
@@ -103,6 +106,9 @@ export class Header {
     this.redoBtn = this.element.querySelector('.redo-btn');
     this.truthTableBtn = this.element.querySelector('.truth-table-btn');
     this.verilogBtn = this.element.querySelector('.verilog-btn');
+
+    // Feature 12: Color scheme toggle button
+    this.colorSchemeBtn = this.element.querySelector('.color-scheme-btn');
 
     this.runBtn.addEventListener('click', () => {
       this.engine.run();
@@ -171,6 +177,29 @@ export class Header {
       localStorage.setItem('dflow-theme', next);
       this._updateThemeIcon(next);
     });
+
+    // Feature 12: Color scheme toggle — cycles between "default" and "colorblind"
+    if (this.colorSchemeBtn) {
+      this._initColorScheme();
+      this.colorSchemeBtn.addEventListener('click', () => {
+        const root = document.documentElement;
+        const current = root.getAttribute('data-color-scheme') || 'default';
+        const schemes = ['default', 'colorblind'];
+        const labels = ['Default', 'Color-Blind Friendly'];
+        const nextIndex = (schemes.indexOf(current) + 1) % schemes.length;
+        const next = schemes[nextIndex];
+        if (next === 'default') {
+          root.removeAttribute('data-color-scheme');
+        } else {
+          root.setAttribute('data-color-scheme', next);
+        }
+        localStorage.setItem('dflow-color-scheme', next);
+        this._updateColorSchemeIcon(next);
+        const label = labels[nextIndex];
+        this.colorSchemeBtn.title = `Color scheme: ${label} — click to switch`;
+        if (this.canvas) this.canvas.showToast(`Color scheme: ${label}`, 'info');
+      });
+    }
 
     // Save
     this.saveBtn.addEventListener('click', () => {
@@ -277,6 +306,32 @@ export class Header {
       const iconName = iconMap[theme] || 'moon';
       this.themeToggleBtn.innerHTML = icon(iconName, '', { size: 14 });
       replaceIcons(this.themeToggleBtn);
+    }
+  }
+
+  /* Feature 12: Color scheme initialization and icon update */
+  _initColorScheme() {
+    const saved = localStorage.getItem('dflow-color-scheme') || 'default';
+    if (saved !== 'default') {
+      document.documentElement.setAttribute('data-color-scheme', saved);
+    }
+    this._updateColorSchemeIcon(saved);
+    // Update button tooltip
+    if (this.colorSchemeBtn) {
+      const labels = { default: 'Default', colorblind: 'Color-Blind Friendly' };
+      this.colorSchemeBtn.title = `Color scheme: ${labels[saved] || 'Default'} — click to switch`;
+    }
+  }
+
+  _updateColorSchemeIcon(scheme) {
+    if (this.colorSchemeBtn) {
+      const iconMap = {
+        default: 'eye',
+        colorblind: 'eye-off'
+      };
+      const iconName = iconMap[scheme] || 'eye';
+      this.colorSchemeBtn.innerHTML = icon(iconName, '', { size: 14 });
+      replaceIcons(this.colorSchemeBtn);
     }
   }
 

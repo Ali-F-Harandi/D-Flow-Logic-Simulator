@@ -214,6 +214,88 @@
   --toolbar-accent-text: #000;
 }
 
+/* ===== Color-Blind Accessible Color Scheme (Feature 12) ===== */
+/* Deuteranopia-safe palette: Blue (#0072b2), Orange (#E69F00), Yellow (#F0E442),
+   Sky Blue (#56B4E9), Vermillion (#D55E00)
+   Replaces green→blue, gray→orange for maximum distinguishability. */
+[data-color-scheme="colorblind"] {
+  --wire-high-color: #0072b2;          /* Blue instead of green */
+  --wire-neutral-color: #e69f00;       /* Orange/warm instead of gray */
+  --wire-z-color: #f0e442;             /* Yellow */
+  --pin-high-color: #0072b2;           /* Blue */
+  --pin-low-color: #e69f00;            /* Orange */
+  --color-success: #0072b2;            /* Blue (replaces green for HIGH) */
+  --color-accent: #56b4e9;             /* Sky Blue (replaces standard accent) */
+  --probe-high: #0072b2;               /* Blue */
+  --probe-low: #d55e00;                /* Vermillion (replaces red for LOW) */
+  --probe-z: #f0e442;                  /* Yellow */
+  --led-on-fill: #0072b2;              /* Blue LED instead of red */
+  --led-on-stroke: #56b4e9;            /* Sky Blue LED stroke */
+  --led-glow: drop-shadow(0 0 6px rgba(0,114,178,0.8));
+  --floating-input-color: #f0e442;     /* Yellow instead of amber */
+  --switch-on-bg: #0072b2;             /* Blue switch ON */
+  --color-danger: #d55e00;             /* Vermillion (replaces red for errors) */
+  --gate-highlight-border: #56b4e9;    /* Sky Blue */
+  --gate-highlight-shadow: 0 0 8px rgba(86,180,233,0.5);
+  --component-selected-outline: 2px solid #56b4e9;
+  --component-selected-shadow: 0 0 8px #56b4e9;
+}
+
+/* Color-blind overrides for simulation status pill */
+[data-color-scheme="colorblind"] .sim-status-pill.running {
+  background: rgba(0, 114, 178, 0.15);
+  color: #0072b2;
+  border: 1px solid rgba(0, 114, 178, 0.3);
+}
+[data-color-scheme="colorblind"] .sim-status-pill.running .sim-status-dot {
+  background: #0072b2;
+}
+
+/* Color-blind overrides for wire tooltip signal colors */
+[data-color-scheme="colorblind"] .wire-tooltip-signal-high {
+  color: #0072b2;
+  background: rgba(0, 114, 178, 0.15);
+}
+[data-color-scheme="colorblind"] .wire-tooltip-signal-unknown {
+  color: #e69f00;
+  background: rgba(230, 159, 0, 0.15);
+}
+
+/* Color-blind overrides for netlist colors */
+[data-color-scheme="colorblind"] .netlist-high {
+  color: #0072b2;
+}
+[data-color-scheme="colorblind"] .netlist-z {
+  color: #f0e442;
+}
+[data-color-scheme="colorblind"] .netlist-float {
+  color: #f0e442;
+}
+[data-color-scheme="colorblind"] .netlist-connection .netlist-from {
+  color: #0072b2;
+}
+
+/* Color-blind override for HIGH constant border */
+[data-color-scheme="colorblind"] .high-constant {
+  border-color: #0072b2;
+}
+
+/* Color-blind override for accent bar on gates */
+[data-color-scheme="colorblind"] .component.gate::before {
+  background: #56b4e9;
+}
+[data-color-scheme="colorblind"] .component.gate.xor-gate::before,
+[data-color-scheme="colorblind"] .component.gate.xnor-gate::before {
+  background: #d55e00; opacity: 0.7;
+}
+[data-color-scheme="colorblind"] .component.gate.nand-gate::before,
+[data-color-scheme="colorblind"] .component.gate.nor-gate::before {
+  background: #e69f00; opacity: 0.7;
+}
+[data-color-scheme="colorblind"] .component.gate.not-gate::before {
+  background: #d55e00; opacity: 0.7;
+}
+
 .grid-dot {
   fill: var(--grid-dot-color);
 }
@@ -236,6 +318,10 @@
   .wire-endpoint-target,
   .wire-junction,
   .wire-junction-intermediate {
+    transition: none !important;
+  }
+  /* Feature 9: Disable snap-to-grid animation for reduced-motion users */
+  .component.snapping {
     transition: none !important;
   }
   * {
@@ -506,4 +592,13 @@
 .wire-visual.routing-fallback {
   stroke: var(--wire-fallback-color) !important;
   stroke-dasharray: var(--wire-fallback-dasharray) !important;
+}
+
+/* ===== Feature 3: Reduced motion for wire tracing ===== */
+@media (prefers-reduced-motion: reduce) {
+  .wire-visual.traced {
+    animation: none !important;
+    filter: drop-shadow(0 0 6px rgba(78, 201, 176, 0.8));
+    stroke-width: 4 !important;
+  }
 }

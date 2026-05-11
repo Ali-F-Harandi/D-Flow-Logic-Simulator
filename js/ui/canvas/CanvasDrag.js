@@ -1,4 +1,5 @@
 import { MoveComponentCommand, CompositeCommand } from '../../utils/UndoManager.js';
+import { GRID_SIZE } from '../../config.js';
 
 export class CanvasDrag {
   constructor(core, compManager, wiring, selection, undoManager, engine, canvas, positionCache) {
@@ -16,6 +17,10 @@ export class CanvasDrag {
     // Snap-to-grid alignment indicators
     this._alignLines = null;
     this._createAlignLines();
+
+    // Feature 6: Snap-to-connections state
+    this._snapHighlightTimer = null;
+    this._lastSnappedConnector = null;
   }
 
   /**
@@ -91,6 +96,11 @@ export class CanvasDrag {
       const oldPos = { x: comp.position.x, y: comp.position.y };
       comp.updatePosition(nx, ny);
 
+      // Feature 6: Snap-to-connections — align ports with nearby unconnected ports
+      if (this.dragData.components.length === 1) {
+        this._snapToConnections(comp);
+      }
+
       // Update cached dimensions
       if (comp.element) {
         comp._cachedWidth = comp.element.offsetWidth;
@@ -155,6 +165,9 @@ export class CanvasDrag {
 
     // Hide alignment indicators
     this._hideAlignIndicators();
+
+    // Feature 6: Clear snap highlight
+    this._clearSnapHighlight();
   }
 
   /**
@@ -305,6 +318,198 @@ export class CanvasDrag {
       line.setAttribute('stroke-dasharray', '4,6');
       line.setAttribute('opacity', '0.35');
       this._alignLines.appendChild(line);
+    }
+  }
+
+  /* ========== Feature 6: Snap-to-Connections During Drag ========== */
+
+  /**
+   * Snap a dragged component's unconnected ports to align with nearby
+   * unconnected ports on other components. Only snaps to compatible
+   * connectors (input ↔ output).
+   *
+   * SNAP_THRESHOLD = 1 grid unit (20px). When an unconnected port on
+   * the dragged component is within this distance of an unconnected
+   * compatible port on another component, the component position is
+   * adjusted so the ports align exactly.
+   *
+   * @param {Component} comp – The component being dragged
+   */
+  _snapToConnections(comp) {
+    const SNAP_THRESHOLD = GRID_SIZE; // 1 grid unit = 20px
+    const draggedCompId = comp.id;
+
+    // Get all connectors of the dragged component with their positions
+    const dragConnectors = this._getConnectors(comp);
+
+    // Get all other components' unconnected connectors
+    const otherConnectors = [];
+    for (const otherComp of this.compManager.components) {
+      if (otherComp.id === draggedCompId) continue;
+      // Skip other selected/dragged components
+      if (this.dragData && this.dragData.components.some(c => c.id === otherComp.id)) continue;
+      const conns = this._getConnectors(otherComp, true); // only unconnected
+      otherConnectors.push(...conns);
+    }
+
+    let bestSnap = null;
+    let bestDist = SNAP_THRESHOLD;
+
+    for (const dragConn of dragConnectors) {
+      // Only consider unconnected connectors on the dragged component
+      if (dragConn.connectedTo) continue;
+
+      for (const otherConn of otherConnectors) {
+        // Only snap compatible types: input ↔ output
+        if (dragConn.isOutput === otherConn.isOutput) continue;
+
+        const dx = dragConn.x - otherConn.x;
+        const dy = dragConn.y - otherConn.y;
+        const dist = Math.hypot(dx, dy);
+
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestSnap = {
+            dragConn,
+            otherConn,
+            offsetX: -dx,
+            offsetY: -dy,
+            otherComp: otherConn.comp
+          };
+        }
+      }
+    }
+
+    if (bestSnap) {
+      // Apply the snap offset to the component position
+      const nx = this.core.snap(comp.position.x + bestSnap.offsetX);
+      const ny = this.core.snap(comp.position.y + bestSnap.offsetY);
+      comp.updatePosition(nx, ny);
+
+      // Highlight the snapped-to connector briefly
+      this._highlightSnappedConnector(bestSnap.otherConn);
+    }
+  }
+
+  /**
+   * Get all connectors of a component with their current canvas positions.
+   *
+   * @param {Component} comp
+   * @param {boolean} [unconnectedOnly=false] – Only return connectors that have no connection
+   * @returns {Array<{nodeId: string, isOutput: boolean, x: number, y: number, connectedTo: *, comp: Component}>}
+   */
+  _getConnectors(comp, unconnectedOnly = false) {
+    const connectors = [];
+
+    // Input connectors
+    for (const inp of comp.inputs) {
+      if (unconnectedOnly && inp.connectedTo) continue;
+      const pos = this._getConnectorPosition(comp, inp.id, false);
+      if (pos) {
+        connectors.push({
+          nodeId: inp.id,
+          isOutput: false,
+          x: pos.x,
+          y: pos.y,
+          connectedTo: inp.connectedTo,
+          comp
+        });
+      }
+    }
+
+    // Output connectors
+    for (const out of comp.outputs) {
+      // Outputs don't have connectedTo in the same way; they can always accept fan-out
+      // For snap purposes, we check if there's already a wire from this output
+      const hasWire = this.wiring.wires.some(w => w.fromNode.nodeId === out.id);
+      if (unconnectedOnly && hasWire) continue;
+      const pos = this._getConnectorPosition(comp, out.id, true);
+      if (pos) {
+        connectors.push({
+          nodeId: out.id,
+          isOutput: true,
+          x: pos.x,
+          y: pos.y,
+          connectedTo: hasWire ? 'wired' : null,
+          comp
+        });
+      }
+    }
+
+    return connectors;
+  }
+
+  /**
+   * Get the canvas position of a connector dot.
+   * Uses the position cache if available, otherwise falls back to DOM query.
+   *
+   * @param {Component} comp
+   * @param {string} nodeId
+   * @param {boolean} isOutput
+   * @returns {{x: number, y: number} | null}
+   */
+  _getConnectorPosition(comp, nodeId, isOutput) {
+    // Try position cache first
+    if (this.positionCache) {
+      const pos = this.positionCache.getPosition(nodeId);
+      if (pos && (pos.x !== 0 || pos.y !== 0)) return pos;
+    }
+
+    // Fallback: query the DOM element
+    if (comp.element) {
+      const dot = comp.element.querySelector(`.connector[data-node="${nodeId}"]`);
+      if (dot) {
+        const rect = dot.getBoundingClientRect();
+        const sceneRect = this.core.scene?.getBoundingClientRect();
+        if (sceneRect) {
+          return {
+            x: (rect.left + rect.width / 2 - sceneRect.left) / this.core.scale,
+            y: (rect.top + rect.height / 2 - sceneRect.top) / this.core.scale
+          };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Briefly highlight a connector that was snapped to.
+   * The highlight fades after 800ms.
+   *
+   * @param {Object} conn – Connector info object with nodeId and comp
+   */
+  _highlightSnappedConnector(conn) {
+    // Clear previous highlight
+    this._clearSnapHighlight();
+
+    const comp = conn.comp;
+    if (!comp?.element) return;
+
+    const dot = comp.element.querySelector(`.connector[data-node="${conn.nodeId}"]`);
+    if (!dot) return;
+
+    // Add snap highlight class
+    dot.classList.add('snap-highlight');
+    this._lastSnappedConnector = dot;
+
+    // Auto-remove highlight after 800ms
+    this._snapHighlightTimer = setTimeout(() => {
+      this._clearSnapHighlight();
+    }, 800);
+  }
+
+  /**
+   * Clear the snap highlight from the previously snapped connector.
+   */
+  _clearSnapHighlight() {
+    if (this._snapHighlightTimer) {
+      clearTimeout(this._snapHighlightTimer);
+      this._snapHighlightTimer = null;
+    }
+    if (this._lastSnappedConnector) {
+      this._lastSnappedConnector.classList.remove('snap-highlight');
+      this._lastSnappedConnector = null;
     }
   }
 }
