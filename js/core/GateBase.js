@@ -1,6 +1,7 @@
 import { Component } from './Component.js';
 import { ComponentRenderer } from './ComponentRenderer.js';
 import { Value } from './simulation/Value.js';
+import { BUS_MAX_WIDTH } from '../config.js';
 
 /**
  * Shared base for all logic gates.
@@ -164,7 +165,7 @@ export class GateBase extends Component {
     // Add bitWidth property first
     filtered.unshift({
       name: 'bitWidth', label: 'Bit Width', type: 'number',
-      value: this.bitWidth, min: 1, max: 32
+      value: this.bitWidth, min: 1, max: BUS_MAX_WIDTH
     });
 
     // Only show 'inputs' count when bitWidth = 1 (bus gates always have 2 inputs)
@@ -179,7 +180,7 @@ export class GateBase extends Component {
   setProperty(name, value) {
     if (name === 'bitWidth') {
       const newWidth = parseInt(value, 10);
-      if (isNaN(newWidth) || newWidth === this.bitWidth || newWidth < 1 || newWidth > 32) return false;
+      if (isNaN(newWidth) || newWidth === this.bitWidth || newWidth < 1 || newWidth > BUS_MAX_WIDTH) return false;
       this.bitWidth = newWidth;
 
       // Disconnect all wires on this component

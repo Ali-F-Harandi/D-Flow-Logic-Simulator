@@ -245,13 +245,16 @@ export class Engine {
       const input = toComp.inputs.find(inp => inp.id === wire.to.nodeId);
       if (input) {
         input.connectedTo = null;
-        input.value = false;
+        // Use proper value type based on port width
+        input.value = input.width > 1 ? Value.createUnknown(input.width) : false;
       }
     }
     this.circuit.removeWire(wireId);
 
-    // Clear the input's value in CircuitState
-    this.circuitState.setValue(wire.to.nodeId, Value.FALSE);
+    // Clear the input's value in CircuitState with correct width
+    const toInput = toComp ? toComp.inputs.find(inp => inp.id === wire.to.nodeId) : null;
+    const resetValue = (toInput && toInput.width > 1) ? Value.createUnknown(toInput.width) : Value.FALSE;
+    this.circuitState.setValue(wire.to.nodeId, resetValue);
 
     if (toComp) {
       this._propagateFrom(toComp);

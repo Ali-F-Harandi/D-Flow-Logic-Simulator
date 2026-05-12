@@ -72,7 +72,7 @@ export class BusMerger extends Component {
       const inpVal = this.inputs[i].value;
       const val = (inpVal instanceof Value) ? inpVal : Value.fromBoolean(inpVal);
       const w = this._inputWidths[i];
-      const mask = (1 << w) - 1;
+      const mask = w >= 32 ? 0xFFFFFFFF : (1 << w) - 1;
       combinedValue |= (val.value & mask) << bitOffset;
       combinedUnknown |= (val.unknown & mask) << bitOffset;
       combinedError |= (val.error & mask) << bitOffset;
@@ -176,7 +176,7 @@ export class BusMerger extends Component {
 
     const el = document.createElement('div');
     el.className = 'component bus-merger';
-    el.dataset.id = this.id;
+    el.dataset.compId = this.id;
     el.style.width = `${W}px`;
     el.style.height = `${H}px`;
     el.style.left = `${this.position.x}px`;

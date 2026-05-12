@@ -48,9 +48,10 @@ export class BusMUX extends Component {
       result = Value.createError(this.bitWidth);
     }
 
-    // Ensure output has correct width
+    // Ensure output has correct width — preserve error/unknown bits
     if (result.width !== this.bitWidth) {
-      result = Value.createKnown(this.bitWidth, result.value);
+      const mask = this.bitWidth >= 32 ? 0xFFFFFFFF : (1 << this.bitWidth) - 1;
+      result = new Value(this.bitWidth, result.error & mask, result.unknown & mask, result.value & mask);
     }
 
     return { outputs: [result] };

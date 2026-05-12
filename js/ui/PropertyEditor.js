@@ -117,21 +117,29 @@ export class PropertyEditor {
         // Validate and clamp number inputs to min/max bounds
         // This is critical for mobile browsers where <input type="number">
         // min/max attributes are not enforced and users can type any value.
-        if (inputEl.type === 'number' && !isNaN(newValue)) {
+        if (inputEl.type === 'number') {
+          if (isNaN(newValue)) {
+            // Revert to current value if user entered non-numeric input
+            inputEl.value = prop.value;
+            return;
+          }
           if (prop.min !== undefined && newValue < prop.min) {
             newValue = prop.min;
+            inputEl.value = newValue;
           }
           if (prop.max !== undefined && newValue > prop.max) {
             newValue = prop.max;
+            inputEl.value = newValue;
           }
           // Round to step precision
           if (prop.step !== undefined && prop.step >= 1) {
             newValue = Math.round(newValue);
+            inputEl.value = newValue;
           }
         }
 
         if ((inputEl.tagName === 'SELECT' && newValue !== prop.value) ||
-            (!isNaN(newValue) && newValue !== prop.value)) {
+            (inputEl.type === 'number' ? !isNaN(newValue) && newValue !== prop.value : newValue !== prop.value)) {
           // Use SetPropertyCommand for undo/redo support
           if (this.engine && this.canvas && this.undoManager) {
             commands.push(new SetPropertyCommand(

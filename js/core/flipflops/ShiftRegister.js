@@ -193,6 +193,7 @@ export class ShiftRegister extends Component {
       }
 
       this.rerender();
+      if (this._engine) this._engine._propagateFrom(this);
       return true;
     }
 

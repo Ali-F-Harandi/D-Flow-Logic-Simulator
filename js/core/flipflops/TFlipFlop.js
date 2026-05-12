@@ -1,6 +1,6 @@
 import { Component } from '../Component.js';
 import { Value } from '../simulation/Value.js';
-
+import { BUS_MAX_WIDTH } from '../../config.js';
 export class TFlipFlop extends Component {
   static label = 'T Flip-Flop';
   constructor(id) {
@@ -73,7 +73,7 @@ export class TFlipFlop extends Component {
 
   getProperties() {
     const props = [
-      { name: 'bitWidth', label: 'Bit Width', type: 'number', value: this.bitWidth, min: 1, max: 32 },
+      { name: 'bitWidth', label: 'Bit Width', type: 'number', value: this.bitWidth, min: 1, max: BUS_MAX_WIDTH },
       { name: 'trigger', label: 'Trigger Edge', type: 'select', value: this._triggerEdge, options: ['rising', 'falling'] },
       { name: 'x', label: 'X Position', type: 'number', value: Math.round(this.position.x), step: this.GRID },
       { name: 'y', label: 'Y Position', type: 'number', value: Math.round(this.position.y), step: this.GRID },
@@ -85,7 +85,7 @@ export class TFlipFlop extends Component {
   setProperty(name, value) {
     if (name === 'bitWidth') {
       const w = parseInt(value, 10);
-      if (isNaN(w) || w < 1 || w > 32 || w === this.bitWidth) return false;
+      if (isNaN(w) || w < 1 || w > BUS_MAX_WIDTH || w === this.bitWidth) return false;
 
       // Disconnect wires
       if (this._engine) {

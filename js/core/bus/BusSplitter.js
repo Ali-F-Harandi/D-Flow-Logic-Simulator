@@ -205,7 +205,7 @@ export class BusSplitter extends Component {
 
     const el = document.createElement('div');
     el.className = 'component bus-splitter';
-    el.dataset.id = this.id;
+    el.dataset.compId = this.id;
     el.style.width = `${W}px`;
     el.style.height = `${H}px`;
     el.style.left = `${this.position.x}px`;

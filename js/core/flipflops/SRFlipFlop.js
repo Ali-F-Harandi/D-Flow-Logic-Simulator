@@ -19,7 +19,11 @@ export class SRFlipFlop extends Component {
     if (this._isTriggerEdge(clk)) {
       if (s && !r) { nextQ = true; nextNQ = false; }
       else if (!s && r) { nextQ = false; nextNQ = true; }
-      // s && r: invalid, hold state
+      else if (s && r) {
+        // Invalid state: S=R=1 is forbidden — mark both outputs as error/null
+        nextQ = null;
+        nextNQ = null;
+      }
       // !s && !r: hold state
     }
     return { outputs: [nextQ, nextNQ], prevClk: clk };

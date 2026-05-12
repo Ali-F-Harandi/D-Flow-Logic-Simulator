@@ -737,7 +737,7 @@ export class Wire {
         glowPath.setAttribute('stroke', WIRE_DRAW_GLOW_COLOR);
       }
       if (visualPath) {
-        visualPath.setAttribute('stroke-width', String(WIRE_VISUAL_WIDTH + 1));
+        visualPath.setAttribute('stroke-width', String((this.width > 1 ? WIRE_BUS_VISUAL_WIDTH : WIRE_VISUAL_WIDTH) + 1));
       }
       if (sourceDot) {
         sourceDot.style.display = '';
@@ -755,7 +755,7 @@ export class Wire {
         glowPath.setAttribute('stroke', 'transparent');
       }
       if (visualPath) {
-        visualPath.setAttribute('stroke-width', String(WIRE_VISUAL_WIDTH));
+        visualPath.setAttribute('stroke-width', String(this.width > 1 ? WIRE_BUS_VISUAL_WIDTH : WIRE_VISUAL_WIDTH));
       }
       if (sourceDot) {
         sourceDot.style.display = 'none';

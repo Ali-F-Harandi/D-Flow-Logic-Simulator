@@ -28,12 +28,12 @@ export class Value {
     this.value = value;
   }
 
-  // ── Singleton single-bit values ────────────────────────────────────
-  static FALSE  = new Value(1, 0, 0, 0);
-  static TRUE   = new Value(1, 0, 0, 1);
-  static UNKNOWN = new Value(1, 0, 1, 0);
-  static ERROR  = new Value(1, 1, 0, 0);
-  static NIL    = new Value(0, 0, 0, 0);   // No-value / disconnected
+  // ── Singleton single-bit values (frozen to prevent accidental mutation) ───
+  static FALSE  = Object.freeze(new Value(1, 0, 0, 0));
+  static TRUE   = Object.freeze(new Value(1, 0, 0, 1));
+  static UNKNOWN = Object.freeze(new Value(1, 0, 1, 0));
+  static ERROR  = Object.freeze(new Value(1, 1, 0, 0));
+  static NIL    = Object.freeze(new Value(0, 0, 0, 0));   // No-value / disconnected
 
   static MAX_WIDTH = 32;
 

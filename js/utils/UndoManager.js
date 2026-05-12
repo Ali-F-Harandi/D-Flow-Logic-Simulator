@@ -1,13 +1,18 @@
 export class UndoManager {
-  constructor() {
+  constructor(maxStackSize = 100) {
     this.undoStack = [];
     this.redoStack = [];
+    this.maxStackSize = maxStackSize;
   }
 
   execute(command) {
     const success = command.execute();
     if (success) {
       this.undoStack.push(command);
+      // Limit stack size to prevent unbounded memory growth
+      if (this.undoStack.length > this.maxStackSize) {
+        this.undoStack.shift();
+      }
       this.redoStack = [];
     }
     return success;
@@ -339,17 +344,19 @@ export class SetPropertyCommand {
     this.savedWires = [];
   }
   execute() {
-    // Save wires that will be disconnected when reducing input count
-    if (this.propName === 'inputs' && this.newValue < this.oldValue) {
-      for (let i = this.newValue; i < this.oldValue; i++) {
-        const inp = this.component.inputs[i];
-        if (inp && inp.connectedTo) {
-          const wire = this.engine.wires.find(w => w.to.nodeId === inp.id);
-          if (wire) {
-            this.savedWires.push({ wireId: wire.id, fromNodeId: wire.from.nodeId, toNodeId: wire.to.nodeId });
-          }
-        }
-      }
+    // Properties that cause wire disconnection — save ALL wires before executing
+    const wireDisconnectingProps = new Set([
+      'inputs', 'bitWidth', 'bits', 'switches', 'busOutput', 'grouping',
+      'busInput', 'busOutput', 'inputWidth', 'outputWidth'
+    ]);
+    if (wireDisconnectingProps.has(this.propName)) {
+      // Save all wires connected to this component before the property change
+      const relatedWires = this.engine.wires.filter(w =>
+        w.from.componentId === this.component.id || w.to.componentId === this.component.id
+      );
+      this.savedWires = relatedWires.map(w => ({
+        wireId: w.id, fromNodeId: w.from.nodeId, toNodeId: w.to.nodeId
+      }));
     }
     this.component.setProperty(this.propName, this.newValue);
     this.canvas._onComponentModified(this.component);

@@ -35,7 +35,7 @@ export class SignExtend extends Component {
     const inpVal = this.inputs[0].value;
     const val = (inpVal instanceof Value) ? inpVal : Value.fromBoolean(inpVal);
 
-    const inputMask = (1 << this._inputWidth) - 1;
+    const inputMask = this._inputWidth >= 32 ? 0xFFFFFFFF : (1 << this._inputWidth) - 1;
     const lowerValue = val.value & inputMask;
     const lowerUnknown = val.unknown & inputMask;
     const lowerError = val.error & inputMask;
@@ -50,17 +50,17 @@ export class SignExtend extends Component {
     let upperUnknown = 0;
     let upperError = 0;
 
+    const upperBitCount = this._outputWidth - this._inputWidth;
+    const upperMaskBits = upperBitCount >= 32 ? 0xFFFFFFFF : (1 << upperBitCount) - 1;
+    const upperMask = upperMaskBits << this._inputWidth;
     if (signBitError) {
       // Sign bit is in error → upper bits are error
-      const upperMask = ((1 << (this._outputWidth - this._inputWidth)) - 1) << this._inputWidth;
       upperError = upperMask;
     } else if (signBitUnknown) {
       // Sign bit is unknown → upper bits are unknown
-      const upperMask = ((1 << (this._outputWidth - this._inputWidth)) - 1) << this._inputWidth;
       upperUnknown = upperMask;
     } else if (signBit) {
       // Sign bit is 1 → fill upper bits with 1s
-      const upperMask = ((1 << (this._outputWidth - this._inputWidth)) - 1) << this._inputWidth;
       upperValue = upperMask;
     }
     // else sign bit is 0 → upper bits are 0 (already initialized)

@@ -308,6 +308,8 @@ export class Component {
       oldEl.remove();
       // Re-apply rotation/mirror transform after re-render
       this._applyTransform();
+      // Ensure dataset.compId is set on new element
+      this.element.dataset.compId = this.id;
       return true;
     }
     return false;

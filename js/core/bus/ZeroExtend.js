@@ -35,7 +35,7 @@ export class ZeroExtend extends Component {
     const val = (inpVal instanceof Value) ? inpVal : Value.fromBoolean(inpVal);
 
     // Zero-extend: keep lower bits, upper bits are 0
-    const inputMask = (1 << this._inputWidth) - 1;
+    const inputMask = this._inputWidth >= 32 ? 0xFFFFFFFF : (1 << this._inputWidth) - 1;
     const lowerValue = val.value & inputMask;
     const lowerUnknown = val.unknown & inputMask;
     const lowerError = val.error & inputMask;

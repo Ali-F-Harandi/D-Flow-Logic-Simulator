@@ -138,14 +138,18 @@ export class PropertiesPanel {
           // +/- button handlers
           const step = prop.step !== undefined ? prop.step : 1;
           decBtn.addEventListener('click', () => {
-            let val = parseFloat(input.value) - step;
+            let val = parseFloat(input.value);
+            if (isNaN(val)) val = prop.value;
+            val = val - step;
             if (prop.min !== undefined && val < prop.min) val = prop.min;
             if (prop.step !== undefined && prop.step >= 1) val = Math.round(val);
             input.value = val;
             input.dispatchEvent(new Event('change'));
           });
           incBtn.addEventListener('click', () => {
-            let val = parseFloat(input.value) + step;
+            let val = parseFloat(input.value);
+            if (isNaN(val)) val = prop.value;
+            val = val + step;
             if (prop.max !== undefined && val > prop.max) val = prop.max;
             if (prop.step !== undefined && prop.step >= 1) val = Math.round(val);
             input.value = val;
@@ -181,13 +185,31 @@ export class PropertiesPanel {
           } else {
             newValue = input.type === 'number' ? parseFloat(input.value) : input.value;
           }
-          if (input.type === 'number' && !isNaN(newValue)) {
-            if (prop.min !== undefined && newValue < prop.min) newValue = prop.min;
-            if (prop.max !== undefined && newValue > prop.max) newValue = prop.max;
-            if (prop.step !== undefined && prop.step >= 1) newValue = Math.round(newValue);
+
+          // Validate number inputs
+          if (input.type === 'number') {
+            if (isNaN(newValue)) {
+              // Revert to current value if user cleared the field or entered non-numeric
+              input.value = prop.value;
+              return;
+            }
+            if (prop.min !== undefined && newValue < prop.min) {
+              newValue = prop.min;
+              input.value = newValue;
+            }
+            if (prop.max !== undefined && newValue > prop.max) {
+              newValue = prop.max;
+              input.value = newValue;
+            }
+            if (prop.step !== undefined && prop.step >= 1) {
+              newValue = Math.round(newValue);
+              input.value = newValue;
+            }
           }
+
+          // Detect value change — handle both number and text types
           const valueChanged = (input.tagName === 'SELECT' && newValue !== prop.value) ||
-                              (!isNaN(newValue) && newValue !== prop.value);
+                              (input.type === 'number' ? newValue !== prop.value : newValue !== prop.value);
           if (valueChanged) {
             if (this.engine && this.canvas && this.undoManager) {
               const cmd = new SetPropertyCommand(
@@ -198,8 +220,9 @@ export class PropertiesPanel {
               comp.setProperty(prop.name, newValue);
               this.eventBus.emit('component-modified', comp);
             }
-            // Refresh panel to reflect new values
+            // Refresh panel to reflect new values (e.g., inputs count change, bitWidth change)
             this._currentComponent = comp;
+            this._renderComponentPanel();
           }
         });
 
@@ -273,6 +296,8 @@ export class PropertiesPanel {
         ((index) => {
           checkbox.addEventListener('change', () => {
             comp.toggleInputInversion(index);
+            // Emit event so canvas updates wire endpoints and colors
+            this.eventBus.emit('component-modified', comp);
             // Refresh panel after toggle
             this._currentComponent = comp;
             this._renderComponentPanel();
