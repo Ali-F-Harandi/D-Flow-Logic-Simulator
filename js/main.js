@@ -37,6 +37,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   const engine = new Engine();
   const undoManager = new UndoManager();
 
+  // Wire up engine.onUpdate callback so the canvas refreshes
+  // after every propagation cycle (wire colors, component visuals, etc.)
+  engine.onUpdate = () => {
+    // Update wire colors based on current signal values
+    if (canvas && canvas.wiring) {
+      canvas.wiring.updateWireColorsOnly();
+    }
+    // Update footer stats
+    updateFooterStats();
+    // Emit simulation-step on the EventBus for any listeners
+    eventBus.emit('simulation-step');
+  };
+
   const header = new Header(appContainer, eventBus, engine, null);
   const sidebar = new Sidebar(appContainer, eventBus, factory);
   const canvas = new Canvas(appContainer, eventBus, engine, factory, undoManager);
@@ -207,8 +220,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     engine.circuit.clear();
     engine.clocks.clear();
     engine.propagator.reset();
+    engine.circuitState.reset();
     engine._nodeIndex.clear();
     engine._stepCount = 0;
+    engine._oscillationDetected = false;
+    engine._oscillationComponents.clear();
+    document.dispatchEvent(new CustomEvent('simulation-reset'));
     canvas.showToast('Canvas cleared', 'info');
   });
 

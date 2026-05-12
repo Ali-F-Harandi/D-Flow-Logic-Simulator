@@ -103,21 +103,27 @@ export class Engine {
     // Store engine reference (needed by GateBase.setProperty for wire cleanup)
     component._engine = this;
 
-    // NO MORE monkey-patching! The engine drives propagation through
-    // the Propagator's dirty component processing.
-    // We keep computeOutput() working for backward compat (UI toggles, etc.)
-    // but it no longer auto-schedules propagation.
+    // Wrap computeOutput() for backward compat with UI toggles etc.
+    // In the new Logisim-style engine, the wrapper simply marks the
+    // component as dirty and lets the Propagator handle evaluation.
+    // This avoids double-evaluation (origCompute + Propagator both
+    // calling computeNextState/applyNextState).
     if (!component.isWrapped) {
-      const origCompute = component.computeOutput.bind(component);
       component.computeOutput = () => {
-        origCompute();
-        // Schedule this component for propagation in the new engine
+        // Mark dirty and let Propagator evaluate + propagate changes.
+        // Input components (ToggleSwitch, Clock, etc.) already set their
+        // output values before calling computeOutput(), so the Propagator
+        // will detect the change vs CircuitState and schedule events.
         this.schedulePropagation(component);
+        return component.outputs;
       };
       component.isWrapped = true;
     }
 
-    // Initialize signal values in CircuitState
+    // Initialize signal values in CircuitState for all nodes
+    for (const inp of component.inputs) {
+      this.circuitState.setValue(inp.id, Value.fromBoolean(inp.value));
+    }
     for (const out of component.outputs) {
       this.circuitState.setValue(out.id, Value.fromBoolean(out.value));
     }
@@ -273,6 +279,9 @@ export class Engine {
     // Sync component output values back from CircuitState
     this._syncComponentValues();
 
+    // Dispatch simulation-step event for TimingDiagramPanel, TruthTablePanel, etc.
+    document.dispatchEvent(new CustomEvent('simulation-step'));
+
     if (this.onUpdate) this.onUpdate();
   }
 
@@ -320,9 +329,12 @@ export class Engine {
   /**
    * Sync component output values from CircuitState back to
    * component objects (for backward compatibility with UI rendering).
+   * Also updates display components (LEDs, 7-segment, etc.) whose
+   * visual state depends on input values.
    */
   _syncComponentValues() {
     for (const comp of this.components.values()) {
+      // Sync output values from CircuitState
       for (const out of comp.outputs) {
         const stateVal = this.circuitState.getValue(out.id);
         const boolVal = stateVal.toBoolean();
@@ -331,6 +343,10 @@ export class Engine {
         }
       }
       comp._updateConnectorStates();
+      // Update display components whose visuals depend on input values
+      // (e.g., LightBulb LED color, SevenSegment display, LogicProbe indicator)
+      if (typeof comp._updateAppearance === 'function') comp._updateAppearance();
+      if (typeof comp._updateDisplay === 'function') comp._updateDisplay();
     }
   }
 
@@ -452,6 +468,10 @@ export class Engine {
 
     this._stepCount = 0;
     this._oscillationDetected = false;
+    this._oscillationComponents.clear();
+
+    // Dispatch simulation-reset event for TimingDiagramPanel
+    document.dispatchEvent(new CustomEvent('simulation-reset'));
 
     // Reset the propagator (clears event queue, clock, etc.)
     this.propagator.reset();
@@ -468,6 +488,9 @@ export class Engine {
     this.circuitState.dirtyComponents.clear();
 
     for (const comp of this.components.values()) {
+      for (const inp of comp.inputs) {
+        this.circuitState.setValue(inp.id, Value.fromBoolean(inp.value));
+      }
       for (const out of comp.outputs) {
         this.circuitState.setValue(out.id, Value.fromBoolean(out.value));
       }
@@ -545,12 +568,11 @@ export class Engine {
         this.clocks.add(comp);
         this.propagator.clockComponentIds.add(comp.id);
       }
-      // Keep backward compat wrapping
+      // Keep backward compat wrapping (same pattern as addComponent)
       if (!comp.isWrapped) {
-        const origCompute = comp.computeOutput.bind(comp);
         comp.computeOutput = () => {
-          origCompute();
           this.schedulePropagation(comp);
+          return comp.outputs;
         };
         comp.isWrapped = true;
       }

@@ -347,6 +347,9 @@ export class Propagator {
         if (!value.equals(Value.UNKNOWN)) {
           targetComp.inputs[inputIndex].value = value.toBoolean();
         }
+        // For Z-state (UNKNOWN): don't drive the input, but still
+        // mark the component dirty so it can update its visual state
+        // (e.g., wire color showing Z-state)
 
         // Mark component as dirty
         this.circuitState.markComponentDirty(wire.to.componentId);
@@ -400,6 +403,7 @@ export class Propagator {
     // Apply and schedule propagation for changed outputs
     comp.applyNextState(nextState);
 
+    // Schedule events for changed output values
     for (let i = 0; i < comp.outputs.length; i++) {
       const out = comp.outputs[i];
       const newValue = Value.fromBoolean(out.value);
@@ -411,6 +415,10 @@ export class Propagator {
         this.setValue(out.id, newValue, comp.id, this.defaultDelay);
       }
     }
+
+    // For display-only components (LightBulb, SevenSegment, etc.) with
+    // zero outputs, applyNextState() already updated their visual state
+    // via _updateAppearance() / _updateDisplay(). No events to schedule.
   }
 
   // ── Clock management ───────────────────────────────────────────────
