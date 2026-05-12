@@ -206,7 +206,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     canvas.clearAll();
     engine.circuit.clear();
     engine.clocks.clear();
-    engine.queue.clear();
+    engine.propagator.reset();
     engine._nodeIndex.clear();
     engine._stepCount = 0;
     canvas.showToast('Canvas cleared', 'info');

@@ -191,7 +191,7 @@ export class TruthTablePanel {
         }
       }
 
-      this.engine._processQueue();
+      this.engine.step();
 
       // Find the output value - try multiple approaches
       let outVal = false;
@@ -238,7 +238,7 @@ export class TruthTablePanel {
     // FIX (Bug #1 Critical): Restore ALL component state from the deep snapshot
     this._restoreAllComponents(snapshot);
 
-    this.engine._processQueue();
+    this.engine.step();
     if (this.engine.onUpdate) this.engine.onUpdate();
 
     this.content.innerHTML = html + '</table>';

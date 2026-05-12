@@ -1,5 +1,23 @@
 import { Component } from '../Component.js';
 
+/**
+ * Clock Component — Outputs a periodic square wave.
+ *
+ * REDESIGNED (Logisim-Evolution pattern):
+ * In the old engine, each Clock ran its own setInterval timer and
+ * self-toggled. This caused timing issues when multiple clocks were
+ * out of sync.
+ *
+ * In the new engine, clocks are toggled centrally by the Propagator
+ * via Propagator.toggleClocks(). The Clock.start()/stop() methods
+ * are kept for backward compatibility but are NO-OPs when the engine
+ * is managing the simulation. The engine's run/stop methods handle
+ * the tick interval, ensuring all clocks tick in perfect sync.
+ *
+ * This matches Logisim-Evolution's architecture where the SimThread
+ * calls propagator.toggleClocks() on each half-cycle, and the
+ * Clock.tick() method toggles individual clock outputs.
+ */
 export class Clock extends Component {
   static label = 'Clock';
   constructor(id, frequency = 1) {
@@ -9,8 +27,20 @@ export class Clock extends Component {
     this.running = false;
   }
 
+  /**
+   * Start the clock's internal timer (LEGACY mode).
+   * In the new engine, this is a NO-OP because the Engine
+   * manages clock ticking centrally via Propagator.toggleClocks().
+   * Kept for backward compatibility with standalone usage.
+   */
   start() {
     if (this.running) return;
+    // If engine is managing simulation, don't start individual timer
+    if (this._engine && this._engine.propagator) {
+      this.running = true;
+      return;
+    }
+    // Legacy mode: self-toggling timer
     this.running = true;
     const ms = 1000 / (this.frequency * 2);
     this.intervalId = setInterval(() => {
@@ -19,19 +49,39 @@ export class Clock extends Component {
     }, ms);
   }
 
+  /**
+   * Stop the clock's internal timer.
+   */
   stop() {
     if (!this.running) return;
     clearInterval(this.intervalId);
+    this.intervalId = null;
     this.running = false;
+  }
+
+  /**
+   * Toggle the clock output (called by Propagator.toggleClocks()).
+   * This is the Logisim Clock.tick() equivalent.
+   * @returns {boolean} True if the output changed
+   */
+  tick() {
+    const oldValue = this.outputs[0].value;
+    this.outputs[0].value = !this.outputs[0].value;
+    this._updateConnectorStates();
+    return this.outputs[0].value !== oldValue;
   }
 
   setFrequency(f) {
     this.frequency = f;
-    if (this.running) { this.stop(); this.start(); }
+    if (this.running && !this._engine?.propagator) {
+      // Only restart timer in legacy mode
+      this.stop();
+      this.start();
+    }
   }
 
   computeNextState() {
-    // Return current output value (already toggled by start())
+    // Return current output value (already toggled by tick() or start())
     return { outputs: [this.outputs[0].value] };
   }
 
@@ -49,7 +99,7 @@ export class Clock extends Component {
   }
 
   /**
-   * FIX (Bug #5): resetState() stops the clock but preserves its output value.
+   * resetState() stops the clock but preserves its output value.
    * Clock output will be re-driven when simulation starts again.
    */
   resetState() {

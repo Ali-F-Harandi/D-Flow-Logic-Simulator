@@ -1,20 +1,84 @@
+/**
+ * Engine.js — Simulation engine orchestrator.
+ *
+ * Redesigned based on Logisim-Evolution's Simulator + Propagator architecture.
+ *
+ * Key architectural changes from the old engine:
+ *
+ * 1. **Delegation to Propagator**: The heavy lifting of event scheduling,
+ *    timestamped propagation, and oscillation detection is now handled by
+ *    the Propagator class. Engine is the high-level orchestrator.
+ *
+ * 2. **CircuitState for signal values**: Signal values are now stored in
+ *    a CircuitState object (keyed by node ID), not directly on component
+ *    input/output objects. Components still have local .value properties
+ *    for backward compatibility, but CircuitState is the source of truth.
+ *
+ * 3. **Centralized clock management**: Clocks are toggled by the Propagator,
+ *    not by individual Clock components running setInterval. This ensures
+ *    synchronous ticking and eliminates timing race conditions.
+ *
+ * 4. **Logisim-style simulation modes**:
+ *    - Auto-propagate: Run until stable after each change
+ *    - Single-step: Process one delta cycle at a time
+ *    - Auto-tick: Automatically toggle clocks at configured frequency
+ *
+ * 5. **No more monkey-patching**: Components no longer have their
+ *    computeOutput() wrapped. The engine explicitly calls components
+ *    to propagate via the Propagator's dirty component processing.
+ */
 import { Circuit } from './Circuit.js';
+import { CircuitState } from './simulation/CircuitState.js';
+import { Propagator } from './simulation/Propagator.js';
+import { Value } from './simulation/Value.js';
+import { PropagationPoints } from './simulation/PropagationPoints.js';
 
 export class Engine {
   constructor() {
+    /** @type {Circuit} Circuit data model */
     this.circuit = new Circuit();
-    this.queue = new Set();
+
+    /** @type {CircuitState} Simulation state */
+    this.circuitState = new CircuitState(this.circuit);
+
+    /** @type {Propagator} The propagation engine */
+    this.propagator = new Propagator(this.circuitState, this.circuit, this.circuit.components);
+
+    /** @type {boolean} Whether the simulation is running (auto-ticking) */
     this.running = false;
+
+    /** @type {number} Simulation speed in ms per tick */
     this.speed = 200;
+
+    /** @type {number|null} setInterval ID for auto-tick */
     this.intervalId = null;
+
+    /** @type {Function|null} Callback after each propagation cycle */
     this.onUpdate = null;
+
+    /** @type {Set<Component>} Set of clock components (for backward compat) */
     this.clocks = new Set();
-    this._processing = false;
+
+    /** @type {Map<string, Component>} Node ID → Component index */
     this._nodeIndex = new Map();
+
+    /** @type {number} Step counter */
     this._stepCount = 0;
+
+    /** @type {boolean} Whether oscillation was detected */
     this._oscillationDetected = false;
-    this._lastStateHash = null;
-    this._repeatCount = 0;
+
+    /** @type {boolean} Whether auto-propagation is enabled */
+    this.autoPropagating = true;
+
+    /** @type {boolean} Whether auto-ticking is enabled */
+    this.autoTicking = false;
+
+    /** @type {PropagationPoints} Points for single-step visualization */
+    this.stepPoints = new PropagationPoints();
+
+    /** @type {Set<string>} Component IDs currently in oscillation error */
+    this._oscillationComponents = new Set();
   }
 
   get components() {
@@ -24,23 +88,42 @@ export class Engine {
     return this.circuit.wires;
   }
 
+  // ── Component management ───────────────────────────────────────────
+
   addComponent(component) {
     this.circuit.addComponent(component);
     this._indexComponent(component);
+
+    // Register clock with propagator
     if (component.type === 'Clock') {
       this.clocks.add(component);
+      this.propagator.clockComponentIds.add(component.id);
     }
-    // FIX (Bug #6): Store engine reference so GateBase.setProperty()
-    // can disconnect orphan wires when reducing input count.
+
+    // Store engine reference (needed by GateBase.setProperty for wire cleanup)
     component._engine = this;
+
+    // NO MORE monkey-patching! The engine drives propagation through
+    // the Propagator's dirty component processing.
+    // We keep computeOutput() working for backward compat (UI toggles, etc.)
+    // but it no longer auto-schedules propagation.
     if (!component.isWrapped) {
       const origCompute = component.computeOutput.bind(component);
       component.computeOutput = () => {
         origCompute();
+        // Schedule this component for propagation in the new engine
         this.schedulePropagation(component);
       };
       component.isWrapped = true;
     }
+
+    // Initialize signal values in CircuitState
+    for (const out of component.outputs) {
+      this.circuitState.setValue(out.id, Value.fromBoolean(out.value));
+    }
+
+    // Mark the new component as dirty so it gets evaluated
+    this.circuitState.markComponentDirty(component.id);
   }
 
   _indexComponent(comp) {
@@ -51,19 +134,32 @@ export class Engine {
   removeComponent(compId) {
     const comp = this.components.get(compId);
     if (!comp) return;
-    // Un-index the component's nodes before removal
+
+    // Un-index
     comp.inputs.forEach(inp => this._nodeIndex.delete(inp.id));
     comp.outputs.forEach(out => this._nodeIndex.delete(out.id));
+
     if (comp.type === 'Clock') {
       comp.stop();
       this.clocks.delete(comp);
+      this.propagator.clockComponentIds.delete(compId);
     }
+
+    // Remove connected wires
     const wiresToRemove = this.wires.filter(w =>
       w.from.componentId === compId || w.to.componentId === compId
     );
     wiresToRemove.forEach(w => this.disconnect(w.id));
+
+    // Clean up circuit state
+    comp.inputs.forEach(inp => this.circuitState.values.delete(inp.id));
+    comp.outputs.forEach(out => this.circuitState.values.delete(out.id));
+    this.circuitState.componentData.delete(compId);
+
     this.circuit.removeComponent(compId);
   }
+
+  // ── Wire management ────────────────────────────────────────────────
 
   connect(fromNodeId, toNodeId, forceWireId = null) {
     const fromComp = this._findComponentByNode(fromNodeId);
@@ -89,6 +185,7 @@ export class Engine {
       return null;
     }
 
+    // Disconnect existing wire to this input
     if (toInput.connectedTo) {
       const oldWire = this.circuit.getWireByToNode(toNodeId);
       if (oldWire) {
@@ -97,6 +194,7 @@ export class Engine {
       }
     }
 
+    // Create new wire
     toInput.connectedTo = { componentId: fromComp.id, nodeId: fromNodeId };
     const wireId = forceWireId || `wire_${Date.now()}_${Math.random()}`;
     const wire = {
@@ -105,6 +203,8 @@ export class Engine {
       to: { componentId: toComp.id, nodeId: toNodeId }
     };
     this.circuit.addWire(wire);
+
+    // Propagate signal through the new wire
     this._propagateFrom(fromComp);
     return wireId;
   }
@@ -117,153 +217,275 @@ export class Engine {
       const input = toComp.inputs.find(inp => inp.id === wire.to.nodeId);
       if (input) {
         input.connectedTo = null;
-        // FIX (critical): Reset the disconnected input's value to false (LOW)
         input.value = false;
       }
     }
     this.circuit.removeWire(wireId);
-    // FIX (critical): Re-evaluate the affected component
+
+    // Clear the input's value in CircuitState
+    this.circuitState.setValue(wire.to.nodeId, Value.FALSE);
+
     if (toComp) {
       this._propagateFrom(toComp);
     }
     return true;
   }
 
+  // ── Propagation ────────────────────────────────────────────────────
+
+  /**
+   * Schedule a component for propagation.
+   * This replaces the old Set-based queue with the Propagator's
+   * event-driven approach.
+   *
+   * @param {Component} component
+   */
   schedulePropagation(component) {
-    this.queue.add(component);
-    if (!this.running && !this._processing) this._processQueue();
+    // Mark the component as dirty in CircuitState
+    this.circuitState.markComponentDirty(component.id);
+
+    // If not running, process immediately
+    if (!this.running && !this.propagator.isPending()) {
+      this._runPropagationCycle();
+    }
   }
 
-  _processQueue() {
-    this._processing = true;
-    const maxIterations = 10000;
-    let iterations = 0;
+  /**
+   * Run a full propagation cycle: propagate until stable.
+   * This is the Logisim Simulator.loop() equivalent for
+   * auto-propagation mode.
+   */
+  _runPropagationCycle() {
+    // Process any dirty components first (initial evaluation)
+    this._evaluateDirtyComponents();
 
-    while (this.queue.size > 0 && iterations < maxIterations) {
-      const updates = [];
-      for (const comp of this.queue) {
-        const nextState = comp.computeNextState();
-        updates.push({ comp, nextState });
-      }
-      this.queue.clear();
+    // Then run the propagator's event-driven loop
+    const didPropagate = this.propagator.propagate();
 
-      for (const { comp, nextState } of updates) {
-        comp.applyNextState(nextState);
-        for (let i = 0; i < comp.outputs.length; i++) {
-          const out = comp.outputs[i];
-        const connectedWires = this.circuit.getWiresFromNode(out.id);
-        for (const w of connectedWires) {
-            const targetComp = this.components.get(w.to.componentId);
-            if (targetComp) {
-              const inputIndex = targetComp.inputs.findIndex(inp => inp.id === w.to.nodeId);
-              if (inputIndex >= 0) {
-                // Z state (null) propagation: when a tri-state buffer outputs Z,
-                // the downstream input should NOT be driven. It retains its
-                // previous value from other sources (or stays false if no
-                // other source drives it). Only non-null values propagate.
-                if (out.value !== null) {
-                  targetComp.inputs[inputIndex].value = out.value;
-                }
-                // Always queue the target for re-evaluation since
-                // the wire color needs updating even for Z state
-                this.queue.add(targetComp);
-              }
-            }
-          }
-        }
-      }
-      iterations++;
-    }
-
-    if (iterations >= maxIterations) {
-      console.warn('Propagation loop detected – circuit may be unstable.');
-      this.queue.clear();
+    if (this.propagator.isOscillating) {
       this._oscillationDetected = true;
-      document.dispatchEvent(new CustomEvent('simulation-error', { detail: 'Infinite Loop Detected! Circuit Unstable.' }));
-      // Set error state on all components involved in the loop
-      for (const comp of this.components.values()) {
-        if (this._isInOscillation(comp)) {
-          comp.setErrorState(true);
-        }
-      }
+      this._markOscillationErrors();
+    } else {
+      this._oscillationDetected = false;
+      this._clearOscillationErrors();
     }
 
-    this._processing = false;
+    // Sync component output values back from CircuitState
+    this._syncComponentValues();
 
     if (this.onUpdate) this.onUpdate();
   }
 
+  /**
+   * Evaluate dirty components: compute their outputs and schedule
+   * propagation events for any changed outputs.
+   */
+  _evaluateDirtyComponents() {
+    this.circuitState.swapDirtySets();
+    const dirtyComps = this.circuitState.getDirtyComponentsAndClear();
+
+    for (const compId of dirtyComps) {
+      const comp = this.components.get(compId);
+      if (!comp) continue;
+      this._propagateComponent(comp);
+    }
+  }
+
+  /**
+   * Propagate a single component and schedule output events.
+   * Handles null (Z-state) values from TriState buffers by mapping
+   * them to Value.UNKNOWN in the multi-valued logic system.
+   * @param {Component} comp
+   */
+  _propagateComponent(comp) {
+    const nextState = comp.computeNextState();
+    comp.applyNextState(nextState);
+
+    // Schedule propagation events for changed outputs
+    for (let i = 0; i < comp.outputs.length; i++) {
+      const out = comp.outputs[i];
+      // Map JS values to Value objects:
+      //   true  → Value.TRUE
+      //   false → Value.FALSE
+      //   null  → Value.UNKNOWN (high-impedance / Z-state)
+      const newValue = Value.fromBoolean(out.value);
+      const oldValue = this.circuitState.getValue(out.id);
+
+      if (!oldValue.equals(newValue)) {
+        this.propagator.setValue(out.id, newValue, comp.id, this.propagator.defaultDelay);
+      }
+    }
+  }
+
+  /**
+   * Sync component output values from CircuitState back to
+   * component objects (for backward compatibility with UI rendering).
+   */
+  _syncComponentValues() {
+    for (const comp of this.components.values()) {
+      for (const out of comp.outputs) {
+        const stateVal = this.circuitState.getValue(out.id);
+        const boolVal = stateVal.toBoolean();
+        if (boolVal !== null && out.value !== boolVal) {
+          out.value = boolVal;
+        }
+      }
+      comp._updateConnectorStates();
+    }
+  }
+
+  /**
+   * Propagate from a specific component (e.g., after connection change).
+   * @param {Component} comp
+   */
+  _propagateFrom(comp) {
+    this.circuitState.markComponentDirty(comp.id);
+    this._runPropagationCycle();
+  }
+
+  // ── Oscillation handling ───────────────────────────────────────────
+
+  _markOscillationErrors() {
+    for (const comp of this.components.values()) {
+      const hasConnectedInput = comp.inputs.some(inp => inp.connectedTo);
+      const hasConnectedOutput = comp.outputs.some(out =>
+        this.wires.some(w => w.from.nodeId === out.id)
+      );
+      if (hasConnectedInput && hasConnectedOutput) {
+        comp.setErrorState(true);
+        this._oscillationComponents.add(comp.id);
+      }
+    }
+  }
+
+  _clearOscillationErrors() {
+    for (const compId of this._oscillationComponents) {
+      const comp = this.components.get(compId);
+      if (comp) comp.setErrorState(false);
+    }
+    this._oscillationComponents.clear();
+  }
+
+  // ── Simulation modes ───────────────────────────────────────────────
+
+  /**
+   * Perform a single simulation step.
+   * In Logisim, "step" means process one delta cycle (all events
+   * at the current simulation time).
+   */
   step() {
     this._stepCount++;
-    this._processQueue();
+    this._runPropagationCycle();
   }
 
   /**
-   * Check if a component is likely involved in an oscillation loop
-   * by checking if it has both inputs and outputs connected to
-   * components that also changed state in recent iterations.
+   * Perform a single delta cycle step (Logisim single-step mode).
+   * Processes only the events at the next simulation time.
+   * @returns {boolean} True if any events were processed
    */
-  _isInOscillation(comp) {
-    const hasConnectedInput = comp.inputs.some(inp => inp.connectedTo);
-    const hasConnectedOutput = comp.outputs.some(out => {
-      return this.wires.some(w => w.from.nodeId === out.id);
-    });
-    return hasConnectedInput && hasConnectedOutput;
+  singleStep() {
+    this.stepPoints.clear();
+
+    // Toggle clocks if auto-ticking and circuit is stable
+    if (this.autoTicking && !this.propagator.isPending()) {
+      this.propagator.toggleClocks();
+    }
+
+    const didStep = this.propagator.step(this.stepPoints);
+    if (didStep) {
+      this._stepCount++;
+      this._syncComponentValues();
+      if (this.onUpdate) this.onUpdate();
+    }
+    return didStep;
   }
 
   /**
-   * Get simulation statistics for the footer display.
+   * Start continuous simulation (auto-tick mode).
+   * In Logisim, this starts the SimThread which periodically
+   * toggles clocks and propagates.
    */
-  getStats() {
-    return {
-      componentCount: this.components.size,
-      wireCount: this.wires.length,
-      stepCount: this._stepCount,
-      isRunning: this.running,
-      oscillationDetected: this._oscillationDetected
-    };
-  }
-
   run() {
     if (this.running) return;
     this.running = true;
     this._oscillationDetected = false;
-    for (const clk of this.clocks) clk.start();
-    this.intervalId = setInterval(() => this.step(), this.speed);
+    this.autoTicking = true;
+
+    // Use centralized clock ticking instead of individual Clock.setInterval
+    this.intervalId = setInterval(() => {
+      this._tick();
+    }, this.speed);
   }
 
+  /**
+   * Perform one simulation tick: toggle clocks, then propagate.
+   * This is what the SimThread.loop() does in Logisim.
+   */
+  _tick() {
+    // Toggle all clocks (centralized, like Logisim)
+    this.propagator.toggleClocks();
+
+    // Propagate until stable
+    this._runPropagationCycle();
+
+    this._stepCount++;
+  }
+
+  /**
+   * Stop the simulation.
+   */
   stop() {
     if (!this.running) return;
     this.running = false;
+    this.autoTicking = false;
     clearInterval(this.intervalId);
     this.intervalId = null;
+    // Stop individual clocks (for backward compat if they were started)
     for (const clk of this.clocks) clk.stop();
   }
 
+  /**
+   * Reset the simulation to initial state.
+   */
   reset() {
     this.stop();
-    this.queue.clear();
+
     this._stepCount = 0;
     this._oscillationDetected = false;
-    // FIX (Bug #5 Medium): Use resetState() which preserves user-set
-    // input values (DipSwitch positions, Clock states) while still
-    // resetting sequential component internal state (flip-flop _state,
-    // _prevClk). Input components override resetState() as a no-op.
+
+    // Reset the propagator (clears event queue, clock, etc.)
+    this.propagator.reset();
+
+    // Reset all components (preserving user-set input values)
     for (const comp of this.components.values()) {
       comp.resetState();
-      comp.setErrorState(false); // Clear error states on reset
+      comp.setErrorState(false);
     }
-    // FIX: Re-propagate from all components to restore consistent state.
-    // After reset, input components may still output HIGH but downstream
-    // gates had their inputs cleared. This re-propagates signals so wire
-    // colors and component states match the actual logic.
+
+    // Re-initialize CircuitState values from component outputs
+    this.circuitState.values.clear();
+    this.circuitState.dirtyNodes.clear();
+    this.circuitState.dirtyComponents.clear();
+
     for (const comp of this.components.values()) {
-      this.queue.add(comp);
+      for (const out of comp.outputs) {
+        this.circuitState.setValue(out.id, Value.fromBoolean(out.value));
+      }
     }
-    this._processQueue();
+
+    // Re-propagate from all components to restore consistent state
+    for (const comp of this.components.values()) {
+      this.circuitState.markComponentDirty(comp.id);
+    }
+    this._runPropagationCycle();
+
     if (this.onUpdate) this.onUpdate();
   }
 
+  /**
+   * Set the simulation speed (ms per tick).
+   * @param {number} ms
+   */
   setSpeed(ms) {
     this.speed = ms;
     if (this.running) {
@@ -272,40 +494,58 @@ export class Engine {
     }
   }
 
+  // ── Utility ────────────────────────────────────────────────────────
+
   _findComponentByNode(nodeId) {
     return this._nodeIndex.get(nodeId) || null;
   }
 
-  /**
-   * Re-index a component's nodes in the _nodeIndex.
-   * Must be called after setProperty() rebuilds the inputs/outputs arrays
-   * so that wire connections and signal propagation work with the new node IDs.
-   * @param {Component} comp
-   */
   reindexComponent(comp) {
-    // Remove ALL old entries that point to this component
     for (const [nodeId, c] of this._nodeIndex) {
       if (c === comp) this._nodeIndex.delete(nodeId);
     }
-    // Re-add current inputs and outputs
     this._indexComponent(comp);
   }
 
-  _propagateFrom(comp) {
-    this.queue.add(comp);
-    if (!this._processing) this._processQueue();
+  /**
+   * Get simulation statistics.
+   */
+  getStats() {
+    return {
+      componentCount: this.components.size,
+      wireCount: this.wires.length,
+      stepCount: this._stepCount,
+      isRunning: this.running,
+      oscillationDetected: this._oscillationDetected,
+      simTime: this.propagator.clock,
+      pendingEvents: this.propagator.eventQueue.size,
+      halfClockCycles: this.propagator.halfClockCycles
+    };
   }
 
+  /**
+   * Load a circuit from serialized data.
+   * @param {Circuit} circuit
+   */
   loadCircuit(circuit) {
     this.stop();
     this.circuit = circuit;
     this.clocks.clear();
+
+    // Rebuild propagator and circuit state
+    this.circuitState = new CircuitState(circuit);
+    this.propagator = new Propagator(this.circuitState, circuit, circuit.components);
+
     // Rebuild node index
     this._nodeIndex.clear();
     for (const comp of this.components.values()) {
       this._indexComponent(comp);
-      comp._engine = this;  // CRITICAL: Set engine reference for setProperty
-      if (comp.type === 'Clock') this.clocks.add(comp);
+      comp._engine = this;
+      if (comp.type === 'Clock') {
+        this.clocks.add(comp);
+        this.propagator.clockComponentIds.add(comp.id);
+      }
+      // Keep backward compat wrapping
       if (!comp.isWrapped) {
         const origCompute = comp.computeOutput.bind(comp);
         comp.computeOutput = () => {
@@ -315,8 +555,19 @@ export class Engine {
         comp.isWrapped = true;
       }
     }
+
     this.reset();
     this.step();
     if (this.onUpdate) this.onUpdate();
+  }
+
+  /**
+   * Nudge: re-propagate if something changed (like Logisim's nudge).
+   * Called when the user modifies the circuit while running.
+   */
+  nudge() {
+    if (this.autoPropagating) {
+      this._runPropagationCycle();
+    }
   }
 }

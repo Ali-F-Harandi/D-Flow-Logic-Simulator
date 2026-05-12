@@ -142,6 +142,7 @@ export class Component {
   _getStateColor(value) {
     if (value === true)  return 'var(--color-success)';
     if (value === false) return 'var(--color-text-muted)';
+    if (value === null)  return 'var(--wire-z-color, #ff9800)'; // Z state / high-impedance
     return 'var(--color-text-muted)';
   }
 
