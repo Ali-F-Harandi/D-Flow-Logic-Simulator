@@ -302,9 +302,15 @@ export class Router {
     if (!fromDir) fromDir = { x: 1, y: 0 };
     if (!toDir)   toDir   = { x: -1, y: 0 };
 
-    // If aligned, return simple line points
-    if (Math.abs(fromPos.x - toPos.x) < 1 || Math.abs(fromPos.y - toPos.y) < 1) {
-      return [{ x: fromPos.x, y: fromPos.y }, { x: toPos.x, y: toPos.y }];
+    // If aligned, return simple line points with snapped coordinates
+    // (snap to source position to ensure perfect vertical/horizontal alignment)
+    if (Math.abs(fromPos.x - toPos.x) < 1) {
+      // Nearly vertical: use source X for both points
+      return [{ x: fromPos.x, y: fromPos.y }, { x: fromPos.x, y: toPos.y }];
+    }
+    if (Math.abs(fromPos.y - toPos.y) < 1) {
+      // Nearly horizontal: use source Y for both points
+      return [{ x: fromPos.x, y: fromPos.y }, { x: toPos.x, y: fromPos.y }];
     }
 
     // ── Compute per-direction control distances ──

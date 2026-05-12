@@ -26,6 +26,7 @@ import { DFlipFlop } from './flipflops/DFlipFlop.js';
 import { JKFlipFlop } from './flipflops/JKFlipFlop.js';
 import { TFlipFlop } from './flipflops/TFlipFlop.js';
 import { ShiftRegister } from './flipflops/ShiftRegister.js';
+import { Subcircuit } from './chips/Subcircuit.js';
 import { generateId } from '../utils/IdGenerator.js';
 
 export class ComponentFactory {
@@ -58,6 +59,7 @@ export class ComponentFactory {
       'JK': JKFlipFlop,
       'T': TFlipFlop,
       'ShiftRegister': ShiftRegister,
+      'Subcircuit': Subcircuit,
       // Backward compatibility: old saved projects may use these type names
       'DipSwitch8': DipSwitch,
       'ShiftRegister4': ShiftRegister
@@ -108,6 +110,19 @@ export class ComponentFactory {
       if (type === 'DipSwitch8') {
         return new Cls(compId, 8);
       }
+      // Subcircuit: restore from saved componentData
+      if (type === 'Subcircuit' && componentData) {
+        const name = componentData.properties?.name || 'Subcircuit';
+        const innerCircuit = componentData.properties?.innerCircuit || null;
+        const inputLabels = componentData.properties?.inputLabels || [];
+        const outputLabels = componentData.properties?.outputLabels || [];
+        const inputCount = componentData.inputs?.length || 1;
+        const outputCount = componentData.outputs?.length || 1;
+        return new Cls(compId, name, innerCircuit,
+          inputLabels.length ? inputLabels : Array.from({length: inputCount}, (_, i) => `I${i}`),
+          outputLabels.length ? outputLabels : Array.from({length: outputCount}, (_, i) => `O${i}`)
+        );
+      }
       return new Cls(compId);
     } catch (err) {
       console.error(`ComponentFactory: Failed to create "${type}"`, err);
@@ -122,7 +137,7 @@ export class ComponentFactory {
       'TriState':'Gates',
       'HalfAdder':'Chips', 'FullAdder':'Chips', 'Multiplexer':'Chips',
       'SR':'Flip-Flops', 'SRLatch':'Flip-Flops', 'D':'Flip-Flops', 'JK':'Flip-Flops', 'T':'Flip-Flops',
-      'ShiftRegister':'Flip-Flops', 'ShiftRegister4':'Flip-Flops',
+      'ShiftRegister':'Flip-Flops', 'ShiftRegister4':'Flip-Flops', 'Subcircuit':'Chips',
       'ToggleSwitch':'Inputs', 'DipSwitch':'Inputs', 'DipSwitch8':'Inputs', 'Clock':'Inputs',
       'HighConstant':'Inputs', 'LowConstant':'Inputs',
       'LightBulb':'Outputs', 'SevenSegment':'Outputs', 'LogicProbe':'Outputs', 'LedArray':'Outputs'

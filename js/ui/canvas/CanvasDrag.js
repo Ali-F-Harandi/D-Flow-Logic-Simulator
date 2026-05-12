@@ -116,6 +116,9 @@ export class CanvasDrag {
     this.dragData.components.forEach(comp => this.wiring.updateWiresForComponent(comp));
     this.wiring.positionCache.invalidate();
 
+    // Update minimap during drag (scheduleUpdate is throttled via rAF)
+    if (this.canvas.miniMap) this.canvas.miniMap.scheduleUpdate();
+
     // Update alignment indicators
     this._updateAlignIndicators();
   }
@@ -166,6 +169,9 @@ export class CanvasDrag {
     // Hide alignment indicators
     this._hideAlignIndicators();
 
+    // Update minimap after drag ends
+    if (this.canvas.miniMap) this.canvas.miniMap.scheduleUpdate();
+
     // Feature 6: Clear snap highlight
     this._clearSnapHighlight();
   }
@@ -195,6 +201,9 @@ export class CanvasDrag {
     if (this.wiring.autoRerouteOnDrop && movedComps.length > 0) {
       this.wiring.rerouteWithFanOut();
     }
+
+    // Update minimap after keyboard move
+    if (this.canvas.miniMap) this.canvas.miniMap.scheduleUpdate();
 
     this.wiring.scheduleRedraw();
   }

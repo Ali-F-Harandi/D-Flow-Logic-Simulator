@@ -17,8 +17,8 @@ export class FullAdder extends Component {
     return { outputs: [sum, cout] };
   }
 
-  getProperties() { return []; }
-  setProperty(name, value) { return false; }
+  getProperties() { return super.getProperties(); }
+  setProperty(name, value) { return super.setProperty(name, value); }
 
   render(container) {
     const H = 5 * this.GRID;   // 100px

@@ -7,10 +7,11 @@
 import { icon, replaceIcons } from '../../utils/IconHelper.js';
 
 export class MiniMap {
-  constructor(canvas, core, compManager) {
+  constructor(canvas, core, compManager, wiring) {
     this.canvas = canvas;
     this.core = core;
     this.compManager = compManager;
+    this.wiring = wiring;       // CanvasWiring reference for wire rendering
     this.element = null;
     this._canvas = null;
     this._ctx = null;
@@ -71,7 +72,8 @@ export class MiniMap {
 
   _getBounds() {
     const components = this.compManager.components;
-    if (components.length === 0) return null;
+    const wires = this.wiring ? this.wiring.getWires() : [];
+    if (components.length === 0 && wires.length === 0) return null;
 
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const comp of components) {
@@ -82,6 +84,30 @@ export class MiniMap {
       maxX = Math.max(maxX, comp.position.x + w);
       maxY = Math.max(maxY, comp.position.y + h);
     }
+
+    // Include wire positions in bounds calculation
+    for (const wire of wires) {
+      if (wire._sourcePos) {
+        minX = Math.min(minX, wire._sourcePos.x);
+        minY = Math.min(minY, wire._sourcePos.y);
+        maxX = Math.max(maxX, wire._sourcePos.x);
+        maxY = Math.max(maxY, wire._sourcePos.y);
+      }
+      if (wire._targetPos) {
+        minX = Math.min(minX, wire._targetPos.x);
+        minY = Math.min(minY, wire._targetPos.y);
+        maxX = Math.max(maxX, wire._targetPos.x);
+        maxY = Math.max(maxY, wire._targetPos.y);
+      }
+      for (const wp of wire.waypoints) {
+        minX = Math.min(minX, wp.x);
+        minY = Math.min(minY, wp.y);
+        maxX = Math.max(maxX, wp.x);
+        maxY = Math.max(maxY, wp.y);
+      }
+    }
+
+    if (minX === Infinity) return null;
 
     const padding = 100;
     return { minX: minX - padding, minY: minY - padding, maxX: maxX + padding, maxY: maxY + padding };
@@ -122,7 +148,35 @@ export class MiniMap {
     const offsetX = (w - (bounds.maxX - bounds.minX) * scale) / 2;
     const offsetY = (h - (bounds.maxY - bounds.minY) * scale) / 2;
 
-    // Draw components as colored dots
+    // Draw wires as thin lines
+    const wires = this.wiring ? this.wiring.getWires() : [];
+    ctx.lineWidth = 1;
+    for (const wire of wires) {
+      const pts = wire.pathPoints;
+      if (pts.length < 2) continue;
+
+      // Determine wire color based on signal state
+      let wireColor = 'rgba(136, 136, 136, 0.5)'; // neutral gray
+      if (wire._lastSourceValue === true) {
+        wireColor = 'rgba(0, 204, 102, 0.6)';  // HIGH green
+      } else if (wire._lastSourceValue === null) {
+        wireColor = 'rgba(255, 152, 0, 0.5)';   // tri-state orange
+      }
+
+      ctx.strokeStyle = wireColor;
+      ctx.beginPath();
+      const startX = offsetX + (pts[0].x - bounds.minX) * scale;
+      const startY = offsetY + (pts[0].y - bounds.minY) * scale;
+      ctx.moveTo(startX, startY);
+      for (let i = 1; i < pts.length; i++) {
+        const px = offsetX + (pts[i].x - bounds.minX) * scale;
+        const py = offsetY + (pts[i].y - bounds.minY) * scale;
+        ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+    }
+
+    // Draw components as colored rectangles
     for (const comp of this.compManager.components) {
       const cx = offsetX + (comp.position.x - bounds.minX) * scale + (comp._cachedWidth || 80) * scale / 2;
       const cy = offsetY + (comp.position.y - bounds.minY) * scale + (comp._cachedHeight || 60) * scale / 2;

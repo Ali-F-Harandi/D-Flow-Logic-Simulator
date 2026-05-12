@@ -83,8 +83,34 @@ export class Component {
     this.reset();
   }
 
-  getProperties() { return []; }
-  setProperty(name, value) { return false; }
+  getProperties() {
+    return [
+      { name: 'x', label: 'X Position', type: 'number', value: Math.round(this.position.x), step: GRID_SIZE },
+      { name: 'y', label: 'Y Position', type: 'number', value: Math.round(this.position.y), step: GRID_SIZE },
+      { name: 'facing', label: 'Facing', type: 'select', value: this.facing, options: ['east', 'south', 'west', 'north'] }
+    ];
+  }
+
+  setProperty(name, value) {
+    if (name === 'x') {
+      const x = Math.round(parseFloat(value) / GRID_SIZE) * GRID_SIZE;
+      this.updatePosition(x, this.position.y);
+      return true;
+    }
+    if (name === 'y') {
+      const y = Math.round(parseFloat(value) / GRID_SIZE) * GRID_SIZE;
+      this.updatePosition(this.position.x, y);
+      return true;
+    }
+    if (name === 'facing') {
+      if (['east', 'south', 'west', 'north'].includes(value)) {
+        this.facing = value;
+        this._applyTransform();
+        return true;
+      }
+    }
+    return false;
+  }
 
   /* ================================================================
    *  Feature 1: Gate Rotation

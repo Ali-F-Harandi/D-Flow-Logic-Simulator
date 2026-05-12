@@ -14,8 +14,8 @@ export class Multiplexer extends Component {
     return { outputs: [out] };
   }
 
-  getProperties() { return []; }
-  setProperty(name, value) { return false; }
+  getProperties() { return super.getProperties(); }
+  setProperty(name, value) { return super.setProperty(name, value); }
 
   render(container) {
     const H = 4 * this.GRID;

@@ -108,10 +108,11 @@ export class Clock extends Component {
   }
 
   getProperties() {
-    return [{ name: 'frequency', label: 'Frequency (Hz)', type: 'number', value: this.frequency, min: 0.1, max: 100, step: 0.1 }];
+    return [...super.getProperties(), { name: 'frequency', label: 'Frequency (Hz)', type: 'number', value: this.frequency, min: 0.1, max: 100, step: 0.1 }];
   }
 
   setProperty(name, value) {
+    if (super.setProperty(name, value)) return true;
     if (name === 'frequency') {
       const f = parseFloat(value);
       if (!isNaN(f) && f > 0) { this.setFrequency(f); return true; }

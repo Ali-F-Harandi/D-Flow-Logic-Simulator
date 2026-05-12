@@ -362,12 +362,21 @@ export class Engine {
   // ── Oscillation handling ───────────────────────────────────────────
 
   _markOscillationErrors() {
-    for (const comp of this.components.values()) {
-      const hasConnectedInput = comp.inputs.some(inp => inp.connectedTo);
-      const hasConnectedOutput = comp.outputs.some(out =>
-        this.wires.some(w => w.from.nodeId === out.id)
-      );
-      if (hasConnectedInput && hasConnectedOutput) {
+    // Only mark components that own nodes in the oscillation points set.
+    // The Propagator tracks which nodes changed during the oscillation
+    // detection window (last 25% of iterations before threshold).
+    // Only those nodes are actually part of the oscillation loop.
+    const oscNodeIds = this.propagator.oscPoints?.changedNodes;
+    if (!oscNodeIds || oscNodeIds.size === 0) {
+      // Fallback: if no specific oscillation points were tracked,
+      // don't mark anything — it's better to miss an oscillation
+      // than to flag every connected component as broken.
+      return;
+    }
+
+    for (const nodeId of oscNodeIds) {
+      const comp = this._nodeIndex.get(nodeId);
+      if (comp) {
         comp.setErrorState(true);
         this._oscillationComponents.add(comp.id);
       }

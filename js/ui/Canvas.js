@@ -43,6 +43,8 @@ export class Canvas {
     this.core.applyTransform = () => {
       originalApplyTransform();
       this.positionCache.setTransform(this.core.panOffset, this.core.scale);
+      // Update minimap viewport rectangle on pan/zoom (throttled via rAF)
+      if (this.miniMap) this.miniMap.scheduleUpdate();
     };
 
     this.toaster = new CanvasToast();
@@ -80,7 +82,11 @@ export class Canvas {
     this.events._toaster = this.toaster;
 
     // STABLE: Engine updates only change wire colors, NOT paths
-    this.engine.onUpdate = () => this.wiring.updateWireColorsOnly();
+    this.engine.onUpdate = () => {
+      this.wiring.updateWireColorsOnly();
+      // Update minimap to reflect wire color changes (throttled via rAF)
+      if (this.miniMap) this.miniMap.scheduleUpdate();
+    };
 
     // Center the canvas view so (0,0) is at the center of the viewport
     // with equal blank area in all four directions (N, S, E, W).
@@ -124,8 +130,8 @@ export class Canvas {
     // Floating mobile delete button — appears when selection is active
     this._createMobileDeleteButton();
 
-    // MiniMap — circuit overview in the corner
-    this.miniMap = new MiniMap(this, this.core, this.compManager);
+    // MiniMap — circuit overview in the corner (pass wiring for wire rendering)
+    this.miniMap = new MiniMap(this, this.core, this.compManager, this.wiring);
   }
 
   /**

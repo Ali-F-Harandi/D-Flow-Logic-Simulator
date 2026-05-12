@@ -101,6 +101,15 @@ export class Circuit {
       }
       if (comp._prevClk !== undefined) internalState._prevClk = comp._prevClk;
       if (comp.frequency !== undefined) internalState.frequency = comp.frequency;
+      if (comp._triggerEdge !== undefined) internalState._triggerEdge = comp._triggerEdge;
+      // Subcircuit-specific: save inner circuit and port labels
+      if (comp.type === 'Subcircuit') {
+        if (comp._innerCircuit) internalState.innerCircuit = comp._innerCircuit;
+        if (comp._inputLabels) internalState.inputLabels = [...comp._inputLabels];
+        if (comp._outputLabels) internalState.outputLabels = [...comp._outputLabels];
+      }
+      // ToggleSwitch label
+      if (comp._label !== undefined) internalState._label = comp._label;
       components.push({
         id: comp.id,
         type: comp.type,
@@ -143,6 +152,15 @@ export class Circuit {
         }
         if (compData.internalState._prevClk !== undefined) comp._prevClk = compData.internalState._prevClk;
         if (compData.internalState.frequency !== undefined && comp.setFrequency) comp.setFrequency(compData.internalState.frequency);
+        if (compData.internalState._triggerEdge !== undefined) comp._triggerEdge = compData.internalState._triggerEdge;
+        // Subcircuit: restore inner circuit and port labels
+        if (comp.type === 'Subcircuit') {
+          if (compData.internalState.innerCircuit) comp._innerCircuit = compData.internalState.innerCircuit;
+          if (compData.internalState.inputLabels) comp._inputLabels = [...compData.internalState.inputLabels];
+          if (compData.internalState.outputLabels) comp._outputLabels = [...compData.internalState.outputLabels];
+        }
+        // ToggleSwitch label
+        if (compData.internalState._label !== undefined && comp._label !== undefined) comp._label = compData.internalState._label;
       }
       // FIX: Restore output values (e.g., ToggleSwitch/DipSwitch positions)
       // so that switch states are preserved after save/load.

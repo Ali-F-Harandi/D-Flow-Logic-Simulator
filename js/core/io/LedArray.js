@@ -51,10 +51,11 @@ export class LedArray extends Component {
   }
 
   getProperties() {
-    return [{ name: 'leds', label: 'LEDs', type: 'number', value: this._ledCount, min: 2, max: 8, step: 1 }];
+    return [...super.getProperties(), { name: 'leds', label: 'LEDs', type: 'number', value: this._ledCount, min: 2, max: 8, step: 1 }];
   }
 
   setProperty(name, value) {
+    if (super.setProperty(name, value)) return true;
     if (name === 'leds') {
       const newCount = parseInt(value, 10);
       if (isNaN(newCount) || newCount === this._ledCount || newCount < 2 || newCount > 8) return false;

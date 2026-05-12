@@ -45,13 +45,29 @@ export class PropertyEditor {
     props.forEach(prop => {
       const label = document.createElement('label');
       label.textContent = `${prop.label}: `;
-      const input = document.createElement('input');
-      input.type = prop.type;
-      input.id = `prop-${prop.name}`;
-      input.value = prop.value;
-      if (prop.min !== undefined) input.min = prop.min;
-      if (prop.max !== undefined) input.max = prop.max;
-      if (prop.step !== undefined) input.step = prop.step;
+      
+      let input;
+      if (prop.type === 'select' && prop.options) {
+        // Dropdown select for enum properties (e.g., facing direction)
+        input = document.createElement('select');
+        input.id = `prop-${prop.name}`;
+        prop.options.forEach(opt => {
+          const option = document.createElement('option');
+          option.value = opt;
+          option.textContent = opt;
+          if (opt === prop.value) option.selected = true;
+          input.appendChild(option);
+        });
+      } else {
+        input = document.createElement('input');
+        input.type = prop.type;
+        input.id = `prop-${prop.name}`;
+        input.value = prop.value;
+        if (prop.min !== undefined) input.min = prop.min;
+        if (prop.max !== undefined) input.max = prop.max;
+        if (prop.step !== undefined) input.step = prop.step;
+      }
+      
       label.appendChild(input);
       this.dialog.appendChild(label);
       this.dialog.appendChild(document.createElement('br'));
@@ -87,7 +103,12 @@ export class PropertyEditor {
     props.forEach(prop => {
       const inputEl = this.dialog.querySelector(`#prop-${prop.name}`);
       if (inputEl) {
-        let newValue = inputEl.type === 'number' ? parseFloat(inputEl.value) : inputEl.value;
+        let newValue;
+        if (inputEl.tagName === 'SELECT') {
+          newValue = inputEl.value;
+        } else {
+          newValue = inputEl.type === 'number' ? parseFloat(inputEl.value) : inputEl.value;
+        }
 
         // Validate and clamp number inputs to min/max bounds
         // This is critical for mobile browsers where <input type="number">
@@ -105,7 +126,8 @@ export class PropertyEditor {
           }
         }
 
-        if (!isNaN(newValue) && newValue !== prop.value) {
+        if ((inputEl.tagName === 'SELECT' && newValue !== prop.value) ||
+            (!isNaN(newValue) && newValue !== prop.value)) {
           // Use SetPropertyCommand for undo/redo support
           if (this.engine && this.canvas && this.undoManager) {
             commands.push(new SetPropertyCommand(

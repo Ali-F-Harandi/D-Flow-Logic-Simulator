@@ -48,10 +48,11 @@ export class ShiftRegister extends Component {
   }
 
   getProperties() {
-    return [{ name: 'bits', label: 'Bits', type: 'number', value: this._bitCount, min: 2, max: 8, step: 1 }];
+    return [...super.getProperties(), { name: 'bits', label: 'Bits', type: 'number', value: this._bitCount, min: 2, max: 8, step: 1 }];
   }
 
   setProperty(name, value) {
+    if (super.setProperty(name, value)) return true;
     if (name === 'bits') {
       const newCount = parseInt(value, 10);
       if (isNaN(newCount) || newCount === this._bitCount || newCount < 2 || newCount > 8) return false;

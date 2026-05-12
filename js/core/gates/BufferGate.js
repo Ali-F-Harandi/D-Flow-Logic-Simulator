@@ -10,7 +10,16 @@ export class BufferGate extends GateBase {
     return { outputs: [Boolean(this.inputs[0].value)] };
   }
 
-  getProperties() { return []; }
+  getProperties() {
+    // Buffer gate has fixed 1 input - skip GateBase's 'inputs' property
+    return super.getProperties().filter(p => p.name !== 'inputs');
+  }
+
+  setProperty(name, value) {
+    // Skip GateBase's 'inputs' handling - Buffer gate always has 1 input
+    const proto = Object.getPrototypeOf(Object.getPrototypeOf(this));
+    return proto.setProperty.call(this, name, value);
+  }
 
   render(container) {
     super.render(container, 'BUF');

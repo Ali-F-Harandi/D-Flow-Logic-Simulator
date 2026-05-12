@@ -61,7 +61,12 @@ export class SRLatch extends Component {
     this._updateConnectorStates();
   }
 
-  getProperties() { return []; }
+  getProperties() { return super.getProperties(); }
+
+  setProperty(name, value) {
+    if (super.setProperty(name, value)) return true;
+    return false;
+  }
 
   render(container) {
     const H = 3 * this.GRID;

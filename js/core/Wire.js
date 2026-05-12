@@ -150,8 +150,23 @@ export class Wire {
    * @returns {string} SVG path "d" attribute
    */
   static computeSegmentPath(sourcePos, targetPos, waypoints, sourceDir, targetDir) {
-    const points = [sourcePos, ...waypoints, targetPos];
-    if (points.length < 2) return '';
+    const rawPoints = [sourcePos, ...waypoints, targetPos];
+    if (rawPoints.length < 2) return '';
+
+    // Snap nearly-coaxial coordinates for perfectly vertical/horizontal lines.
+    // When two consecutive points are within WIRE_COAXIAL_THRESHOLD in X or Y,
+    // force them to share the exact same coordinate. This eliminates sub-pixel
+    // rounding errors from the DOM-based position cache that cause wires to
+    // appear slightly off-angle (e.g., 88-89° instead of 90°).
+    const points = rawPoints.map(p => ({ ...p }));
+    for (let i = 1; i < points.length; i++) {
+      if (Math.abs(points[i].x - points[i - 1].x) < WIRE_COAXIAL_THRESHOLD) {
+        points[i].x = points[i - 1].x;
+      }
+      if (Math.abs(points[i].y - points[i - 1].y) < WIRE_COAXIAL_THRESHOLD) {
+        points[i].y = points[i - 1].y;
+      }
+    }
 
     let d = `M ${points[0].x} ${points[0].y}`;
 
@@ -250,9 +265,15 @@ export class Wire {
     const sx = fromPos.x, sy = fromPos.y;
     const tx = toPos.x, ty = toPos.y;
 
-    // If approximately aligned, use straight line
-    if (Math.abs(sx - tx) < WIRE_COAXIAL_THRESHOLD || Math.abs(sy - ty) < WIRE_COAXIAL_THRESHOLD) {
-      return `M ${sx} ${sy} L ${tx} ${ty}`;
+    // If approximately aligned, use straight line with snapped coordinates
+    // (snap to source position to ensure perfect vertical/horizontal alignment)
+    if (Math.abs(sx - tx) < WIRE_COAXIAL_THRESHOLD) {
+      // Nearly vertical: use source X for both endpoints
+      return `M ${sx} ${sy} L ${sx} ${ty}`;
+    }
+    if (Math.abs(sy - ty) < WIRE_COAXIAL_THRESHOLD) {
+      // Nearly horizontal: use source Y for both endpoints
+      return `M ${sx} ${sy} L ${tx} ${sy}`;
     }
 
     const fd = fromDir || { x: 1, y: 0 };

@@ -51,10 +51,11 @@ export class DipSwitch extends Component {
   }
 
   getProperties() {
-    return [{ name: 'switches', label: 'Switches', type: 'number', value: this._switchCount, min: 2, max: 8, step: 1 }];
+    return [...super.getProperties(), { name: 'switches', label: 'Switches', type: 'number', value: this._switchCount, min: 2, max: 8, step: 1 }];
   }
 
   setProperty(name, value) {
+    if (super.setProperty(name, value)) return true;
     if (name === 'switches') {
       const newCount = parseInt(value, 10);
       if (isNaN(newCount) || newCount === this._switchCount || newCount < 2 || newCount > 8) return false;

@@ -5,6 +5,7 @@ export class JKFlipFlop extends Component {
   constructor(id) {
     super(id, 'JK', 3, 2);
     this._prevClk = false;
+    this._triggerEdge = 'rising';
     this._state = { Q: false, nQ: true };
     this.outputs[1].value = true;  // !Q should be HIGH initially
   }
@@ -15,7 +16,7 @@ export class JKFlipFlop extends Component {
     const clk = this.inputs[2].value;
     let nextQ = this._state.Q;
     let nextNQ = this._state.nQ;
-    if (clk && !this._prevClk) {
+    if (this._isTriggerEdge(clk)) {
       if (j && !k) { nextQ = true; nextNQ = false; }
       else if (!j && k) { nextQ = false; nextNQ = true; }
       else if (j && k) {
@@ -44,7 +45,26 @@ export class JKFlipFlop extends Component {
     this._updateConnectorStates();
   }
 
-  getProperties() { return []; }
+  _isTriggerEdge(clk) {
+    if (this._triggerEdge === 'falling') return !clk && this._prevClk;
+    return clk && !this._prevClk; // rising (default)
+  }
+
+  getProperties() {
+    return [
+      ...super.getProperties(),
+      { name: 'trigger', label: 'Trigger Edge', type: 'select', value: this._triggerEdge, options: ['rising', 'falling'] }
+    ];
+  }
+
+  setProperty(name, value) {
+    if (super.setProperty(name, value)) return true;
+    if (name === 'trigger') {
+      this._triggerEdge = value;
+      return true;
+    }
+    return false;
+  }
 
   render(container) {
     const H = 5 * this.GRID;

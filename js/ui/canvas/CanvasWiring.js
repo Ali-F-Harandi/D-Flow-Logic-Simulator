@@ -152,6 +152,9 @@ export class CanvasWiring {
     this._updateJunctions();
 
     this.eventBus.emit('wire-connected', { engineId, fromNodeId, toNodeId });
+
+    // Update minimap when wire is added
+    if (this.canvas?.miniMap) this.canvas.miniMap.scheduleUpdate();
   }
 
   removeVisualWireByEngineId(engineId) {
@@ -165,6 +168,9 @@ export class CanvasWiring {
       this._updateJunctions();
 
       this.eventBus.emit('wire-removed', { engineId });
+
+      // Update minimap when wire is removed
+      if (this.canvas?.miniMap) this.canvas.miniMap.scheduleUpdate();
     }
   }
 

@@ -16,8 +16,8 @@ export class HalfAdder extends Component {
     return { outputs: [sum, carry] };
   }
 
-  getProperties() { return []; }
-  setProperty(name, value) { return false; }
+  getProperties() { return super.getProperties(); }
+  setProperty(name, value) { return super.setProperty(name, value); }
 
   render(container) {
     const H = 4 * this.GRID;   // 80px

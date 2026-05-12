@@ -586,11 +586,19 @@ export class CanvasEvents {
       // Right-click on empty canvas
       const conn = e.target.closest('.connector');
       if (!conn && !compEl && !wireEl) {
-        items.push({ label: 'Save Selection as Subcircuit', action: () => {
-          this.eventBus.emit('save-subcircuit');
+        items.push({ label: 'Zoom to Fit (Ctrl+Shift+F)', action: () => {
+          this.canvas?.zoomToFit();
         }});
-        items.push({ label: 'Load Subcircuit', action: () => {
-          this.eventBus.emit('load-subcircuit');
+        items.push({ label: 'Select All (Ctrl+A)', action: () => {
+          for (const comp of this.compManager.components) {
+            if (!this.selection.selectedComponents.has(comp.id)) {
+              this.selection.selectedComponents.add(comp.id);
+              comp.element?.classList.add('selected');
+            }
+          }
+        }});
+        items.push({ label: 'Reset View (Home)', action: () => {
+          this.core.centerView();
         }});
         this.contextMenu.show(e.clientX, e.clientY, items);
         return;

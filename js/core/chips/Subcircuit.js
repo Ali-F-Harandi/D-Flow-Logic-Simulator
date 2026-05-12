@@ -31,13 +31,15 @@ export class Subcircuit extends Component {
 
   getProperties() {
     return [
-      { name: 'name', value: this._name, type: 'text' },
-      { name: 'inputs', value: this.inputs.length, type: 'number', min: 1, max: 16 },
-      { name: 'outputs', value: this.outputs.length, type: 'number', min: 1, max: 16 }
+      ...super.getProperties(),
+      { name: 'name', label: 'Name', value: this._name, type: 'text' },
+      { name: 'inputs', label: 'Inputs', value: this.inputs.length, type: 'number', min: 1, max: 16 },
+      { name: 'outputs', label: 'Outputs', value: this.outputs.length, type: 'number', min: 1, max: 16 }
     ];
   }
 
   setProperty(name, value) {
+    if (super.setProperty(name, value)) return true;
     if (name === 'name') {
       this._name = String(value);
       if (this.element) {

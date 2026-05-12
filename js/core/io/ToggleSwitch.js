@@ -9,6 +9,7 @@ export class ToggleSwitch extends Component {
   static label = 'Toggle Switch';
   constructor(id) {
     super(id, 'ToggleSwitch', 0, 1);
+    this._label = '';
     this.outputs[0].value = false;
   }
 
@@ -57,6 +58,23 @@ export class ToggleSwitch extends Component {
         knob.style.left = isOn ? '15px' : '1px';
       }
     }
+  }
+
+  getProperties() {
+    return [
+      ...super.getProperties(),
+      { name: 'label', label: 'Label', type: 'text', value: this._label || '' }
+    ];
+  }
+
+  setProperty(name, value) {
+    if (super.setProperty(name, value)) return true;
+    if (name === 'label') {
+      this._label = String(value);
+      this.rerender();
+      return true;
+    }
+    return false;
   }
 
   render(container) {

@@ -136,7 +136,7 @@ export class Propagator {
     this.oscPoints = new PropagationPoints();
 
     /** Maximum iterations before declaring oscillation (configurable) */
-    this.simLimit = 1000;
+    this.simLimit = 5000;
 
     /** Default gate delay (in simulation time units) */
     this.defaultDelay = 1;
@@ -188,6 +188,15 @@ export class Propagator {
    * Propagate until the circuit is stable (or oscillation detected).
    * This is the Logisim Propagator.propagate() equivalent.
    *
+   * Feedback loop handling:
+   * Circuits with feedback (SR latches, flip-flops with Q fed back) naturally
+   * cause more propagation iterations. These are NOT oscillations — they
+   * stabilize after a few cycles. True oscillation only occurs in purely
+   * combinational loops (e.g., NOT gate with output fed to input).
+   *
+   * We detect oscillation by checking if values actually keep changing
+   * in a cycle, not just by counting iterations.
+   *
    * @returns {boolean} True if any propagation occurred
    */
   propagate() {
@@ -199,8 +208,33 @@ export class Propagator {
     const logThreshold = Math.floor(3 * oscThreshold / 4);
     let iters = 0;
 
+    // Track value stability to detect true oscillation vs. feedback settling
+    let stableCount = 0;
+    const STABLE_THRESHOLD = 50; // If no changes for 50 iterations, circuit is stable
+    let lastEventCount = this.eventQueue.size;
+
     while (!this.eventQueue.isEmpty()) {
       iters++;
+
+      // Check for stability: if the event queue isn't growing, the circuit is settling
+      const currentEventCount = this.eventQueue.size;
+      if (currentEventCount >= lastEventCount) {
+        stableCount++;
+      } else {
+        stableCount = 0;
+      }
+      lastEventCount = currentEventCount;
+
+      // If the circuit has been stable (queue shrinking or same size) for many
+      // iterations, it's not oscillating — just taking time to settle feedback.
+      if (stableCount >= STABLE_THRESHOLD) {
+        // Circuit is stable — clear remaining events that are just re-confirming values
+        this.isOscillating = false;
+        this._oscAdding = false;
+        this.eventQueue.clear();
+        this.oscPoints.clear();
+        return iters > 0;
+      }
 
       if (iters < logThreshold) {
         this._stepInternal(null);

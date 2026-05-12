@@ -92,10 +92,11 @@ export class GateBase extends Component {
   // M-1: Shared property accessors for all multi-input gates.
   // Previously duplicated across 6 gate classes.
   getProperties() {
-    return [{ name: 'inputs', label: 'Inputs', type: 'number', value: this.inputs.length, min: 2, max: 8 }];
+    return [...super.getProperties(), { name: 'inputs', label: 'Inputs', type: 'number', value: this.inputs.length, min: 2, max: 8 }];
   }
 
   setProperty(name, value) {
+    if (super.setProperty(name, value)) return true;
     if (name === 'inputs') {
       const newCount = parseInt(value, 10);
       if (isNaN(newCount) || newCount === this.inputs.length || newCount < 2 || newCount > 8) return false;
