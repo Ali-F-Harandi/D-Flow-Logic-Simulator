@@ -177,17 +177,13 @@ export class Wire {
 
   /** routingMode always returns 'bezier' — no more mode switching */
   get routingMode() { return Wire.MODE_BEZIER; }
-  set routingMode(_) { /* no-op */ }
+  set routingMode(_) { /* no-op: all wires use bezier mode */ }
 
   /** isManualMode — true if wire has user-placed waypoints */
   get isManualMode() { return this.waypoints.length > 0; }
 
   /** isAutoRouted — true if no waypoints (automatic Bézier) */
   get isAutoRouted() { return this.waypoints.length === 0; }
-  set isAutoRouted(_) { /* no-op */ }
-
-  /** isLocked — always false (lock feature removed) */
-  get isLocked() { return false; }
 
   /** pathPoints — computed from endpoints + waypoints */
   get pathPoints() {

@@ -400,10 +400,9 @@ export class Propagator {
       }
     }
 
-    // Process substates
-    for (const substate of this.circuitState.substates.values()) {
-      // Propagate into subcircuits would go here
-    }
+    // NOTE: Subcircuit propagation would go here when subcircuit
+    // internal state propagation is implemented. Currently, subcircuits
+    // are evaluated as atomic components by _processDirtyComponents().
   }
 
   /**

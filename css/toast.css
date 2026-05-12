@@ -9,6 +9,14 @@
   pointer-events: none;
 }
 
+/* On mobile, move toasts above the floating delete button */
+@media (max-width: 767px) {
+  #toast-container {
+    bottom: 130px;
+    right: 12px;
+  }
+}
+
 .toast {
   padding: 8px 16px;
   border-radius: 6px;

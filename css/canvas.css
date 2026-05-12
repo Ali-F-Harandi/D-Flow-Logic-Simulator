@@ -11,6 +11,11 @@
   touch-action: none;
 }
 
+/* Crosshair cursor when in wiring mode */
+#canvas-container.wiring-mode {
+  cursor: crosshair;
+}
+
 #canvas-container .canvas-placeholder {
   color: var(--color-text-muted);
   font-size: var(--font-size-lg);

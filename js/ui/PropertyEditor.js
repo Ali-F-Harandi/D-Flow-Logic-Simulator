@@ -1,5 +1,20 @@
 import { SetPropertyCommand } from '../utils/UndoManager.js';
 
+/**
+ * PropertyEditor — Modal dialog for editing component properties.
+ *
+ * Opens as a centered modal with a real backdrop (click-to-close).
+ * Supports number inputs (with min/max clamping for mobile browsers),
+ * select dropdowns, and integrates with the UndoManager for undo/redo.
+ *
+ * Key behaviors:
+ *   - Number inputs are clamped to [min, max] on save (mobile browsers
+ *     don't enforce HTML min/max attributes on type="number")
+ *   - NaN values are reverted to the current property value
+ *   - Step values >= 1 are rounded to integers
+ *   - Uses SetPropertyCommand for all changes (undo/redo support)
+ *   - Clicking the backdrop or pressing Escape closes the dialog
+ */
 export class PropertyEditor {
   constructor(eventBus, engine, canvas, undoManager) {
     this.eventBus = eventBus;
@@ -13,6 +28,13 @@ export class PropertyEditor {
   }
 
   _createDOM() {
+    // Create a real backdrop div (instead of a CSS pseudo-element) so
+    // users can click outside the dialog to close it.
+    this.backdrop = document.createElement('div');
+    this.backdrop.id = 'property-dialog-backdrop';
+    this.backdrop.addEventListener('click', () => this.close());
+    document.body.appendChild(this.backdrop);
+
     this.dialog = document.createElement('div');
     this.dialog.id = 'property-dialog';
     // Styling is provided entirely by CSS (see components.css)
@@ -35,6 +57,7 @@ export class PropertyEditor {
       closeBtn.addEventListener('click', () => this.close());
       this.dialog.appendChild(closeBtn);
       this.dialog.style.display = 'block';
+      this.backdrop.style.display = 'block';
       return;
     }
 
@@ -90,6 +113,7 @@ export class PropertyEditor {
     this.dialog.appendChild(btnContainer);
 
     this.dialog.style.display = 'block';
+    this.backdrop.style.display = 'block';
 
     this._escapeHandler = (e) => {
       if (e.key === 'Escape') {
@@ -104,55 +128,58 @@ export class PropertyEditor {
     const props = this.component.getProperties();
     let changed = false;
     const commands = [];
-    props.forEach(prop => {
+
+    // Use for...of instead of forEach so that 'continue' skips correctly.
+    // (Previously, 'return' inside forEach only exited the callback, not the loop.)
+    for (const prop of props) {
       const inputEl = this.dialog.querySelector(`#prop-${prop.name}`);
-      if (inputEl) {
-        let newValue;
-        if (inputEl.tagName === 'SELECT') {
-          newValue = inputEl.value;
-        } else {
-          newValue = inputEl.type === 'number' ? parseFloat(inputEl.value) : inputEl.value;
-        }
+      if (!inputEl) continue;
 
-        // Validate and clamp number inputs to min/max bounds
-        // This is critical for mobile browsers where <input type="number">
-        // min/max attributes are not enforced and users can type any value.
-        if (inputEl.type === 'number') {
-          if (isNaN(newValue)) {
-            // Revert to current value if user entered non-numeric input
-            inputEl.value = prop.value;
-            return;
-          }
-          if (prop.min !== undefined && newValue < prop.min) {
-            newValue = prop.min;
-            inputEl.value = newValue;
-          }
-          if (prop.max !== undefined && newValue > prop.max) {
-            newValue = prop.max;
-            inputEl.value = newValue;
-          }
-          // Round to step precision
-          if (prop.step !== undefined && prop.step >= 1) {
-            newValue = Math.round(newValue);
-            inputEl.value = newValue;
-          }
-        }
+      let newValue;
+      if (inputEl.tagName === 'SELECT') {
+        newValue = inputEl.value;
+      } else {
+        newValue = inputEl.type === 'number' ? parseFloat(inputEl.value) : inputEl.value;
+      }
 
-        if ((inputEl.tagName === 'SELECT' && newValue !== prop.value) ||
-            (inputEl.type === 'number' ? !isNaN(newValue) && newValue !== prop.value : newValue !== prop.value)) {
-          // Use SetPropertyCommand for undo/redo support
-          if (this.engine && this.canvas && this.undoManager) {
-            commands.push(new SetPropertyCommand(
-              this.engine, this.canvas,
-              this.component, prop.name, prop.value, newValue
-            ));
-          } else {
-            this.component.setProperty(prop.name, newValue);
-          }
-          changed = true;
+      // Validate and clamp number inputs to min/max bounds.
+      // This is critical for mobile browsers where <input type="number">
+      // min/max attributes are not enforced and users can type any value.
+      if (inputEl.type === 'number') {
+        if (isNaN(newValue)) {
+          // Revert to current value if user entered non-numeric input
+          inputEl.value = prop.value;
+          continue;
+        }
+        if (prop.min !== undefined && newValue < prop.min) {
+          newValue = prop.min;
+          inputEl.value = newValue;
+        }
+        if (prop.max !== undefined && newValue > prop.max) {
+          newValue = prop.max;
+          inputEl.value = newValue;
+        }
+        // Round to step precision
+        if (prop.step !== undefined && prop.step >= 1) {
+          newValue = Math.round(newValue);
+          inputEl.value = newValue;
         }
       }
-    });
+
+      if ((inputEl.tagName === 'SELECT' && newValue !== prop.value) ||
+          (inputEl.type === 'number' ? !isNaN(newValue) && newValue !== prop.value : newValue !== prop.value)) {
+        // Use SetPropertyCommand for undo/redo support
+        if (this.engine && this.canvas && this.undoManager) {
+          commands.push(new SetPropertyCommand(
+            this.engine, this.canvas,
+            this.component, prop.name, prop.value, newValue
+          ));
+        } else {
+          this.component.setProperty(prop.name, newValue);
+        }
+        changed = true;
+      }
+    }
     // Execute commands through undo manager
     if (commands.length > 0 && this.undoManager) {
       for (const cmd of commands) {
@@ -167,6 +194,7 @@ export class PropertyEditor {
 
   close() {
     this.dialog.style.display = 'none';
+    this.backdrop.style.display = 'none';
     if (this._escapeHandler) {
       document.removeEventListener('keydown', this._escapeHandler);
       this._escapeHandler = null;

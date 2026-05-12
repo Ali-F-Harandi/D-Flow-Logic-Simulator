@@ -60,7 +60,7 @@
   --bus-wire-color: #5b9bd5;
   --bus-wire-active-color: #7ec8e3;
   --bus-wire-neutral-color: #7ba7d0;
-  --bus-component-bg: #e8f0fe;
+  --bus-component-bg: #1a3050;
   --bus-component-border: #5b9bd5;
   --bus-indicator-color: #5b9bd5;
   --bus-wire-error-color: #ff4444;
@@ -82,7 +82,6 @@
   --probe-high: #4ec9b0;
   --probe-low: #f44747;
   --probe-z: #ff9800;
-  --wire-z-color: #ff9800;
   --floating-input-color: #ffc107;
   --junction-dot-color: #888;
   --toast-info-bg: var(--color-surface-alt);

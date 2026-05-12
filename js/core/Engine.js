@@ -220,7 +220,8 @@ export class Engine {
     };
     this.circuit.addWire(wire);
 
-    // Propagate the current output value through the new wire to the input
+    // Propagate the current output value through the new wire to the input.
+    // Always update CircuitState even for UNKNOWN values to keep it in sync.
     const sourceValue = this.circuitState.getValue(fromNodeId);
     if (sourceValue && !sourceValue.equals(Value.UNKNOWN)) {
       if (toInput.width > 1) {
@@ -228,9 +229,11 @@ export class Engine {
       } else {
         toInput.value = sourceValue.toBoolean();
       }
-      this.circuitState.setValue(toNodeId, sourceValue);
-      this.circuitState.markComponentDirty(toComp.id);
     }
+    // Always set CircuitState value regardless of UNKNOWN, so that
+    // the state stays consistent even when the source is not yet driven.
+    this.circuitState.setValue(toNodeId, sourceValue);
+    this.circuitState.markComponentDirty(toComp.id);
 
     // Propagate signal through the new wire
     this._propagateFrom(fromComp);

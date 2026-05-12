@@ -1,9 +1,18 @@
 /**
- * Pure data model for a circuit: components and wires.
+ * Circuit.js — Pure data model for a digital logic circuit.
  *
- * Performance improvement: wires are now stored in both an Array (for
- * ordered iteration) AND a Map (for O(1) lookups by ID). The
- * _wireIndex Map is kept in sync with the wires Array automatically.
+ * Manages two primary collections:
+ *   - components: Map of component ID → Component instance
+ *   - wires: Array of wire objects connecting component ports
+ *
+ * Performance features:
+ *   - Wires are indexed by ID (_wireIndex Map) for O(1) lookups
+ *   - Wires are indexed by target node ID (_nodeToWireIndex Map) for
+ *     O(1) "which wire connects to this input?" queries
+ *   - Serialization/deserialization handles Value objects and bus widths
+ *
+ * Note: Wire validation on deserialization (fromJSON) ensures corrupted
+ * save data with dangling wire references is gracefully skipped.
  */
 import { Value } from './simulation/Value.js';
 
@@ -239,6 +248,16 @@ export class Circuit {
       circuit.addComponent(comp);
     }
     for (const w of data.wires) {
+      // Validate that both endpoints reference existing components
+      // to prevent dangling wire references from corrupted save data
+      if (!w.from || !w.to || !w.from.componentId || !w.to.componentId) {
+        console.warn('Circuit.fromJSON: Skipping wire with missing endpoint data:', w.id);
+        continue;
+      }
+      if (!circuit.components.has(w.from.componentId) || !circuit.components.has(w.to.componentId)) {
+        console.warn(`Circuit.fromJSON: Skipping wire ${w.id} — component not found (from=${w.from.componentId}, to=${w.to.componentId})`);
+        continue;
+      }
       circuit.addWire(w);
     }
     return circuit;

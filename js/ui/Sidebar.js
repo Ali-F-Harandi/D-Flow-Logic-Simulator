@@ -90,7 +90,7 @@ export class Sidebar {
     };
 
     // ─── "Getting Started" category: basic components for beginners ───
-    const gettingStartedTypes = ['and', 'or', 'not', 'toggle_switch', 'light_bulb'];
+    const gettingStartedTypes = ['AND', 'OR', 'NOT', 'ToggleSwitch', 'LightBulb'];
     const gsItems = gettingStartedTypes
       .map(type => this.allTypes.find(t => t.type === type))
       .filter(Boolean);

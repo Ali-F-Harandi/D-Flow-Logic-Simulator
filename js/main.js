@@ -140,7 +140,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   };
 
   eventBus.on('component-drop', _markUnsaved);
-  eventBus.on('selection-changed', _markUnsaved);
   eventBus.on('wire-connected', _markUnsaved);
   eventBus.on('component-deleted', _markUnsaved);
   eventBus.on('wire-removed', _markUnsaved);
@@ -237,7 +236,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     subcircuitManager.showLoadDialog();
   });
 
-  footer.setVersion('v0.9.2');
+  footer.setVersion('v1.0.0');
 
   // Update footer stats (event-driven instead of polling)
   const updateFooterStats = () => {
@@ -261,6 +260,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   // on page unload to prevent issues with auto-save and pending timers.
   window.addEventListener('beforeunload', () => {
     engine.stop();
+  });
+
+  // Ctrl+S / Cmd+S keyboard shortcut for saving the project
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      e.preventDefault();
+      header.save();
+    }
   });
 
   // Auto‑restore saved project (uses themed ConfirmDialog)

@@ -127,6 +127,21 @@ html, body {
     gap: 6px;
   }
   #footer {
+    /* Condensed footer for mobile instead of hiding completely */
+    padding: 2px 8px;
+    font-size: 10px;
+    gap: 6px;
+    overflow: hidden;
+    min-height: 22px;
+  }
+  #footer .footer-section {
+    font-size: 10px;
+    padding: 0 4px;
+  }
+  #footer .autosave-indicator {
+    display: none;
+  }
+  #footer .footer-zoom-controls {
     display: none;
   }
   /* Ensure header controls have enough touch space */

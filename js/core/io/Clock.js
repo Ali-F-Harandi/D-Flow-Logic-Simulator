@@ -115,7 +115,8 @@ export class Clock extends Component {
     if (super.setProperty(name, value)) return true;
     if (name === 'frequency') {
       const f = parseFloat(value);
-      if (!isNaN(f) && f > 0) { this.setFrequency(f); return true; }
+      // Validate: must be >= 0.1 (matches getProperties min) and <= 100
+      if (!isNaN(f) && f >= 0.1 && f <= 100) { this.setFrequency(f); return true; }
     }
     return false;
   }

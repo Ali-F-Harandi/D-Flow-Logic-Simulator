@@ -138,6 +138,11 @@
   -webkit-tap-highlight-color: transparent;
 }
 .component-item:hover { border-color: var(--color-accent); }
+.component-item:focus-visible {
+  border-color: var(--color-accent);
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
 
 /* ===== Context Menu Items ===== */
 .context-menu-item {
@@ -150,6 +155,12 @@
 .context-menu-item:hover {
   background: var(--color-accent);
   color: white;
+}
+.context-menu-item:focus-visible {
+  background: var(--color-accent);
+  color: white;
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
 }
 
 /* ===== Property Dialog ===== */
@@ -242,13 +253,14 @@
   color: white;
   border-color: var(--color-accent);
 }
-/* Property dialog backdrop overlay */
-#property-dialog::before {
-  content: '';
+/* Property dialog backdrop overlay — use a real div for click-to-close */
+#property-dialog-backdrop {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
   background: rgba(0,0,0,0.4);
-  z-index: -1;
+  z-index: calc(var(--z-modal) - 1);
+  display: none;
+  cursor: pointer;
 }
 
 /* ===== Toolbar Buttons ===== */
