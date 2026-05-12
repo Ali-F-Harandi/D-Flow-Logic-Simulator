@@ -1,4 +1,5 @@
 import { Component } from '../Component.js';
+import { Value } from '../simulation/Value.js';
 
 /**
  * LED Array — a row of configurable LEDs (2–8, default 8).
@@ -8,6 +9,10 @@ import { Component } from '../Component.js';
  *
  * The component displays a compact horizontal row of circular LEDs
  * with a binary value label showing the current numeric value.
+ *
+ * Bus input mode: When busInput=true, accepts a single N-bit bus
+ * input instead of N individual 1-bit inputs. Each LED corresponds
+ * to one bit of the bus value.
  */
 export class LedArray extends Component {
   static label = 'LED Array';
@@ -17,9 +22,11 @@ export class LedArray extends Component {
     ledCount = Math.max(2, Math.min(8, parseInt(ledCount, 10) || 8));
     super(id, 'LedArray', ledCount, 0);
     this._ledCount = ledCount;
+    this._busInput = false; // default: individual bit inputs
   }
 
   get ledCount() { return this._ledCount; }
+  get busInput() { return this._busInput; }
 
   computeNextState() {
     // No outputs to compute — this is a display-only component
@@ -40,7 +47,11 @@ export class LedArray extends Component {
   }
 
   reset() {
-    this.inputs.forEach(i => i.value = false);
+    if (this._busInput && this.inputs.length > 0) {
+      this.inputs[0].value = Value.createKnown(this._ledCount, 0);
+    } else {
+      this.inputs.forEach(i => i.value = false);
+    }
     this._updateAppearance();
     this._updateConnectorStates();
   }
@@ -50,41 +61,115 @@ export class LedArray extends Component {
     this._updateConnectorStates();
   }
 
+  /**
+   * Get the bit value at a specific index, handling both bus and individual modes.
+   * @param {number} bitIndex
+   * @returns {boolean}
+   */
+  _getBitValue(bitIndex) {
+    if (this._busInput && this.inputs.length > 0) {
+      const v = this.inputs[0].value;
+      if (v instanceof Value) {
+        const bitVal = v.get(bitIndex);
+        return bitVal === Value.TRUE;
+      }
+      return false;
+    }
+    return this.inputs[bitIndex]?.value === true;
+  }
+
   getProperties() {
-    return [...super.getProperties(), { name: 'leds', label: 'LEDs', type: 'number', value: this._ledCount, min: 2, max: 8, step: 1 }];
+    const props = [
+      { name: 'leds', label: 'LEDs', type: 'number', value: this._ledCount, min: 2, max: 8, step: 1 },
+      { name: 'busInput', label: 'Bus Input', type: 'select', value: this._busInput ? 'true' : 'false', options: ['false', 'true'] },
+      ...super.getProperties().filter(p => p.name !== 'bitWidth')
+    ];
+    return props;
   }
 
   setProperty(name, value) {
-    if (super.setProperty(name, value)) return true;
+    if (name === 'busInput') {
+      const newBusInput = value === 'true' || value === true;
+      if (newBusInput === this._busInput) return false;
+
+      // Disconnect all wires on inputs (they will be rebuilt)
+      if (this._engine) {
+        const wiresToRemove = this._engine.wires.filter(w =>
+          w.to.componentId === this.id
+        );
+        wiresToRemove.forEach(w => {
+          this._engine.disconnect(w.id);
+          document.dispatchEvent(new CustomEvent('wire-removed', { detail: { wireId: w.id } }));
+        });
+      }
+
+      this._busInput = newBusInput;
+
+      if (newBusInput) {
+        // Single bus input with width = ledCount
+        this.inputs = [{
+          id: `${this.id}.input.0`,
+          value: Value.createKnown(this._ledCount, 0),
+          width: this._ledCount,
+          connectedTo: null
+        }];
+        this.bitWidth = this._ledCount;
+      } else {
+        // Individual 1-bit inputs
+        this.inputs = [];
+        for (let i = 0; i < this._ledCount; i++) {
+          this.inputs.push({
+            id: `${this.id}.input.${i}`,
+            value: false,
+            width: 1,
+            connectedTo: null
+          });
+        }
+        this.bitWidth = 1;
+      }
+
+      if (this._engine) this._engine.reindexComponent(this);
+      this.rerender();
+      return true;
+    }
+
     if (name === 'leds') {
       const newCount = parseInt(value, 10);
       if (isNaN(newCount) || newCount === this._ledCount || newCount < 2 || newCount > 8) return false;
 
       // Disconnect wires for inputs being removed
-      if (newCount < this._ledCount) {
-        for (let i = newCount; i < this._ledCount; i++) {
-          const inp = this.inputs[i];
-          if (inp && inp.connectedTo) {
-            const wire = this._engine?.wires.find(w => w.to.nodeId === inp.id);
-            if (wire && this._engine) {
-              this._engine.disconnect(wire.id);
-              document.dispatchEvent(new CustomEvent('wire-removed', { detail: { wireId: wire.id } }));
-            }
-          }
-        }
+      if (this._engine) {
+        const wiresToRemove = this._engine.wires.filter(w =>
+          w.to.componentId === this.id
+        );
+        wiresToRemove.forEach(w => {
+          this._engine.disconnect(w.id);
+          document.dispatchEvent(new CustomEvent('wire-removed', { detail: { wireId: w.id } }));
+        });
       }
 
-      const oldInputs = this.inputs.map(inp => ({ value: inp.value, connectedTo: inp.connectedTo }));
       this._ledCount = newCount;
 
       // Rebuild inputs array
-      this.inputs = [];
-      for (let i = 0; i < newCount; i++) {
-        this.inputs.push({
-          id: `${this.id}.input.${i}`,
-          value: i < oldInputs.length ? oldInputs[i].value : false,
-          connectedTo: (i < oldInputs.length && oldInputs[i].connectedTo) ? oldInputs[i].connectedTo : null
-        });
+      if (this._busInput) {
+        this.inputs = [{
+          id: `${this.id}.input.0`,
+          value: Value.createKnown(newCount, 0),
+          width: newCount,
+          connectedTo: null
+        }];
+        this.bitWidth = newCount;
+      } else {
+        this.inputs = [];
+        for (let i = 0; i < newCount; i++) {
+          this.inputs.push({
+            id: `${this.id}.input.${i}`,
+            value: false,
+            width: 1,
+            connectedTo: null
+          });
+        }
+        this.bitWidth = 1;
       }
 
       if (this._engine) {
@@ -94,6 +179,8 @@ export class LedArray extends Component {
       this.rerender();
       return true;
     }
+
+    if (super.setProperty(name, value)) return true;
     return false;
   }
 
@@ -103,7 +190,7 @@ export class LedArray extends Component {
     circles.forEach(circle => {
       const bit = parseInt(circle.dataset.bit);
       if (bit >= this._ledCount) return;
-      const lit = this.inputs[bit]?.value === true;
+      const lit = this._getBitValue(bit);
       const style = getComputedStyle(document.documentElement);
       const onFill = style.getPropertyValue('--led-on-fill').trim() || '#ff4444';
       const onStroke = style.getPropertyValue('--led-on-stroke').trim() || '#ff8888';
@@ -120,7 +207,7 @@ export class LedArray extends Component {
     if (valueLabel) {
       let val = 0;
       for (let i = this._ledCount - 1; i >= 0; i--) {
-        val = (val << 1) | (this.inputs[i]?.value ? 1 : 0);
+        val = (val << 1) | (this._getBitValue(i) ? 1 : 0);
       }
       valueLabel.textContent = val.toString(2).padStart(this._ledCount, '0');
     }
@@ -128,13 +215,13 @@ export class LedArray extends Component {
 
   render(container) {
     const n = this._ledCount;
-    // Height scales with number of inputs so connectors don't overlap
-    const H = (n + 1) * this.GRID;
+    const isBus = this._busInput;
+    const H = isBus ? 3 * this.GRID : (n + 1) * this.GRID;
     const ledSize = 16;
     const ledSpacing = 20;
     const W = Math.max(6 * this.GRID, n * ledSpacing + 24);
     const el = document.createElement('div');
-    el.className = 'component led-array';
+    el.className = 'component led-array' + (isBus ? ' bus-component' : '');
     el.style.width = `${W}px`;
     el.style.height = `${H}px`;
     el.style.left = `${this.position.x}px`;
@@ -145,7 +232,7 @@ export class LedArray extends Component {
     // Title label
     const body = document.createElement('div');
     body.className = 'dip8-body';
-    body.textContent = `LED${n}`;
+    body.textContent = isBus ? `LED${n}/BUS` : `LED${n}`;
     body.style.position = 'absolute';
     body.style.top = '4px';
     body.style.left = '50%';
@@ -196,15 +283,21 @@ export class LedArray extends Component {
     `;
     let val = 0;
     for (let i = n - 1; i >= 0; i--) {
-      val = (val << 1) | (this.inputs[i]?.value ? 1 : 0);
+      val = (val << 1) | (this._getBitValue(i) ? 1 : 0);
     }
     valueLabel.textContent = val.toString(2).padStart(n, '0');
     el.appendChild(valueLabel);
 
-    // Input connectors — each LED has its own input, spaced evenly
-    for (let i = 0; i < n; i++) {
-      const yCenter = (i + 1) * this.GRID;
-      el.appendChild(this._createConnectorBlock(this.inputs[i], true, `I${i}`, yCenter));
+    // Input connectors
+    if (isBus) {
+      // Single bus input
+      el.appendChild(this._createConnectorBlock(this.inputs[0], true, `I[0:${n-1}]`, 1 * this.GRID));
+    } else {
+      // Individual bit inputs — each LED has its own input, spaced evenly
+      for (let i = 0; i < n; i++) {
+        const yCenter = (i + 1) * this.GRID;
+        el.appendChild(this._createConnectorBlock(this.inputs[i], true, `I${i}`, yCenter));
+      }
     }
 
     container.appendChild(el);

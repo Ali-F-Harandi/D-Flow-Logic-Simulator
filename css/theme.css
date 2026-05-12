@@ -55,6 +55,16 @@
   --wire-z-dasharray: 2,2;
   --wire-fallback-color: #ff4444;
   --wire-fallback-dasharray: 4,3;
+
+  /* Bus wire colors */
+  --bus-wire-color: #5b9bd5;
+  --bus-wire-active-color: #7ec8e3;
+  --bus-wire-neutral-color: #7ba7d0;
+  --bus-component-bg: #e8f0fe;
+  --bus-component-border: #5b9bd5;
+  --bus-indicator-color: #5b9bd5;
+  --bus-wire-error-color: #ff4444;
+  --bus-wire-unknown-color: #ff9800;
   --gate-bg: var(--color-surface);
   --gate-body-color: var(--color-text);
   --gate-border: 1px solid var(--color-border);

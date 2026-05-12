@@ -1,20 +1,26 @@
-import { GRID_SIZE } from '../config.js';
+import { GRID_SIZE, BUS_MAX_WIDTH } from '../config.js';
 
 // Rotation facing direction constants
 const FACING_ORDER = ['east', 'south', 'west', 'north'];
 const FACING_ANGLES = { east: 0, south: 90, west: 180, north: 270 };
 
 export class Component {
-  constructor(id, type, inputsCount = 0, outputsCount = 1) {
+  constructor(id, type, inputsCount = 0, outputsCount = 1, inputWidths, outputWidths) {
     this.id = id;
     this.type = type;
+
+    // Bit width of the component (default 1 for single-bit)
+    this.bitWidth = 1;
+
     this.inputs = [];
     for (let i = 0; i < inputsCount; i++) {
-      this.inputs.push({ id: `${this.id}.input.${i}`, value: false, connectedTo: null });
+      const w = (inputWidths && inputWidths[i]) || 1;
+      this.inputs.push({ id: `${this.id}.input.${i}`, value: false, width: w, connectedTo: null });
     }
     this.outputs = [];
     for (let i = 0; i < outputsCount; i++) {
-      this.outputs.push({ id: `${this.id}.output.${i}`, value: false });
+      const w = (outputWidths && outputWidths[i]) || 1;
+      this.outputs.push({ id: `${this.id}.output.${i}`, value: false, width: w });
     }
     this.position = { x: 100, y: 100 };
     this.element = null;
@@ -83,12 +89,33 @@ export class Component {
     this.reset();
   }
 
+  /**
+   * Get the width of a port by its node ID.
+   * @param {string} nodeId
+   * @returns {number} Width in bits (default 1)
+   */
+  getPortWidth(nodeId) {
+    const inp = this.inputs.find(i => i.id === nodeId);
+    if (inp) return inp.width || 1;
+    const out = this.outputs.find(o => o.id === nodeId);
+    if (out) return out.width || 1;
+    return 1;
+  }
+
   getProperties() {
-    return [
+    const props = [
       { name: 'x', label: 'X Position', type: 'number', value: Math.round(this.position.x), step: GRID_SIZE },
       { name: 'y', label: 'Y Position', type: 'number', value: Math.round(this.position.y), step: GRID_SIZE },
       { name: 'facing', label: 'Facing', type: 'select', value: this.facing, options: ['east', 'south', 'west', 'north'] }
     ];
+    // Show bitWidth property when component is bus-capable (bitWidth > 1 or any port > 1)
+    const hasBusPort = this.bitWidth > 1 ||
+      this.inputs.some(i => i.width > 1) ||
+      this.outputs.some(o => o.width > 1);
+    if (hasBusPort) {
+      props.push({ name: 'bitWidth', label: 'Bit Width', type: 'number', value: this.bitWidth, min: 1, max: BUS_MAX_WIDTH });
+    }
+    return props;
   }
 
   setProperty(name, value) {
@@ -108,6 +135,21 @@ export class Component {
         this._applyTransform();
         return true;
       }
+    }
+    if (name === 'bitWidth') {
+      const newWidth = parseInt(value, 10);
+      if (isNaN(newWidth) || newWidth < 1 || newWidth > BUS_MAX_WIDTH) return false;
+      if (newWidth === this.bitWidth) return false;
+      this.bitWidth = newWidth;
+      // Update all port widths to match the new bitWidth
+      for (const inp of this.inputs) {
+        inp.width = newWidth;
+      }
+      for (const out of this.outputs) {
+        out.width = newWidth;
+      }
+      this.rerender();
+      return true;
     }
     return false;
   }
@@ -169,6 +211,13 @@ export class Component {
     if (value === true)  return 'var(--color-success)';
     if (value === false) return 'var(--color-text-muted)';
     if (value === null)  return 'var(--wire-z-color, #ff9800)'; // Z state / high-impedance
+    // Handle Value objects (bus ports) — use bus-specific colors
+    if (typeof value === 'object' && value !== null && typeof value.isFullyDefined === 'function') {
+      if (value.error) return 'var(--bus-wire-error-color, #ff4444)';
+      if (value.unknown) return 'var(--bus-wire-unknown-color, #ff9800)';
+      if (value.value !== 0) return 'var(--bus-wire-active-color, #7ec8e3)';
+      return 'var(--bus-wire-neutral-color, #7ba7d0)';
+    }
     return 'var(--color-text-muted)';
   }
 
@@ -186,9 +235,22 @@ export class Component {
         if (block) {
           const line = block.querySelector('.connector-line');
           if (line) {
-            line.style.backgroundColor = node.value === true
-              ? 'var(--color-success, #00cc66)'
-              : 'var(--color-border, #888)';
+            const isBusPort = node.width > 1;
+            // Determine if the value is "active" (true or non-zero Value)
+            const isActive = node.value === true ||
+              (typeof node.value === 'object' && node.value !== null &&
+               typeof node.value.isFullyDefined === 'function' &&
+               node.value.isFullyDefined() && node.value.value !== 0);
+            if (isBusPort) {
+              // Bus connector lines use bus colors
+              line.style.backgroundColor = isActive
+                ? 'var(--bus-wire-active-color, #7ec8e3)'
+                : 'var(--bus-wire-neutral-color, #7ba7d0)';
+            } else {
+              line.style.backgroundColor = isActive
+                ? 'var(--color-success, #00cc66)'
+                : 'var(--color-border, #888)';
+            }
           }
         }
       }
@@ -203,7 +265,15 @@ export class Component {
       return;
     }
     this.element.classList.remove('error-state');
-    if (this.outputs.length > 0 && this.outputs.some(o => o.value === true)) {
+    // Check if any output is active (true boolean or non-zero fully-defined Value)
+    const hasActiveOutput = this.outputs.length > 0 && this.outputs.some(o => {
+      if (o.value === true) return true;
+      if (typeof o.value === 'object' && o.value !== null &&
+          typeof o.value.isFullyDefined === 'function' &&
+          o.value.isFullyDefined() && o.value.value !== 0) return true;
+      return false;
+    });
+    if (hasActiveOutput) {
       this.element.style.borderColor = 'var(--gate-highlight-border)';
       this.element.style.boxShadow = 'var(--gate-highlight-shadow)';
     } else {
@@ -327,17 +397,43 @@ export class Component {
 
     // ─── Connector dot ───
     const dot = document.createElement('div');
-    dot.className = `connector ${isInput ? 'input' : 'output'}`;
+    const isBusPort = node.width > 1;
+    dot.className = `connector ${isInput ? 'input' : 'output'}${isBusPort ? ' bus-port' : ''}`;
     dot.dataset.node = node.id;
+    dot.dataset.width = node.width || 1;
     dot.style.backgroundColor = this._getStateColor(node.value);
     dot.style.position = 'absolute';
     dot.style.top = '0px';
     if (isInput) {
-      dot.style.left = isNegated ? '-10px' : '-4px';
+      dot.style.left = isNegated ? '-10px' : (isBusPort ? '-5px' : '-4px');
     } else {
-      dot.style.right = '-4px';
+      dot.style.right = isBusPort ? '-5px' : '-4px';
     }
     block.appendChild(dot);
+
+    // ─── Width indicator label for bus ports ───
+    if (isBusPort) {
+      const widthLabel = document.createElement('span');
+      widthLabel.className = 'connector-width-label';
+      widthLabel.textContent = node.width;
+      widthLabel.style.position = 'absolute';
+      widthLabel.style.top = '-10px';
+      widthLabel.style.fontSize = '8px';
+      widthLabel.style.color = 'var(--bus-indicator-color, #5b9bd5)';
+      widthLabel.style.fontWeight = 'bold';
+      widthLabel.style.fontFamily = 'monospace';
+      if (isInput) {
+        widthLabel.style.left = '-2px';
+      } else {
+        widthLabel.style.right = '-2px';
+      }
+      block.appendChild(widthLabel);
+
+      // Make the connector line thicker for bus ports
+      line.classList.add('bus-line');
+      line.style.height = '3px';
+      line.style.top = '2.5px';
+    }
 
     // ─── Label ───
     const label = document.createElement('span');

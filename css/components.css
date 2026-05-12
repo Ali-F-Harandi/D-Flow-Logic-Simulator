@@ -915,3 +915,99 @@ g[data-wire-id]:hover .wire-visual {
 .inversion-bubble.output-bubble {
   right: 2px;
 }
+
+/* ===== Bus Wire Label ===== */
+.wire-bus-label {
+  font-family: 'Courier New', monospace;
+  user-select: none;
+}
+
+/* ===== Bus Connector Width Label ===== */
+.connector-width-label {
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ===== Bus Connector (width > 1) Styling ===== */
+.connector.bus-port {
+  width: 10px;
+  height: 10px;
+  border-color: var(--bus-indicator-color, #5b9bd5);
+}
+
+.connector.bus-port.input {
+  left: -5px !important;
+}
+
+.connector.bus-port.output {
+  right: -5px !important;
+}
+
+/* Bus connector line — thicker for bus ports */
+.connector-line.bus-line {
+  height: 3px !important;
+  top: 2.5px !important;
+  background-color: var(--bus-indicator-color, #5b9bd5) !important;
+}
+
+/* ===== Bus Component Body Styles ===== */
+.bus-splitter-body,
+.bus-merger-body {
+  background: var(--bus-component-bg) !important;
+  border-color: var(--bus-component-border) !important;
+  border-width: 2px !important;
+}
+
+/* ===== Bus Probe Display ===== */
+.bus-probe-value {
+  font-family: 'Courier New', monospace;
+  font-weight: bold;
+  color: var(--bus-component-border, #5b9bd5);
+  font-size: 11px;
+}
+
+/* ===== Bus Component Accent Bar ===== */
+.component.bus-splitter::before,
+.component.bus-merger::before,
+.component.bus-probe::before,
+.component.bus-constant::before,
+.component.bus-mux::before,
+.component.register::before,
+.component.zero-extend::before,
+.component.sign-extend::before,
+.component.bus-component::before,
+.component.bus-gate::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 20%;
+  bottom: 20%;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--bus-indicator-color, #5b9bd5);
+  opacity: 0.8;
+}
+
+/* ===== Bus Mode Component Styling ===== */
+.component.bus-component,
+.component.bus-gate {
+  border-color: var(--bus-component-border, #5b9bd5) !important;
+  border-width: 1.5px;
+}
+
+.component.bus-component .gate-body,
+.component.bus-gate .gate-body,
+.component.bus-component .ff-body {
+  color: var(--bus-indicator-color, #5b9bd5);
+}
+
+/* ===== Width Mismatch Visual Indicator ===== */
+.connector.width-mismatch {
+  animation: widthMismatchFlash 0.3s ease-in-out 3;
+  box-shadow: 0 0 8px rgba(255, 68, 68, 0.8);
+}
+
+@keyframes widthMismatchFlash {
+  0%, 100% { background-color: var(--color-text-muted); }
+  50% { background-color: #ff4444; }
+}

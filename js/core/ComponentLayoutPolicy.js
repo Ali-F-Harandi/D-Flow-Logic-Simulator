@@ -22,6 +22,20 @@ export class ComponentLayoutPolicy {
       const bits = Math.max(2, Math.min(8, outputCount || 2));
       return { width: 4 * this.GRID, height: Math.max(bits + 1, 3) * this.GRID, rows: Math.max(bits + 1, 3) };
     }
+    // Bus components: wider to accommodate labels
+    if (['BusSplitter', 'BusMerger'].includes(type)) {
+      const maxPorts = Math.max(inputCount, outputCount, 2);
+      return { width: 5 * this.GRID, height: Math.max(maxPorts + 1, 3) * this.GRID, rows: Math.max(maxPorts + 1, 3) };
+    }
+    if (['BusMUX', 'Register'].includes(type)) {
+      return { width: 5 * this.GRID, height: 4 * this.GRID, rows: 4 };
+    }
+    if (['ZeroExtend', 'SignExtend', 'BusConstant'].includes(type)) {
+      return { width: 5 * this.GRID, height: 3 * this.GRID, rows: 3 };
+    }
+    if (type === 'BusProbe') {
+      return { width: 5 * this.GRID, height: 4 * this.GRID, rows: 4 };
+    }
 
     // Standard components (gates, IO, chips)
     const rows = Math.max(inputCount + 1, outputCount + 1, 3);

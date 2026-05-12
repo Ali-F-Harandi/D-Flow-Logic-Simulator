@@ -122,10 +122,12 @@ export class Engine {
 
     // Initialize signal values in CircuitState for all nodes
     for (const inp of component.inputs) {
-      this.circuitState.setValue(inp.id, Value.fromBoolean(inp.value));
+      const initValue = inp.width > 1 ? Value.createUnknown(inp.width) : Value.fromBoolean(inp.value);
+      this.circuitState.setValue(inp.id, initValue);
     }
     for (const out of component.outputs) {
-      this.circuitState.setValue(out.id, Value.fromBoolean(out.value));
+      const initValue = out.width > 1 ? Value.createKnown(out.width, 0) : Value.fromBoolean(out.value);
+      this.circuitState.setValue(out.id, initValue);
     }
 
     // Mark the new component as dirty so it gets evaluated
@@ -191,6 +193,14 @@ export class Engine {
       return null;
     }
 
+    // Width validation
+    if (fromOutput.width !== toInput.width) {
+      document.dispatchEvent(new CustomEvent('simulation-error', {
+        detail: `Width mismatch: output is ${fromOutput.width}-bit, input is ${toInput.width}-bit`
+      }));
+      return null;
+    }
+
     // Disconnect existing wire to this input
     if (toInput.connectedTo) {
       const oldWire = this.circuit.getWireByToNode(toNodeId);
@@ -209,6 +219,18 @@ export class Engine {
       to: { componentId: toComp.id, nodeId: toNodeId }
     };
     this.circuit.addWire(wire);
+
+    // Propagate the current output value through the new wire to the input
+    const sourceValue = this.circuitState.getValue(fromNodeId);
+    if (sourceValue && !sourceValue.equals(Value.UNKNOWN)) {
+      if (toInput.width > 1) {
+        toInput.value = sourceValue;
+      } else {
+        toInput.value = sourceValue.toBoolean();
+      }
+      this.circuitState.setValue(toNodeId, sourceValue);
+      this.circuitState.markComponentDirty(toComp.id);
+    }
 
     // Propagate signal through the new wire
     this._propagateFrom(fromComp);
@@ -317,7 +339,7 @@ export class Engine {
       //   true  → Value.TRUE
       //   false → Value.FALSE
       //   null  → Value.UNKNOWN (high-impedance / Z-state)
-      const newValue = Value.fromBoolean(out.value);
+      const newValue = (out.value instanceof Value) ? out.value : Value.fromBoolean(out.value);
       const oldValue = this.circuitState.getValue(out.id);
 
       if (!oldValue.equals(newValue)) {
@@ -337,9 +359,16 @@ export class Engine {
       // Sync output values from CircuitState
       for (const out of comp.outputs) {
         const stateVal = this.circuitState.getValue(out.id);
-        const boolVal = stateVal.toBoolean();
-        if (boolVal !== null && out.value !== boolVal) {
-          out.value = boolVal;
+        if (out.width > 1) {
+          // For bus ports, store the full Value object
+          if (out.value !== stateVal) {
+            out.value = stateVal;
+          }
+        } else {
+          const boolVal = stateVal.toBoolean();
+          if (boolVal !== null && out.value !== boolVal) {
+            out.value = boolVal;
+          }
         }
       }
       comp._updateConnectorStates();
@@ -498,10 +527,12 @@ export class Engine {
 
     for (const comp of this.components.values()) {
       for (const inp of comp.inputs) {
-        this.circuitState.setValue(inp.id, Value.fromBoolean(inp.value));
+        const initValue = inp.width > 1 ? Value.createUnknown(inp.width) : Value.fromBoolean(inp.value);
+        this.circuitState.setValue(inp.id, initValue);
       }
       for (const out of comp.outputs) {
-        this.circuitState.setValue(out.id, Value.fromBoolean(out.value));
+        const initValue = out.width > 1 ? Value.createKnown(out.width, 0) : Value.fromBoolean(out.value);
+        this.circuitState.setValue(out.id, initValue);
       }
     }
 

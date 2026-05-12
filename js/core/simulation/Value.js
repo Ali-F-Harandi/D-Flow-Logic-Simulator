@@ -189,7 +189,8 @@ export class Value {
       if (this === Value.FALSE) return Value.TRUE;
       return Value.ERROR;
     }
-    return new Value(this.width, this.error | this.unknown, 0, ~this.value);
+    const mask = this.width >= 32 ? 0xFFFFFFFF : ~(-1 << this.width);
+    return new Value(this.width, this.error | this.unknown, 0, (~this.value) & mask);
   }
 
   /**
@@ -275,7 +276,8 @@ export class Value {
    */
   toLongValue() {
     if (this.error || this.unknown) return -1;
-    return this.value;
+    const mask = this.width >= 32 ? 0xFFFFFFFF : ~(-1 << this.width);
+    return (this.value & mask) >>> 0;
   }
 
   // ── Comparison ─────────────────────────────────────────────────────
@@ -312,5 +314,58 @@ export class Value {
 
   toDisplayString() {
     return this.toString();
+  }
+
+  /**
+   * Returns a hex string representation like "0xFF".
+   * Only meaningful for fully defined values.
+   * @returns {string}
+   */
+  toHexString() {
+    if (this.width === 0) return 'Z';
+    if (this.error || this.unknown) return '0x' + 'X'.repeat(Math.ceil(this.width / 4));
+    // Ensure value is treated as unsigned by masking to width
+    const mask = this.width >= 32 ? 0xFFFFFFFF : ~(-1 << this.width);
+    const unsignedVal = this.value & mask;
+    return '0x' + (unsignedVal >>> 0).toString(16).toUpperCase().padStart(Math.ceil(this.width / 4), '0');
+  }
+
+  /**
+   * Returns a decimal string representation.
+   * Only meaningful for fully defined values.
+   * @returns {string}
+   */
+  toDecimalString() {
+    if (this.width === 0) return 'Z';
+    if (this.error || this.unknown) return '?';
+    const mask = this.width >= 32 ? 0xFFFFFFFF : ~(-1 << this.width);
+    return ((this.value & mask) >>> 0).toString(10);
+  }
+
+  /**
+   * Returns a binary string representation with width padding like "00001010".
+   * @returns {string}
+   */
+  toBinaryString() {
+    if (this.width === 0) return 'Z';
+    if (this.width === 1) {
+      if (this.error) return 'E';
+      if (this.unknown) return 'X';
+      return this.value ? '1' : '0';
+    }
+    let ret = '';
+    for (let i = this.width - 1; i >= 0; i--) {
+      ret += this.get(i).toString();
+    }
+    return ret;
+  }
+
+  /**
+   * Check if a value is a Value instance.
+   * @param {*} v
+   * @returns {boolean}
+   */
+  static isValue(v) {
+    return v instanceof Value;
   }
 }

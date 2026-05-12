@@ -340,8 +340,13 @@ export class Propagator {
         // High-impedance: don't drive the input
         // Still mark component dirty for visual update (wire color)
       } else {
-        // Drive the input with the new value
-        targetComp.inputs[inputIndex].value = event.value.toBoolean();
+        // Store full Value for bus-aware components, boolean for legacy
+        const targetPort = targetComp.inputs[inputIndex];
+        if (targetPort.width > 1) {
+          targetPort.value = event.value;
+        } else {
+          targetPort.value = event.value.toBoolean();
+        }
       }
 
       // Mark downstream component as dirty for re-evaluation
@@ -379,7 +384,12 @@ export class Propagator {
 
         // Update the input value
         if (!value.equals(Value.UNKNOWN)) {
-          targetComp.inputs[inputIndex].value = value.toBoolean();
+          const targetPort = targetComp.inputs[inputIndex];
+          if (targetPort.width > 1) {
+            targetPort.value = value;
+          } else {
+            targetPort.value = value.toBoolean();
+          }
         }
         // For Z-state (UNKNOWN): don't drive the input, but still
         // mark the component dirty so it can update its visual state
@@ -440,7 +450,7 @@ export class Propagator {
     // Schedule events for changed output values
     for (let i = 0; i < comp.outputs.length; i++) {
       const out = comp.outputs[i];
-      const newValue = Value.fromBoolean(out.value);
+      const newValue = (out.value instanceof Value) ? out.value : Value.fromBoolean(out.value);
 
       // Check if value actually changed at this output
       const oldValue = this.circuitState.getValue(out.id);

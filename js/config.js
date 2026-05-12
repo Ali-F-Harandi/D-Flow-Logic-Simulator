@@ -35,6 +35,12 @@ export const WIRE_COAXIAL_THRESHOLD     = 5;      // Co-axial alignment threshol
 // ─── Spatial Hash Constants ───
 export const SPATIAL_HASH_CELL_SIZE   = GRID_SIZE * 4;
 
+// ─── Bus Wire Constants ───
+export const WIRE_BUS_VISUAL_WIDTH = 4;
+export const WIRE_BUS_HIT_WIDTH = 18;
+export const WIRE_BUS_LABEL_FONT_SIZE = 10;
+export const BUS_MAX_WIDTH = 32;
+
 // Z‑index values (matching CSS variables, for reference)
 export const Z_CANVAS_WIRES = 1;
 export const Z_CANVAS_COMPONENTS = 2;

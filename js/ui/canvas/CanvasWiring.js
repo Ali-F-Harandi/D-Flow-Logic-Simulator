@@ -147,6 +147,16 @@ export class CanvasWiring {
     const wire = new Wire(visualId, { nodeId: fromNodeId }, { nodeId: toNodeId });
     wire.engineId = engineId;
     wire.setCompLookup((nodeId) => this._compLookupByNode(nodeId));
+
+    // Set wire width from the source port
+    const sourceComp = this.engine._findComponentByNode(fromNodeId);
+    if (sourceComp) {
+      const outNode = sourceComp.outputs.find(o => o.id === fromNodeId);
+      if (outNode && outNode.width > 1) {
+        wire.setWidth(outNode.width);
+      }
+    }
+
     this._renderWire(wire);
     this.wires.push(wire);
     this._updateJunctions();
@@ -291,6 +301,27 @@ export class CanvasWiring {
   }
 
   completeConnection(fromNodeId, toNodeId) {
+    // Validate width compatibility before connecting
+    const fromComp = this.engine._findComponentByNode(fromNodeId);
+    const toComp = this.engine._findComponentByNode(toNodeId);
+    if (fromComp && toComp) {
+      const fromOutput = fromComp.outputs.find(o => o.id === fromNodeId);
+      const toInput = toComp.inputs.find(i => i.id === toNodeId);
+      if (fromOutput && toInput && fromOutput.width !== toInput.width) {
+        // Visual flash on the target connector to indicate width mismatch
+        const targetConnector = document.querySelector(`.connector[data-node="${toNodeId}"]`);
+        if (targetConnector) {
+          targetConnector.classList.add('width-mismatch');
+          setTimeout(() => targetConnector.classList.remove('width-mismatch'), 1500);
+        }
+
+        document.dispatchEvent(new CustomEvent('simulation-error', {
+          detail: `Width mismatch: output is ${fromOutput.width}-bit, input is ${toInput.width}-bit`
+        }));
+        return null;
+      }
+    }
+
     const cmd = new ConnectWireCommand(this.engine, this.canvas, fromNodeId, toNodeId);
     return this.undoManager.execute(cmd);
   }

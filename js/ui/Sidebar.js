@@ -78,11 +78,12 @@ export class Sidebar {
     const list = this.element.querySelector('.component-list');
     list.innerHTML = '';
 
-    const categories = ['Gates', 'Flip-Flops', 'Chips', 'Inputs', 'Outputs', 'Other'];
+    const categories = ['Gates', 'Flip-Flops', 'Chips', 'Bus', 'Inputs', 'Outputs', 'Other'];
     const categoryIcons = {
       'Gates': icon('git-branch', '', { size: 14 }),
       'Flip-Flops': icon('memory-stick', '', { size: 14 }),
       'Chips': icon('cpu', '', { size: 14 }),
+      'Bus': icon('git-merge', '', { size: 14 }),
       'Inputs': icon('toggle-left', '', { size: 14 }),
       'Outputs': icon('lightbulb', '', { size: 14 }),
       'Other': icon('settings', '', { size: 14 })

@@ -1,4 +1,5 @@
 import { Circuit } from '../core/Circuit.js';
+import { Value } from '../core/simulation/Value.js';
 import { resetIdCounter } from './IdGenerator.js';
 
 export class Serializer {

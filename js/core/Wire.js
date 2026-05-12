@@ -21,9 +21,11 @@ import {
   WIRE_VISUAL_WIDTH, WIRE_HIT_WIDTH, JUNCTION_RADIUS, GRID_SIZE,
   WIRE_DRAW_GLOW_COLOR, WIRE_DRAW_GLOW_WIDTH, WIRE_ERROR_COLOR,
   WIRE_BEZIER_CONTROL_FACTOR, WIRE_BEZIER_MIN_CONTROL, WIRE_BEZIER_MAX_CONTROL,
-  WIRE_COAXIAL_THRESHOLD
+  WIRE_COAXIAL_THRESHOLD, WIRE_BUS_VISUAL_WIDTH, WIRE_BUS_HIT_WIDTH,
+  WIRE_BUS_LABEL_FONT_SIZE
 } from '../config.js';
 import { ComponentLayoutPolicy } from './ComponentLayoutPolicy.js';
+import { Value } from './simulation/Value.js';
 
 export class Wire {
 
@@ -56,6 +58,114 @@ export class Wire {
 
     // Component lookup for facing-aware port directions
     this._compLookup  = null;
+
+    // Bus wire support — width in bits (1 = single-bit wire, >1 = bus)
+    this.width = 1;
+  }
+
+  /* ─── Bus Width ─── */
+
+  /**
+   * Set the wire width (in bits). Updates visual rendering if needed.
+   * @param {number} width
+   */
+  setWidth(width) {
+    const oldWidth = this.width;
+    this.width = width;
+    if (oldWidth !== width && this.element) {
+      const visualPath = this.element.querySelector('.wire-visual');
+      const hitPath = this.element.querySelector('.wire-hitarea');
+      if (width > 1) {
+        if (visualPath) visualPath.setAttribute('stroke-width', String(WIRE_BUS_VISUAL_WIDTH));
+        if (hitPath) hitPath.setAttribute('stroke-width', String(WIRE_BUS_HIT_WIDTH));
+      } else {
+        if (visualPath) visualPath.setAttribute('stroke-width', String(WIRE_VISUAL_WIDTH));
+        if (hitPath) hitPath.setAttribute('stroke-width', String(WIRE_HIT_WIDTH));
+      }
+      this._updateBusLabel();
+    }
+  }
+
+  /**
+   * Update or create the bus width label at the midpoint of the wire.
+   * Only shown when width > 1.
+   */
+  _updateBusLabel() {
+    if (!this.element) return;
+
+    // Remove existing label and background
+    const existingLabel = this.element.querySelector('.wire-bus-label');
+    if (existingLabel) existingLabel.remove();
+    const existingBg = this.element.querySelector('.wire-bus-label-bg');
+    if (existingBg) existingBg.remove();
+
+    if (this.width <= 1) return;
+    if (!this._sourcePos || !this._targetPos) return;
+
+    const midX = (this._sourcePos.x + this._targetPos.x) / 2;
+    const midY = (this._sourcePos.y + this._targetPos.y) / 2;
+
+    // Background rect for readability
+    const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    bg.classList.add('wire-bus-label-bg');
+    const labelText = `/${this.width}`;
+    bg.setAttribute('x', midX - 10);
+    bg.setAttribute('y', midY - 16);
+    bg.setAttribute('width', '20');
+    bg.setAttribute('height', '14');
+    bg.setAttribute('rx', '3');
+    bg.setAttribute('fill', 'var(--color-surface, #252526)');
+    bg.setAttribute('fill-opacity', '0.85');
+    bg.setAttribute('pointer-events', 'none');
+    this.element.appendChild(bg);
+
+    const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    label.classList.add('wire-bus-label');
+    label.setAttribute('x', midX);
+    label.setAttribute('y', midY - 6);
+    label.setAttribute('text-anchor', 'middle');
+    label.setAttribute('font-size', String(WIRE_BUS_LABEL_FONT_SIZE));
+    label.setAttribute('fill', 'var(--bus-indicator-color, #5b9bd5)');
+    label.setAttribute('pointer-events', 'none');
+    label.setAttribute('font-family', 'monospace');
+    label.setAttribute('font-weight', 'bold');
+    label.textContent = labelText;
+    this.element.appendChild(label);
+  }
+
+  /**
+   * Update or create the SVG tooltip for bus wire value display.
+   * Shows hex/dec/bin when hovering over a bus wire.
+   * @param {*} value - The current signal value on the wire
+   */
+  _updateBusTooltip(value) {
+    if (this.width <= 1 || !this.element) return;
+
+    // Create or update the SVG <title> tooltip
+    if (!this._busTooltip) {
+      this._busTooltip = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+      // Insert as first child so it's accessible to the whole group
+      const firstChild = this.element.firstChild;
+      if (firstChild) {
+        this.element.insertBefore(this._busTooltip, firstChild);
+      } else {
+        this.element.appendChild(this._busTooltip);
+      }
+    }
+
+    if (value instanceof Value && value.width > 1) {
+      this._busTooltip.textContent =
+        `${this.width}-bit Bus\n` +
+        `Hex: ${value.toHexString()}\n` +
+        `Dec: ${value.toDecimalString()}\n` +
+        `Bin: ${value.toBinaryString()}`;
+    } else if (value === true) {
+      this._busTooltip.textContent = `${this.width}-bit Bus: All bits HIGH`;
+    } else if (value === false) {
+      this._busTooltip.textContent = `${this.width}-bit Bus: All bits LOW`;
+    } else {
+      this._busTooltip.textContent = `${this.width}-bit Bus: Unknown`;
+    }
   }
 
   /* ─── Backward Compatibility Aliases ─── */
@@ -451,10 +561,14 @@ export class Wire {
     glowPath.setAttribute('d', d);
     glowPath.style.display = 'none';
 
+    // Use bus visual width for bus wires
+    const visualWidth = this.width > 1 ? WIRE_BUS_VISUAL_WIDTH : WIRE_VISUAL_WIDTH;
+    const hitWidth = this.width > 1 ? WIRE_BUS_HIT_WIDTH : WIRE_HIT_WIDTH;
+
     // ─── Visual path ───
     const visualPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     visualPath.setAttribute('stroke', neutralColor);
-    visualPath.setAttribute('stroke-width', WIRE_VISUAL_WIDTH);
+    visualPath.setAttribute('stroke-width', visualWidth);
     visualPath.setAttribute('fill', 'none');
     visualPath.setAttribute('pointer-events', 'none');
     visualPath.setAttribute('stroke-linecap', 'round');
@@ -466,7 +580,7 @@ export class Wire {
     // ─── Hit area ───
     const hitPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     hitPath.setAttribute('stroke', 'transparent');
-    hitPath.setAttribute('stroke-width', WIRE_HIT_WIDTH);
+    hitPath.setAttribute('stroke-width', hitWidth);
     hitPath.setAttribute('fill', 'none');
     hitPath.setAttribute('pointer-events', 'stroke');
     hitPath.setAttribute('stroke-linecap', 'round');
@@ -518,6 +632,9 @@ export class Wire {
 
     this.element = group;
     this.updateOccupiedCells(d);
+
+    // Add bus label if width > 1
+    this._updateBusLabel();
   }
 
   /* ================================================================
@@ -591,6 +708,11 @@ export class Wire {
     if (targetDot) {
       targetDot.setAttribute('cx', this._targetPos.x);
       targetDot.setAttribute('cy', this._targetPos.y);
+    }
+
+    // Update bus label position when path changes
+    if (this.width > 1) {
+      this._updateBusLabel();
     }
   }
 
@@ -1080,6 +1202,46 @@ export class Wire {
   updateColor(sourceValue) {
     if (!this.element) return;
 
+    if (this._isError) return;
+
+    // For bus wires (width > 1), use distinct bus color scheme
+    if (this.width > 1) {
+      const prevValue = this._lastSourceValue;
+      this._lastSourceValue = sourceValue;
+      const visualPath = this.element.querySelector('.wire-visual');
+
+      const style = getComputedStyle(document.documentElement);
+      const busActiveColor   = style.getPropertyValue('--bus-wire-active-color').trim()   || '#7ec8e3';
+      const busNeutralColor  = style.getPropertyValue('--bus-wire-neutral-color').trim()  || '#7ba7d0';
+      const busErrorColor    = style.getPropertyValue('--bus-wire-error-color').trim()    || '#ff4444';
+      const busUnknownColor  = style.getPropertyValue('--bus-wire-unknown-color').trim()  || '#ff9800';
+
+      let color = busNeutralColor;
+
+      if (sourceValue instanceof Value) {
+        if (sourceValue.error) {
+          color = busErrorColor;
+        } else if (sourceValue.unknown) {
+          color = busUnknownColor;
+        } else if (sourceValue.isFullyDefined() && sourceValue.value !== 0) {
+          color = busActiveColor;
+        } else if (sourceValue.isFullyDefined() && sourceValue.value === 0) {
+          color = busNeutralColor;
+        }
+      } else if (sourceValue === true) {
+        color = busActiveColor;
+      } else if (sourceValue === null) {
+        color = busUnknownColor;
+      }
+
+      if (visualPath) visualPath.setAttribute('stroke', color);
+
+      // Update SVG tooltip with bus value info
+      this._updateBusTooltip(sourceValue);
+      return;
+    }
+
+    // Single-bit wire color logic (original behavior)
     const style = getComputedStyle(document.documentElement);
     const highColor    = style.getPropertyValue('--wire-high-color').trim()    || '#00cc66';
     const highDash     = style.getPropertyValue('--wire-high-dasharray').trim() || 'none';
@@ -1087,8 +1249,6 @@ export class Wire {
     const neutralDash  = style.getPropertyValue('--wire-neutral-dasharray').trim() || '6,4';
     const zColor       = style.getPropertyValue('--wire-z-color').trim()       || '#ff9800';
     const zDash        = style.getPropertyValue('--wire-z-dasharray').trim()   || '2,2';
-
-    if (this._isError) return;
 
     const prevValue = this._lastSourceValue;
     this._lastSourceValue = sourceValue;

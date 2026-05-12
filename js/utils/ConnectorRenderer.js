@@ -79,17 +79,43 @@ export class ConnectorRenderer {
 
     // ─── Connector dot ───
     const dot = document.createElement('div');
-    dot.className = `connector ${isInput ? 'input' : 'output'}`;
+    const isBusPort = node.width > 1;
+    dot.className = `connector ${isInput ? 'input' : 'output'}${isBusPort ? ' bus-port' : ''}`;
     dot.dataset.node = node.id;
+    dot.dataset.width = node.width || 1;
     dot.style.backgroundColor = comp._getStateColor(node.value);
     dot.style.position = 'absolute';
     dot.style.top = '0px';
     if (isInput) {
-      dot.style.left = isNegated ? '-10px' : '-4px';
+      dot.style.left = isNegated ? '-10px' : (isBusPort ? '-5px' : '-4px');
     } else {
-      dot.style.right = '-4px';
+      dot.style.right = isBusPort ? '-5px' : '-4px';
     }
     block.appendChild(dot);
+
+    // ─── Width indicator label for bus ports ───
+    if (isBusPort) {
+      const widthLabel = document.createElement('span');
+      widthLabel.className = 'connector-width-label';
+      widthLabel.textContent = node.width;
+      widthLabel.style.position = 'absolute';
+      widthLabel.style.top = '-10px';
+      widthLabel.style.fontSize = '8px';
+      widthLabel.style.color = 'var(--bus-indicator-color, #5b9bd5)';
+      widthLabel.style.fontWeight = 'bold';
+      widthLabel.style.fontFamily = 'monospace';
+      if (isInput) {
+        widthLabel.style.left = '-2px';
+      } else {
+        widthLabel.style.right = '-2px';
+      }
+      block.appendChild(widthLabel);
+
+      // Make the connector line thicker for bus ports
+      line.classList.add('bus-line');
+      line.style.height = '3px';
+      line.style.top = '2.5px';
+    }
 
     // ─── Label ───
     const label = document.createElement('span');

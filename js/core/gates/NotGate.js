@@ -1,4 +1,5 @@
 import { GateBase } from '../GateBase.js';
+import { Value } from '../simulation/Value.js';
 
 export class NotGate extends GateBase {
   static label = 'NOT';
@@ -8,6 +9,10 @@ export class NotGate extends GateBase {
 
   _computeGateLogic() {
     return { outputs: [!this.inputs[0].value] };
+  }
+
+  _applyBusOperation(inputValues) {
+    return inputValues[0].not();
   }
 
   getProperties() {

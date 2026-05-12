@@ -4,6 +4,9 @@
  * Creates a positioned DOM div tooltip that shows wire signal value
  * and connection info when hovering over a wire.
  *
+ * Supports both single-bit and multi-bit (bus) wires.
+ * For bus wires, shows hex/decimal/binary representations.
+ *
  * Usage:
  *   const tooltip = new WireTooltip();
  *   tooltip.show(wire, clientX, clientY);
@@ -11,6 +14,8 @@
  *
  * The tooltip auto-hides after 5 seconds.
  */
+
+import { Value } from '../core/simulation/Value.js';
 
 export class WireTooltip {
   constructor() {
@@ -59,6 +64,37 @@ export class WireTooltip {
     const targetInfo = this._getNodeInfo(wire.targetNode.nodeId, opts.compLookup, 'Target');
     const routingInfo = this._getRoutingInfo(wire);
 
+    // Build bus value info if this is a bus wire
+    let busInfo = '';
+    if (wire.width > 1) {
+      const val = wire._lastSourceValue;
+      if (val instanceof Value) {
+        busInfo = `
+        <div class="wire-tooltip-row">
+          <span class="wire-tooltip-label">Width:</span>
+          <span class="wire-tooltip-value">${val.width}-bit</span>
+        </div>
+        <div class="wire-tooltip-row">
+          <span class="wire-tooltip-label">Hex:</span>
+          <span class="wire-tooltip-value">${val.toHexString()}</span>
+        </div>
+        <div class="wire-tooltip-row">
+          <span class="wire-tooltip-label">Dec:</span>
+          <span class="wire-tooltip-value">${val.toDecimalString()}</span>
+        </div>
+        <div class="wire-tooltip-row">
+          <span class="wire-tooltip-label">Bin:</span>
+          <span class="wire-tooltip-value" style="font-size:10px;word-break:break-all">${val.toBinaryString()}</span>
+        </div>`;
+      } else {
+        busInfo = `
+        <div class="wire-tooltip-row">
+          <span class="wire-tooltip-label">Width:</span>
+          <span class="wire-tooltip-value">${wire.width}-bit</span>
+        </div>`;
+      }
+    }
+
     this._element.innerHTML = `
       <div class="wire-tooltip-header">
         <span class="wire-tooltip-id">${wire.id}</span>
@@ -73,6 +109,7 @@ export class WireTooltip {
           <span class="wire-tooltip-label">Target:</span>
           <span class="wire-tooltip-value">${targetInfo}</span>
         </div>
+        ${busInfo}
         <div class="wire-tooltip-row">
           <span class="wire-tooltip-label">Routing:</span>
           <span class="wire-tooltip-value">${routingInfo}</span>
@@ -130,16 +167,33 @@ export class WireTooltip {
 
   /**
    * Determine the signal state label and CSS class for a wire.
+   * Enhanced to support bus (multi-bit) wire values.
    *
    * @param {Wire} wire
    * @returns {{label: string, class: string}}
    */
   _getSignalState(wire) {
-    // Check the source output value
-    if (wire._lastSourceValue === true) {
+    const sourceValue = wire._lastSourceValue;
+
+    // Bus wire (width > 1) — show Value representation
+    if (wire.width > 1 && sourceValue instanceof Value) {
+      if (sourceValue.error) {
+        return { label: 'ERROR', class: 'unknown' };
+      }
+      if (sourceValue.unknown) {
+        return { label: `UNKNOWN (${sourceValue.toHexString()})`, class: 'unknown' };
+      }
+      if (sourceValue.isFullyDefined()) {
+        return { label: `${sourceValue.toHexString()} (${sourceValue.toDecimalString()})`, class: 'high' };
+      }
+      return { label: 'Unknown', class: 'unknown' };
+    }
+
+    // Single-bit wire
+    if (sourceValue === true) {
       return { label: 'HIGH', class: 'high' };
     }
-    if (wire._lastSourceValue === false) {
+    if (sourceValue === false) {
       return { label: 'LOW', class: 'low' };
     }
 
@@ -153,6 +207,14 @@ export class WireTooltip {
           const highColor = style.getPropertyValue('--wire-high-color').trim();
           if (stroke === highColor || stroke.includes('0, 204, 102') || stroke.includes('#00cc66')) {
             return { label: 'HIGH', class: 'high' };
+          }
+          // Check for bus active color
+          const busActiveColor = style.getPropertyValue('--bus-wire-active-color').trim();
+          if (stroke === busActiveColor || stroke.includes('#7ec8e3')) {
+            if (sourceValue instanceof Value) {
+              return { label: `${sourceValue.toHexString()} (${sourceValue.toDecimalString()})`, class: 'high' };
+            }
+            return { label: 'ACTIVE', class: 'high' };
           }
         }
       }

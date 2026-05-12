@@ -27,6 +27,14 @@ import { JKFlipFlop } from './flipflops/JKFlipFlop.js';
 import { TFlipFlop } from './flipflops/TFlipFlop.js';
 import { ShiftRegister } from './flipflops/ShiftRegister.js';
 import { Subcircuit } from './chips/Subcircuit.js';
+import { BusSplitter } from './bus/BusSplitter.js';
+import { BusMerger } from './bus/BusMerger.js';
+import { BusConstant } from './bus/BusConstant.js';
+import { BusProbe } from './bus/BusProbe.js';
+import { Register } from './bus/Register.js';
+import { BusMUX } from './bus/BusMUX.js';
+import { ZeroExtend } from './bus/ZeroExtend.js';
+import { SignExtend } from './bus/SignExtend.js';
 import { generateId } from '../utils/IdGenerator.js';
 
 export class ComponentFactory {
@@ -60,6 +68,15 @@ export class ComponentFactory {
       'T': TFlipFlop,
       'ShiftRegister': ShiftRegister,
       'Subcircuit': Subcircuit,
+      // Bus components
+      'BusSplitter': BusSplitter,
+      'BusMerger': BusMerger,
+      'BusConstant': BusConstant,
+      'BusProbe': BusProbe,
+      'Register': Register,
+      'BusMUX': BusMUX,
+      'ZeroExtend': ZeroExtend,
+      'SignExtend': SignExtend,
       // Backward compatibility: old saved projects may use these type names
       'DipSwitch8': DipSwitch,
       'ShiftRegister4': ShiftRegister
@@ -140,7 +157,10 @@ export class ComponentFactory {
       'ShiftRegister':'Flip-Flops', 'ShiftRegister4':'Flip-Flops', 'Subcircuit':'Chips',
       'ToggleSwitch':'Inputs', 'DipSwitch':'Inputs', 'DipSwitch8':'Inputs', 'Clock':'Inputs',
       'HighConstant':'Inputs', 'LowConstant':'Inputs',
-      'LightBulb':'Outputs', 'SevenSegment':'Outputs', 'LogicProbe':'Outputs', 'LedArray':'Outputs'
+      'LightBulb':'Outputs', 'SevenSegment':'Outputs', 'LogicProbe':'Outputs', 'LedArray':'Outputs',
+      // Bus components
+      'BusSplitter':'Bus', 'BusMerger':'Bus', 'BusConstant':'Bus', 'BusProbe':'Bus',
+      'Register':'Bus', 'BusMUX':'Bus', 'ZeroExtend':'Bus', 'SignExtend':'Bus'
     };
     return map[type] || 'Other';
   }

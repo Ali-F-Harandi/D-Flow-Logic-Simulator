@@ -1,10 +1,24 @@
 import { Component } from '../Component.js';
+import { Value } from '../simulation/Value.js';
 
+/**
+ * 7-Segment Display — displays a hex digit from 4-bit BCD input.
+ *
+ * Two input modes:
+ * 1. Default (busInput=false): 5 individual inputs (I0-I3 = BCD, I4 = DP)
+ * 2. Bus mode (busInput=true): 1 bus input (4-bit value) + 1 DP input
+ *
+ * In bus mode, a single 4-bit bus input provides the hex digit value,
+ * and a separate 1-bit input controls the decimal point.
+ */
 export class SevenSegment extends Component {
   static label = '7-Segment';
   constructor(id) {
     super(id, '7Seg', 5, 0);   // I0-I3 = BCD, I4 = DP
+    this._busInput = false; // default: individual BCD inputs
   }
+
+  get busInput() { return this._busInput; }
 
   computeNextState() {
     // No outputs to compute, but we need to signal that display should update
@@ -26,16 +40,77 @@ export class SevenSegment extends Component {
   }
 
   reset() {
-    this.inputs.forEach(i => i.value = false);
+    if (this._busInput) {
+      this.inputs[0].value = Value.createKnown(4, 0);
+      if (this.inputs.length > 1) this.inputs[1].value = false;
+    } else {
+      this.inputs.forEach(i => i.value = false);
+    }
     this._updateDisplay();
     this._updateConnectorStates();
+  }
+
+  getProperties() {
+    const props = [
+      { name: 'busInput', label: 'Bus Input', type: 'select', value: this._busInput ? 'true' : 'false', options: ['false', 'true'] },
+      ...super.getProperties().filter(p => p.name !== 'bitWidth')
+    ];
+    return props;
+  }
+
+  setProperty(name, value) {
+    if (name === 'busInput') {
+      const newBusInput = value === 'true' || value === true;
+      if (newBusInput === this._busInput) return false;
+
+      // Disconnect all wires on inputs
+      if (this._engine) {
+        const wiresToRemove = this._engine.wires.filter(w =>
+          w.to.componentId === this.id
+        );
+        wiresToRemove.forEach(w => {
+          this._engine.disconnect(w.id);
+          document.dispatchEvent(new CustomEvent('wire-removed', { detail: { wireId: w.id } }));
+        });
+      }
+
+      this._busInput = newBusInput;
+
+      if (newBusInput) {
+        // 4-bit bus input + 1-bit DP input
+        this.inputs = [
+          { id: `${this.id}.input.0`, value: Value.createKnown(4, 0), width: 4, connectedTo: null },
+          { id: `${this.id}.input.1`, value: false, width: 1, connectedTo: null }
+        ];
+        this.bitWidth = 4;
+      } else {
+        // 5 individual 1-bit inputs (I0-I3 = BCD, I4 = DP)
+        this.inputs = [];
+        for (let i = 0; i < 5; i++) {
+          this.inputs.push({
+            id: `${this.id}.input.${i}`,
+            value: false,
+            width: 1,
+            connectedTo: null
+          });
+        }
+        this.bitWidth = 1;
+      }
+
+      if (this._engine) this._engine.reindexComponent(this);
+      this.rerender();
+      return true;
+    }
+
+    if (super.setProperty(name, value)) return true;
+    return false;
   }
 
   render(container) {
     const H = 6 * this.GRID;             // 120px
     const W = 5 * this.GRID;             // 100px
     const el = document.createElement('div');
-    el.className = 'component sevenseg';
+    el.className = 'component sevenseg' + (this._busInput ? ' bus-component' : '');
     el.style.width = `${W}px`;
     el.style.height = `${H}px`;
     el.style.left = `${this.position.x}px`;
@@ -64,12 +139,19 @@ export class SevenSegment extends Component {
     `;
     el.appendChild(svg);
 
-    // Input connectors – grid aligned
-    el.appendChild(this._createConnectorBlock(this.inputs[0], true, 'I0', 1 * this.GRID));
-    el.appendChild(this._createConnectorBlock(this.inputs[1], true, 'I1', 2 * this.GRID));
-    el.appendChild(this._createConnectorBlock(this.inputs[2], true, 'I2', 3 * this.GRID));
-    el.appendChild(this._createConnectorBlock(this.inputs[3], true, 'I3', 4 * this.GRID));
-    el.appendChild(this._createConnectorBlock(this.inputs[4], true, 'DP', 5 * this.GRID));
+    // Input connectors
+    if (this._busInput) {
+      // Bus input: 4-bit value + 1-bit DP
+      el.appendChild(this._createConnectorBlock(this.inputs[0], true, 'D[0:3]', 1 * this.GRID));
+      el.appendChild(this._createConnectorBlock(this.inputs[1], true, 'DP', 2 * this.GRID));
+    } else {
+      // Individual BCD inputs
+      el.appendChild(this._createConnectorBlock(this.inputs[0], true, 'I0', 1 * this.GRID));
+      el.appendChild(this._createConnectorBlock(this.inputs[1], true, 'I1', 2 * this.GRID));
+      el.appendChild(this._createConnectorBlock(this.inputs[2], true, 'I2', 3 * this.GRID));
+      el.appendChild(this._createConnectorBlock(this.inputs[3], true, 'I3', 4 * this.GRID));
+      el.appendChild(this._createConnectorBlock(this.inputs[4], true, 'DP', 5 * this.GRID));
+    }
 
     container.appendChild(el);
     this.element = el;
@@ -79,8 +161,26 @@ export class SevenSegment extends Component {
 
   _updateDisplay() {
     if (!this.element) return;
-    let val = 0;
-    for (let i = 0; i < 4; i++) if (this.inputs[i]?.value) val |= (1 << i);
+
+    let val;
+    let dpOn;
+
+    if (this._busInput) {
+      // Bus input mode: read 4-bit Value
+      const busVal = this.inputs[0]?.value;
+      if (busVal instanceof Value) {
+        val = busVal.toLongValue() & 0xF;
+      } else {
+        val = 0;
+      }
+      dpOn = this.inputs[1]?.value === true;
+    } else {
+      // Individual input mode (unchanged)
+      val = 0;
+      for (let i = 0; i < 4; i++) if (this.inputs[i]?.value) val |= (1 << i);
+      dpOn = this.inputs[4]?.value === true;
+    }
+
     // FIX (Bug #7): Corrected 7-segment encoding for hex digits 0-F.
     // Each 7-bit value: bit6=a, bit5=b, bit4=c, bit3=d, bit2=e, bit1=f, bit0=g
     // Verified against standard common-cathode 7-segment truth table.
@@ -115,7 +215,6 @@ export class SevenSegment extends Component {
     // decimal point
     const dp = this.element.querySelector('.seg-dp');
     if (dp) {
-      const dpOn = this.inputs[4]?.value === true;
       dp.setAttribute('fill', dpOn ? onFill : offFill);
     }
   }

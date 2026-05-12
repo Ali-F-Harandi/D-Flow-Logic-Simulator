@@ -1,4 +1,5 @@
 import { GateBase } from '../GateBase.js';
+import { Value } from '../simulation/Value.js';
 
 export class BufferGate extends GateBase {
   static label = 'BUFFER';
@@ -8,6 +9,10 @@ export class BufferGate extends GateBase {
 
   _computeGateLogic() {
     return { outputs: [Boolean(this.inputs[0].value)] };
+  }
+
+  _applyBusOperation(inputValues) {
+    return inputValues[0] || Value.createUnknown(this.bitWidth);
   }
 
   getProperties() {

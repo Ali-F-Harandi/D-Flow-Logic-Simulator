@@ -5,6 +5,8 @@
  * ordered iteration) AND a Map (for O(1) lookups by ID). The
  * _wireIndex Map is kept in sync with the wires Array automatically.
  */
+import { Value } from './simulation/Value.js';
+
 export class Circuit {
   constructor() {
     this.components = new Map();   // id -> Component
@@ -87,6 +89,47 @@ export class Circuit {
     this._nodeToWireIndex.clear();
   }
 
+  /**
+   * Recursively convert Value objects in a state object to JSON-friendly format.
+   * Value objects are tagged as { __value__: true, width, error, unknown, value }.
+   */
+  static _serializeStateObj(obj) {
+    if (obj instanceof Value) {
+      return { __value__: true, width: obj.width, error: obj.error, unknown: obj.unknown, value: obj.value };
+    }
+    if (Array.isArray(obj)) {
+      return obj.map(item => Circuit._serializeStateObj(item));
+    }
+    if (obj !== null && typeof obj === 'object') {
+      const result = {};
+      for (const key of Object.keys(obj)) {
+        result[key] = Circuit._serializeStateObj(obj[key]);
+      }
+      return result;
+    }
+    return obj;
+  }
+
+  /**
+   * Recursively restore Value objects from their serialized format.
+   */
+  static _deserializeStateObj(obj) {
+    if (obj !== null && typeof obj === 'object' && !Array.isArray(obj)) {
+      if (obj.__value__) {
+        return new Value(obj.width, obj.error, obj.unknown, obj.value);
+      }
+      const result = {};
+      for (const key of Object.keys(obj)) {
+        result[key] = Circuit._deserializeStateObj(obj[key]);
+      }
+      return result;
+    }
+    if (Array.isArray(obj)) {
+      return obj.map(item => Circuit._deserializeStateObj(item));
+    }
+    return obj;
+  }
+
   toJSON() {
     const components = [];
     for (const comp of this.components.values()) {
@@ -94,10 +137,14 @@ export class Circuit {
         nodeId: inp.id,
         connectedTo: inp.connectedTo ? { componentId: inp.connectedTo.componentId, nodeId: inp.connectedTo.nodeId } : null
       }));
-      const outputStates = comp.outputs.map(o => ({ nodeId: o.id, value: o.value }));
+      const outputStates = comp.outputs.map(o => ({
+        nodeId: o.id,
+        value: o.value instanceof Value ? o.value.toLongValue() : o.value,
+        width: o.width || 1
+      }));
       let internalState = {};
       if (comp._state !== undefined) {
-        internalState._state = Array.isArray(comp._state) ? [...comp._state] : { ...comp._state };
+        internalState._state = Circuit._serializeStateObj(comp._state);
       }
       if (comp._prevClk !== undefined) internalState._prevClk = comp._prevClk;
       if (comp.frequency !== undefined) internalState.frequency = comp.frequency;
@@ -110,6 +157,11 @@ export class Circuit {
       }
       // ToggleSwitch label
       if (comp._label !== undefined) internalState._label = comp._label;
+      // Save busInput/busOutput flags for components that have them
+      if (comp._busInput !== undefined) internalState._busInput = comp._busInput;
+      if (comp._busOutput !== undefined) internalState._busOutput = comp._busOutput;
+      // Save outputValue for ToggleSwitch bus mode
+      if (comp._outputValue !== undefined) internalState._outputValue = comp._outputValue;
       components.push({
         id: comp.id,
         type: comp.type,
@@ -146,9 +198,8 @@ export class Circuit {
       }
       if (compData.internalState) {
         if (compData.internalState._state !== undefined) {
-          comp._state = Array.isArray(compData.internalState._state)
-            ? [...compData.internalState._state]
-            : { ...compData.internalState._state };
+          // Deserialize internal state, restoring Value objects
+          comp._state = Circuit._deserializeStateObj(compData.internalState._state);
         }
         if (compData.internalState._prevClk !== undefined) comp._prevClk = compData.internalState._prevClk;
         if (compData.internalState.frequency !== undefined && comp.setFrequency) comp.setFrequency(compData.internalState.frequency);
@@ -161,12 +212,28 @@ export class Circuit {
         }
         // ToggleSwitch label
         if (compData.internalState._label !== undefined && comp._label !== undefined) comp._label = compData.internalState._label;
+        // Restore busInput/busOutput flags
+        if (compData.internalState._busInput !== undefined && comp._busInput !== undefined) comp._busInput = compData.internalState._busInput;
+        if (compData.internalState._busOutput !== undefined && comp._busOutput !== undefined) comp._busOutput = compData.internalState._busOutput;
+        // Restore outputValue for ToggleSwitch bus mode
+        if (compData.internalState._outputValue !== undefined && comp._outputValue !== undefined) comp._outputValue = compData.internalState._outputValue;
       }
       // FIX: Restore output values (e.g., ToggleSwitch/DipSwitch positions)
       // so that switch states are preserved after save/load.
+      // For bus ports (width > 1), convert numeric values back to Value objects.
       if (compData.outputs) {
         for (let i = 0; i < compData.outputs.length && i < comp.outputs.length; i++) {
-          comp.outputs[i].value = compData.outputs[i].value;
+          const outData = compData.outputs[i];
+          const port = comp.outputs[i];
+          if (port.width > 1 && typeof outData.value === 'number') {
+            // Restore bus Value from serialized number
+            port.value = Value.createKnown(port.width, outData.value);
+          } else {
+            port.value = outData.value;
+          }
+          if (outData.width && outData.width > 1) {
+            port.width = outData.width;
+          }
         }
       }
       circuit.addComponent(comp);

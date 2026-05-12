@@ -76,7 +76,7 @@ export class DipSwitch extends Component {
         }
       }
 
-      const oldOutputs = this.outputs.map(o => ({ value: o.value }));
+      const oldOutputs = this.outputs.map(o => ({ value: o.value, width: o.width }));
       this._switchCount = newCount;
 
       // Rebuild outputs array
@@ -84,7 +84,8 @@ export class DipSwitch extends Component {
       for (let i = 0; i < newCount; i++) {
         this.outputs.push({
           id: `${this.id}.output.${i}`,
-          value: i < oldOutputs.length ? oldOutputs[i].value : false
+          value: i < oldOutputs.length ? oldOutputs[i].value : false,
+          width: (i < oldOutputs.length ? oldOutputs[i].width : 1) || 1
         });
       }
 

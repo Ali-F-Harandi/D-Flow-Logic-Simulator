@@ -58,7 +58,7 @@ export class Subcircuit extends Component {
         if (oldInputs[i]) {
           this.inputs.push(oldInputs[i]);
         } else {
-          this.inputs.push({ id: `${this.id}.input.${i}`, value: false, connectedTo: null });
+          this.inputs.push({ id: `${this.id}.input.${i}`, value: false, width: 1, connectedTo: null });
         }
       }
       this._inputLabels = this._inputLabels.slice(0, count);
@@ -75,7 +75,7 @@ export class Subcircuit extends Component {
         if (oldOutputs[i]) {
           this.outputs.push(oldOutputs[i]);
         } else {
-          this.outputs.push({ id: `${this.id}.output.${i}`, value: false });
+          this.outputs.push({ id: `${this.id}.output.${i}`, value: false, width: 1 });
         }
       }
       this._outputLabels = this._outputLabels.slice(0, count);
