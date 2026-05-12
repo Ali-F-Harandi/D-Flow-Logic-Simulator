@@ -279,7 +279,7 @@ export class Engine {
     // Sync component output values back from CircuitState
     this._syncComponentValues();
 
-    // Dispatch simulation-step event for TimingDiagramPanel, TruthTablePanel, etc.
+    // Dispatch simulation-step event for panels and listeners
     document.dispatchEvent(new CustomEvent('simulation-step'));
 
     if (this.onUpdate) this.onUpdate();

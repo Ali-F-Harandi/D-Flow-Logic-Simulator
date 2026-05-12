@@ -12,12 +12,6 @@ export class Toolbar {
       this.statusText.textContent = this.lastStatus;
     });
 
-    this.element.querySelector('#tt-btn').addEventListener('click', () => {
-      eventBus.emit('show-panel', 'truth');
-    });
-    this.element.querySelector('#tb-btn').addEventListener('click', () => {
-      eventBus.emit('show-panel', 'testbench');
-    });
     this.element.querySelector('#nl-btn').addEventListener('click', () => {
       eventBus.emit('show-panel', 'netlist');
     });
@@ -61,8 +55,6 @@ export class Toolbar {
     toolbar.id = 'toolbar';
     toolbar.innerHTML = `
       <span class="status-text">Simulation stopped</span>
-      <button id="tt-btn" class="toolbar-btn">Truth Table</button>
-      <button id="tb-btn" class="toolbar-btn">Test Bench</button>
       <button id="nl-btn" class="toolbar-btn">Netlist</button>
       <div class="toolbar-separator"></div>
       <button id="reroute-btn" class="toolbar-btn toolbar-btn-accent" title="Reroute all wires (Bézier)">Reroute Wires</button>

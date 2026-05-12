@@ -96,25 +96,99 @@ export class PropertiesPanel {
         label.className = 'properties-label';
         fieldGroup.appendChild(label);
 
-        const input = document.createElement('input');
-        input.type = prop.type;
-        input.id = `pprop-${prop.name}`;
-        input.value = prop.value;
-        input.className = 'properties-input';
-        if (prop.min !== undefined) input.min = prop.min;
-        if (prop.max !== undefined) input.max = prop.max;
-        if (prop.step !== undefined) input.step = prop.step;
-        fieldGroup.appendChild(input);
+        let input;
+        let numberWrapper = null;
+        if (prop.type === 'select' && prop.options) {
+          input = document.createElement('select');
+          input.className = 'properties-input';
+          input.id = `pprop-${prop.name}`;
+          prop.options.forEach(opt => {
+            const option = document.createElement('option');
+            option.value = opt;
+            option.textContent = opt;
+            if (opt === prop.value) option.selected = true;
+            input.appendChild(option);
+          });
+        } else if (prop.type === 'number') {
+          // Create number input with +/- buttons
+          numberWrapper = document.createElement('div');
+          numberWrapper.className = 'properties-number-wrapper';
+
+          const decBtn = document.createElement('button');
+          decBtn.className = 'properties-number-btn btn-decrement';
+          decBtn.textContent = '−';
+          decBtn.type = 'button';
+          decBtn.tabIndex = -1;
+
+          input = document.createElement('input');
+          input.type = 'number';
+          input.id = `pprop-${prop.name}`;
+          input.value = prop.value;
+          input.className = 'properties-input';
+          if (prop.min !== undefined) input.min = prop.min;
+          if (prop.max !== undefined) input.max = prop.max;
+          if (prop.step !== undefined) input.step = prop.step;
+
+          const incBtn = document.createElement('button');
+          incBtn.className = 'properties-number-btn btn-increment';
+          incBtn.textContent = '+';
+          incBtn.type = 'button';
+          incBtn.tabIndex = -1;
+
+          // +/- button handlers
+          const step = prop.step !== undefined ? prop.step : 1;
+          decBtn.addEventListener('click', () => {
+            let val = parseFloat(input.value) - step;
+            if (prop.min !== undefined && val < prop.min) val = prop.min;
+            if (prop.step !== undefined && prop.step >= 1) val = Math.round(val);
+            input.value = val;
+            input.dispatchEvent(new Event('change'));
+          });
+          incBtn.addEventListener('click', () => {
+            let val = parseFloat(input.value) + step;
+            if (prop.max !== undefined && val > prop.max) val = prop.max;
+            if (prop.step !== undefined && prop.step >= 1) val = Math.round(val);
+            input.value = val;
+            input.dispatchEvent(new Event('change'));
+          });
+
+          numberWrapper.appendChild(decBtn);
+          numberWrapper.appendChild(input);
+          numberWrapper.appendChild(incBtn);
+        } else {
+          input = document.createElement('input');
+          input.type = prop.type;
+          input.id = `pprop-${prop.name}`;
+          input.value = prop.value;
+          input.className = 'properties-input';
+          if (prop.min !== undefined) input.min = prop.min;
+          if (prop.max !== undefined) input.max = prop.max;
+          if (prop.step !== undefined) input.step = prop.step;
+        }
+
+        label.htmlFor = input.id;
+        if (numberWrapper) {
+          fieldGroup.appendChild(numberWrapper);
+        } else {
+          fieldGroup.appendChild(input);
+        }
 
         // Apply on change
         input.addEventListener('change', () => {
-          let newValue = input.type === 'number' ? parseFloat(input.value) : input.value;
+          let newValue;
+          if (input.tagName === 'SELECT') {
+            newValue = input.value;
+          } else {
+            newValue = input.type === 'number' ? parseFloat(input.value) : input.value;
+          }
           if (input.type === 'number' && !isNaN(newValue)) {
             if (prop.min !== undefined && newValue < prop.min) newValue = prop.min;
             if (prop.max !== undefined && newValue > prop.max) newValue = prop.max;
             if (prop.step !== undefined && prop.step >= 1) newValue = Math.round(newValue);
           }
-          if (!isNaN(newValue) && newValue !== prop.value) {
+          const valueChanged = (input.tagName === 'SELECT' && newValue !== prop.value) ||
+                              (!isNaN(newValue) && newValue !== prop.value);
+          if (valueChanged) {
             if (this.engine && this.canvas && this.undoManager) {
               const cmd = new SetPropertyCommand(
                 this.engine, this.canvas, comp, prop.name, prop.value, newValue

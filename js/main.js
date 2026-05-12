@@ -161,13 +161,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.addEventListener('wire-connected', () => {
     if (!_firstWireCreated) {
       _firstWireCreated = true;
-      eventBus.emit('show-panel', 'truth');
-      // Pulse the truth table tab briefly
-      const ttBtn = document.querySelector('#tt-btn');
-      if (ttBtn) {
-        ttBtn.style.boxShadow = '0 0 8px var(--color-accent)';
-        setTimeout(() => { ttBtn.style.boxShadow = ''; }, 2000);
-      }
+      // Auto-show properties panel after first wire
+      eventBus.emit('show-panel', 'properties');
     }
   });
 
@@ -185,9 +180,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   eventBus.on('speed-change', (speed) => engine.setSpeed(speed));
-  eventBus.on('set-testbench-output', (nodeId) => {
-    panelManager.testBenchPanel.setOutputNode(nodeId);
-  });
 
   // Circuit validation
   eventBus.on('validate-circuit', () => {

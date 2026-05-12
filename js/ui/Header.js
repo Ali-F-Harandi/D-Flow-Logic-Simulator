@@ -13,7 +13,6 @@ export class Header {
     this.element = this.build();
     container.appendChild(this.element);
     this._bindButtons();
-    this._initTheme();
     // HP-2 FIX: Removed _bindGlobalShortcuts() — the Delete key handler
     // here was duplicating the one in CanvasEvents._bindKeyboard().
     // Both listened on window for 'Delete' and could fire double-delete.
@@ -49,9 +48,6 @@ export class Header {
           ${icon('redo-2', '', { size: 14 })}
         </button>
         <div class="toolbar-separator" style="display:inline-block;width:1px;height:20px;background:var(--color-border);margin:0 4px;vertical-align:middle;"></div>
-        <button class="header-btn truth-table-btn" title="Generate Truth Table" aria-label="Truth Table">
-          ${icon('table', 'Truth Table', { size: 14 })}
-        </button>
         <button class="header-btn zoom-fit-btn" title="Zoom to fit all components" aria-label="Zoom to fit">
           ${icon('maximize', '', { size: 14 })}
         </button>
@@ -73,12 +69,6 @@ export class Header {
         <button class="header-btn verilog-btn" title="Export circuit as Verilog HDL" aria-label="Export Verilog">
           ${icon('file-code', 'Verilog', { size: 14 })}
         </button>
-        <button class="header-btn theme-toggle-btn" title="Toggle theme (dark/light/high-contrast)" aria-label="Toggle theme">
-          ${icon('moon', '', { size: 14 })}
-        </button>
-        <button class="header-btn color-scheme-btn" title="Color scheme: Default — click to switch to Color-Blind Friendly" aria-label="Toggle color scheme">
-          ${icon('eye', '', { size: 14 })}
-        </button>
         <button class="header-btn examples-btn" title="Load example circuit" aria-label="Example circuits">
           ${icon('layout-grid', 'Examples', { size: 14 })}
         </button>
@@ -94,7 +84,6 @@ export class Header {
     this.stepBtn = this.element.querySelector('.step-btn');
     this.resetBtn = this.element.querySelector('.reset-btn');
     this.hamburgerBtn = this.element.querySelector('.hamburger-btn');
-    this.themeToggleBtn = this.element.querySelector('.theme-toggle-btn');
     this.saveBtn = this.element.querySelector('.save-btn');
     this.loadBtn = this.element.querySelector('.load-btn');
     this.exportBtn = this.element.querySelector('.export-btn');
@@ -104,11 +93,7 @@ export class Header {
     this.examplesBtn = this.element.querySelector('.examples-btn');
     this.undoBtn = this.element.querySelector('.undo-btn');
     this.redoBtn = this.element.querySelector('.redo-btn');
-    this.truthTableBtn = this.element.querySelector('.truth-table-btn');
     this.verilogBtn = this.element.querySelector('.verilog-btn');
-
-    // Feature 12: Color scheme toggle button
-    this.colorSchemeBtn = this.element.querySelector('.color-scheme-btn');
 
     this.runBtn.addEventListener('click', () => {
       this.engine.run();
@@ -147,11 +132,6 @@ export class Header {
     // Example circuits
     this.examplesBtn.addEventListener('click', () => this._showExamplesDialog());
 
-    // Truth Table shortcut button
-    this.truthTableBtn.addEventListener('click', () => {
-      this.eventBus.emit('show-panel', 'truth');
-    });
-
     // Undo button
     if (this.undoBtn) {
       this.undoBtn.addEventListener('click', () => {
@@ -164,40 +144,6 @@ export class Header {
     if (this.redoBtn) {
       this.redoBtn.addEventListener('click', () => {
         this.eventBus.emit('redo-request');
-      });
-    }
-
-    this.themeToggleBtn.addEventListener('click', () => {
-      const root = document.documentElement;
-      const current = root.getAttribute('data-theme') || 'dark';
-      const order = ['dark', 'light', 'high-contrast'];
-      const nextIndex = (order.indexOf(current) + 1) % order.length;
-      const next = order[nextIndex];
-      root.setAttribute('data-theme', next);
-      localStorage.setItem('dflow-theme', next);
-      this._updateThemeIcon(next);
-    });
-
-    // Feature 12: Color scheme toggle — cycles between "default" and "colorblind"
-    if (this.colorSchemeBtn) {
-      this._initColorScheme();
-      this.colorSchemeBtn.addEventListener('click', () => {
-        const root = document.documentElement;
-        const current = root.getAttribute('data-color-scheme') || 'default';
-        const schemes = ['default', 'colorblind'];
-        const labels = ['Default', 'Color-Blind Friendly'];
-        const nextIndex = (schemes.indexOf(current) + 1) % schemes.length;
-        const next = schemes[nextIndex];
-        if (next === 'default') {
-          root.removeAttribute('data-color-scheme');
-        } else {
-          root.setAttribute('data-color-scheme', next);
-        }
-        localStorage.setItem('dflow-color-scheme', next);
-        this._updateColorSchemeIcon(next);
-        const label = labels[nextIndex];
-        this.colorSchemeBtn.title = `Color scheme: ${label} — click to switch`;
-        if (this.canvas) this.canvas.showToast(`Color scheme: ${label}`, 'info');
       });
     }
 
@@ -287,51 +233,6 @@ export class Header {
           if (this.canvas) this.canvas.showToast('Verilog export failed', 'error');
         }
       });
-    }
-  }
-
-  _initTheme() {
-    const saved = localStorage.getItem('dflow-theme') || 'dark';
-    document.documentElement.setAttribute('data-theme', saved);
-    this._updateThemeIcon(saved);
-  }
-
-  _updateThemeIcon(theme) {
-    if (this.themeToggleBtn) {
-      const iconMap = {
-        dark: 'moon',
-        light: 'sun',
-        'high-contrast': 'contrast'
-      };
-      const iconName = iconMap[theme] || 'moon';
-      this.themeToggleBtn.innerHTML = icon(iconName, '', { size: 14 });
-      replaceIcons(this.themeToggleBtn);
-    }
-  }
-
-  /* Feature 12: Color scheme initialization and icon update */
-  _initColorScheme() {
-    const saved = localStorage.getItem('dflow-color-scheme') || 'default';
-    if (saved !== 'default') {
-      document.documentElement.setAttribute('data-color-scheme', saved);
-    }
-    this._updateColorSchemeIcon(saved);
-    // Update button tooltip
-    if (this.colorSchemeBtn) {
-      const labels = { default: 'Default', colorblind: 'Color-Blind Friendly' };
-      this.colorSchemeBtn.title = `Color scheme: ${labels[saved] || 'Default'} — click to switch`;
-    }
-  }
-
-  _updateColorSchemeIcon(scheme) {
-    if (this.colorSchemeBtn) {
-      const iconMap = {
-        default: 'eye',
-        colorblind: 'eye-off'
-      };
-      const iconName = iconMap[scheme] || 'eye';
-      this.colorSchemeBtn.innerHTML = icon(iconName, '', { size: 14 });
-      replaceIcons(this.colorSchemeBtn);
     }
   }
 

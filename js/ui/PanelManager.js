@@ -1,5 +1,3 @@
-import { TruthTablePanel } from './TruthTablePanel.js';
-import { TestBenchPanel } from './TestBenchPanel.js';
 import { NetlistPanel } from './NetlistPanel.js';
 import { PropertiesPanel } from './PropertiesPanel.js';
 
@@ -19,13 +17,9 @@ export class PanelManager {
     this.createSplitter();
     this.setupResize();
 
-    this.truthPanel = new TruthTablePanel(this.rightPanel, eventBus, engine);
-    this.testBenchPanel = new TestBenchPanel(this.rightPanel, eventBus, engine);
     this.netlistPanel = new NetlistPanel(this.rightPanel, eventBus, engine);
     this.propertiesPanel = new PropertiesPanel(this.rightPanel, eventBus, engine, canvas, undoManager);
 
-    this.truthPanel.panel.style.display = 'none';
-    this.testBenchPanel.panel.style.display = 'none';
     this.netlistPanel.panel.style.display = 'none';
 
     this.eventBus.on('toggle-right-panel', (width) => {
@@ -33,9 +27,6 @@ export class PanelManager {
     });
     this.eventBus.on('show-panel', (type) => {
       this.showPanel(type);
-    });
-    this.eventBus.on('set-testbench-output', (nodeId) => {
-      this.testBenchPanel.setOutputNode(nodeId);
     });
 
     // Listen for selection changes to show Properties panel
@@ -137,15 +128,9 @@ export class PanelManager {
   }
 
   showPanel(type) {
-    this.truthPanel.panel.style.display = 'none';
-    this.testBenchPanel.panel.style.display = 'none';
     this.netlistPanel.panel.style.display = 'none';
     this.propertiesPanel.hide();
-    if (type === 'truth') {
-      this.truthPanel.panel.style.display = 'block';
-    } else if (type === 'testbench') {
-      this.testBenchPanel.panel.style.display = 'block';
-    } else if (type === 'netlist') {
+    if (type === 'netlist') {
       this.netlistPanel.panel.style.display = 'block';
       this.netlistPanel.refresh();
     } else if (type === 'properties') {

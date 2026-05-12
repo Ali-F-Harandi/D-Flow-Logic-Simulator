@@ -621,15 +621,6 @@ export class CanvasEvents {
             }
           }
         }
-        if (isOutput) {
-          items.push({ label: 'Generate Truth Table', action: () => {
-            this.eventBus.emit('show-panel', 'truth');
-            this.eventBus.emit('generate-truth-table', conn.dataset.node);
-          }});
-        }
-        items.push({ label: 'Set as TestBench Output', action: () => {
-          this.eventBus.emit('set-testbench-output', conn.dataset.node);
-        }});
         this.contextMenu.show(e.clientX, e.clientY, items);
       }
     });

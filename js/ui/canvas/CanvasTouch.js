@@ -62,6 +62,9 @@ export class CanvasTouch {
     if (this.wiring._wireEditHandler && this.wiring._wireEditHandler.isDragging) {
       this.wiring._wireEditHandler.endDrag();
     }
+    if (this.touchPanning && this.panZoom.isPanning) {
+      this.panZoom.endPan();
+    }
     this._draggingControlPoint = false;
     this.touchPanning = false;
     this.touchPanStart = null;
@@ -207,10 +210,12 @@ export class CanvasTouch {
     }
 
     // ---- Empty canvas: start panning ----
+    e.preventDefault();
     this.touchPanning = true;
+    this.panZoom.startPan(touch.clientX, touch.clientY);
     this.touchPanStart = {
-      x: touch.clientX - this.core.panOffset.x,
-      y: touch.clientY - this.core.panOffset.y
+      x: touch.clientX,
+      y: touch.clientY
     };
 
     // Long-press on empty canvas
@@ -274,6 +279,7 @@ export class CanvasTouch {
       e.preventDefault();
       this.dragHandler.moveDrag(touch.clientX, touch.clientY);
     } else if (this.touchPanning) {
+      e.preventDefault();
       this.panZoom.movePan(touch.clientX, touch.clientY);
     }
 
@@ -324,6 +330,11 @@ export class CanvasTouch {
 
     // End drag if active
     if (this.dragHandler.isDragging) this.dragHandler.endDrag();
+
+    // End touch panning
+    if (this.touchPanning && this.panZoom.isPanning) {
+      this.panZoom.endPan();
+    }
 
     // Complete wire connection with auto-magnet
     if (this.wiring.wiring && this.wiring.wiring.tempPath) {

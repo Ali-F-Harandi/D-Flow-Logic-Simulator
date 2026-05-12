@@ -43,8 +43,12 @@ export class PropertyEditor {
     this.dialog.appendChild(h3);
 
     props.forEach(prop => {
+      const fieldGroup = document.createElement('div');
+      fieldGroup.className = 'prop-field';
+
       const label = document.createElement('label');
-      label.textContent = `${prop.label}: `;
+      label.textContent = prop.label;
+      label.htmlFor = `prop-${prop.name}`;
       
       let input;
       if (prop.type === 'select' && prop.options) {
@@ -68,9 +72,9 @@ export class PropertyEditor {
         if (prop.step !== undefined) input.step = prop.step;
       }
       
-      label.appendChild(input);
-      this.dialog.appendChild(label);
-      this.dialog.appendChild(document.createElement('br'));
+      fieldGroup.appendChild(label);
+      fieldGroup.appendChild(input);
+      this.dialog.appendChild(fieldGroup);
     });
 
     const btnContainer = document.createElement('div');

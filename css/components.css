@@ -179,17 +179,52 @@
 }
 #property-dialog label {
   display: block;
-  margin-bottom: var(--space-sm);
-  font-size: var(--font-size-md);
+  margin-bottom: 2px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  cursor: pointer;
 }
-#property-dialog input {
+#property-dialog .prop-field {
+  margin-bottom: var(--space-sm);
+}
+#property-dialog input,
+#property-dialog select {
   background: var(--color-bg);
   border: 1px solid var(--color-border);
   color: var(--color-text);
-  padding: 4px;
-  border-radius: 3px;
-  width: 60px;
+  padding: 5px 8px;
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-family);
   margin-left: var(--space-xs);
+  outline: none;
+  transition: border-color var(--transition-speed);
+}
+#property-dialog input[type="number"] {
+  width: 80px;
+  -moz-appearance: textfield;
+}
+#property-dialog input[type="number"]::-webkit-inner-spin-button,
+#property-dialog input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+#property-dialog input:focus,
+#property-dialog select:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.25);
+}
+#property-dialog select {
+  width: auto;
+  min-width: 100px;
+  cursor: pointer;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: 28px;
 }
 #property-dialog button {
   background: var(--color-surface-alt);
@@ -199,7 +234,8 @@
   border-radius: var(--border-radius);
   cursor: pointer;
   font-size: var(--font-size-sm);
-  transition: background var(--transition-speed);
+  font-family: var(--font-family);
+  transition: background var(--transition-speed), border-color var(--transition-speed);
 }
 #property-dialog button:hover {
   background: var(--color-accent);
@@ -213,25 +249,6 @@
   top: 0; left: 0; right: 0; bottom: 0;
   background: rgba(0,0,0,0.4);
   z-index: -1;
-}
-
-/* ===== Truth Table Styling ===== */
-.tt-content table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-}
-.tt-content th, .tt-content td {
-  border: 1px solid var(--color-border);
-  padding: 4px;
-  text-align: center;
-}
-.tt-content th {
-  background: var(--truth-table-header-bg);
-  color: var(--truth-table-header-color);
-}
-.tt-content tr:nth-child(even) {
-  background: var(--truth-table-row-alt);
 }
 
 /* ===== Toolbar Buttons ===== */
@@ -718,23 +735,132 @@ g[data-wire-id]:hover .wire-visual {
   flex-direction: column;
   gap: 4px;
 }
-.properties-label {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
-}
-.properties-input {
+.properties-input,
+.properties-panel select {
   background: var(--color-bg);
   border: 1px solid var(--color-border);
   color: var(--color-text);
-  padding: 4px 8px;
+  padding: 5px 8px;
   border-radius: var(--border-radius-sm);
   font-size: var(--font-size-sm);
+  font-family: var(--font-family);
   width: 100%;
   box-sizing: border-box;
-}
-.properties-input:focus {
   outline: none;
+  transition: border-color var(--transition-speed);
+}
+.properties-input:focus,
+.properties-panel select:focus {
   border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.25);
+}
+.properties-input[type="number"] {
+  -moz-appearance: textfield;
+  width: 100%;
+}
+.properties-input[type="number"]::-webkit-inner-spin-button,
+.properties-input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.properties-panel select {
+  cursor: pointer;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: 28px;
+  min-height: 32px;
+}
+.properties-label {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+/* Custom number input with +/- buttons */
+.properties-number-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  width: 100%;
+}
+.properties-number-wrapper .properties-input[type="number"] {
+  border-radius: var(--border-radius-sm) 0 0 var(--border-radius-sm);
+  text-align: center;
+  flex: 1;
+  min-width: 0;
+}
+.properties-number-btn {
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  width: 28px;
+  height: 32px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition-speed), color var(--transition-speed);
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  padding: 0;
+  line-height: 1;
+}
+.properties-number-btn:hover {
+  background: var(--color-accent);
+  color: #fff;
+  border-color: var(--color-accent);
+}
+.properties-number-btn:active {
+  transform: scale(0.95);
+}
+.properties-number-btn.btn-decrement {
+  border-radius: 0 0 var(--border-radius-sm) 0;
+  border-left: none;
+}
+.properties-number-btn.btn-increment {
+  border-radius: 0 var(--border-radius-sm) 0 0;
+  border-left: none;
+}
+/* Custom checkbox for input inversion */
+.properties-panel input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--color-border);
+  border-radius: 3px;
+  background: var(--color-bg);
+  cursor: pointer;
+  position: relative;
+  transition: background var(--transition-speed), border-color var(--transition-speed);
+  flex-shrink: 0;
+}
+.properties-panel input[type="checkbox"]:checked {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+.properties-panel input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 5px;
+  height: 9px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.properties-panel input[type="checkbox"]:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.25);
 }
 .properties-position,
 .properties-connections,
